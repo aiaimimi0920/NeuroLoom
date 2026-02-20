@@ -8,6 +8,7 @@ pub mod gemini_cli;
 pub mod iflow;
 pub mod ollama;
 pub mod openai;
+pub mod vertex;
 
 pub use black_magic_proxy::{
     BlackMagicProxyCatalog, BlackMagicProxyClient, BlackMagicProxySpec, BlackMagicProxyTarget,
@@ -20,3 +21,4 @@ pub use iflow::{
     extract_bx_auth, should_refresh_api_key, IFlowConfig, IFlowProvider, IFlowRefreshResult,
     IFlowTokenStorage,
 };
+pub use vertex::{VertexConfig, VertexProvider};

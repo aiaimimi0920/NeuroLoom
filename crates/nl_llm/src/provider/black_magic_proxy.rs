@@ -49,6 +49,7 @@ pub enum BlackMagicProxyTarget {
     IFlow,
     Antigravity,
     GeminiCli,
+    Vertex,
 }
 
 /// 反代接口形态
@@ -324,6 +325,23 @@ impl BlackMagicProxyCatalog {
                 ],
                 notes: "Gemini CLI (官方 CLI 凭据)".to_string(),
             },
+            BlackMagicProxySpec {
+                target: BlackMagicProxyTarget::Vertex,
+                default_base_url: "https://us-central1-aiplatform.googleapis.com".to_string(),
+                exposures: vec![
+                    ProxyExposure {
+                        kind: ProxyExposureKind::Api,
+                        path: "/v1/projects/{project}/locations/us-central1/publishers/google/models/{model}:generateContent".to_string(),
+                        method: "POST".to_string(),
+                        auth_header: Some("Authorization".to_string()),
+                        auth_prefix: Some("Bearer ".to_string()),
+                        cli_command: None,
+                        cli_args: vec![],
+                        notes: "Vertex AI Gemini 非流式生成接口（SA JSON 认证）".to_string(),
+                    },
+                ],
+                notes: "Google Cloud Vertex AI Gemini 接口（Service Account JSON 或 API Key）".to_string(),
+            },
         ]
     }
 
@@ -514,9 +532,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_catalog_covers_seven_targets() {
+    fn test_catalog_covers_eight_targets() {
         let all = BlackMagicProxyCatalog::all_specs();
-        assert_eq!(all.len(), 7);
+        assert_eq!(all.len(), 8);
     }
 
     #[test]

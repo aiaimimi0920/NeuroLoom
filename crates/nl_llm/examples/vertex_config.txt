@@ -1,0 +1,41 @@
+# Vertex AI (Google Cloud Gemini) 配置说明
+# =========================================
+#
+# 认证方式一：Service Account JSON（推荐，企业级）
+# ─────────────────────────────────────────
+# 1. 在 GCP Console > IAM & Admin > Service Accounts 创建服务账号
+# 2. 授予角色：roles/aiplatform.user（或更高）
+# 3. 为服务账号创建 JSON 密钥并下载
+# 4. 将文件保存为 examples\vertex_sa.json
+#    或在 test_vertex_chat.bat 中修改 SA_JSON_PATH 变量
+#
+# 命令行: test_vertex_chat.exe "你好" --sa C:\path\to\sa.json
+# 环境变量: set VERTEX_SA_JSON_PATH=C:\path\to\sa.json
+
+# 认证方式二：API Key（简单，适合快速测试）
+# ─────────────────────────────────────────
+# 1. GCP Console > APIs & Services > Credentials > Create Credentials > API Key
+# 2. 确保已启用 Vertex AI API 或 Generative Language API
+#
+# 命令行: test_vertex_chat.exe "你好" --key AIzaSy...
+# 环境变量: set VERTEX_API_KEY=AIzaSy...
+
+# 其他配置（可选）
+# ─────────────────────────────────────────
+
+# 区域（默认 us-central1，SA 模式有效）
+# VERTEX_LOCATION=us-central1
+
+# 模型名称（默认 gemini-2.0-flash）
+# 可选值: gemini-2.5-flash, gemini-2.0-flash, gemini-1.5-pro, gemini-1.5-flash 等
+VERTEX_MODEL=gemini-2.0-flash
+
+# 所支持的 API URL
+# SA 模式: https://{region}-aiplatform.googleapis.com/v1/projects/{proj}/locations/{region}/publishers/google/models/{model}:generateContent
+# API Key 模式: https://generativelanguage.googleapis.com/v1/publishers/google/models/{model}:generateContent
+
+# 快速启动命令（复制到终端执行）
+# ─────────────────────────────────────────
+# set VERTEX_SA_JSON_PATH=C:\Users\Administrator\my-sa.json
+# cd /d C:\Users\Administrator\Documents\GameEditor\NeuroLoom
+# cargo run --example test_vertex_chat -p nl_llm -- "你好" --stream

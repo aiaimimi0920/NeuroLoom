@@ -36,6 +36,8 @@ logs/
 !.env.example
 *.pem
 *.key
+*_sa.json
+*service_account*.json
 
 # 构建产物
 /dist/
