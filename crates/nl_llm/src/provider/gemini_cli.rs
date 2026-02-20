@@ -1,0 +1,1188 @@
+//! Gemini CLI Provider 实现
+//!
+//! 对齐 CLIProxyAPI 参考实现 gemini_cli_executor.go，支持：
+//! - OAuth2 登录与 token 自动刷新（Gemini CLI 凭据）
+//! - 多 Base URL fallback（prod → daily → sandbox）
+//! - "no capacity" 错误检测与重试
+//!
+//! 与 Antigravity 共享相同的 CloudCode PA 后端，
+//! 但使用不同的 OAuth client 凭据和 scopes。
+
+use chrono::{Duration, Utc};
+use reqwest::header::{HeaderMap, HeaderValue};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use sha2::{Digest, Sha256};
+use std::fs;
+use std::path::PathBuf;
+use std::time::Duration as StdDuration;
+use std::time::{SystemTime, UNIX_EPOCH};
+use url::Url;
+use uuid::Uuid;
+
+use crate::prompt_ast::PromptAst;
+use super::BlackMagicProxySpec;
+
+// ── Gemini CLI 专用常量（对齐 gemini_cli_executor.go 和 gemini_auth.go）─────
+// OAuth 凭据从环境变量读取
+// 凭据可从 CLIProxyAPI 等开源项目获取，或设置环境变量：
+//   GEMINI_CLI_CLIENT_ID=xxx GEMINI_CLI_CLIENT_SECRET=xxx
+
+fn get_client_id() -> String {
+    std::env::var("GEMINI_CLI_CLIENT_ID")
+        .expect("GEMINI_CLI_CLIENT_ID environment variable not set")
+}
+
+fn get_client_secret() -> String {
+    std::env::var("GEMINI_CLI_CLIENT_SECRET")
+        .expect("GEMINI_CLI_CLIENT_SECRET environment variable not set")
+}
+
+const GEMINI_CLI_TOKEN_ENDPOINT: &str = "https://oauth2.googleapis.com/token";
+const GEMINI_CLI_AUTH_ENDPOINT: &str = "https://accounts.google.com/o/oauth2/v2/auth";
+const GEMINI_CLI_USERINFO_ENDPOINT: &str =
+    "https://www.googleapis.com/oauth2/v1/userinfo?alt=json";
+
+// API 版本
+const GEMINI_CLI_API_VERSION: &str = "v1internal";
+
+// 回调配置（Gemini CLI 用 8085 端口和 /oauth2callback 路径）
+const GEMINI_CLI_REDIRECT_URI: &str = "http://localhost:8085/oauth2callback";
+const GEMINI_CLI_CALLBACK_PORT: u16 = 8085;
+
+// OAuth Scopes（Gemini CLI 只用 3 个，与 Antigravity 的 5 个不同）
+const GEMINI_CLI_SCOPES: &[&str] = &[
+    "https://www.googleapis.com/auth/cloud-platform",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+];
+
+// HTTP 头部常量
+const GEMINI_CLI_USER_AGENT: &str = "google-api-nodejs-client/9.15.1";
+const GEMINI_CLI_API_CLIENT: &str = "gl-node/22.17.0";
+
+// Client-Metadata 格式：Gemini CLI 用逗号分隔的 key=value 格式（区别于 Antigravity 的 JSON）
+const GEMINI_CLI_CLIENT_METADATA: &str =
+    "ideType=IDE_UNSPECIFIED,platform=PLATFORM_UNSPECIFIED,pluginType=GEMINI";
+
+// Base URL fallback 列表（prod → daily → sandbox）
+const GEMINI_CLI_BASE_URLS: &[&str] = &[
+    "https://cloudcode-pa.googleapis.com",
+    "https://daily-cloudcode-pa.googleapis.com",
+    "https://daily-cloudcode-pa.sandbox.googleapis.com",
+];
+
+/// Token 刷新提前量（5 分钟）
+const TOKEN_REFRESH_LEAD_SECONDS: i64 = 300;
+
+/// "no capacity" 重试配置
+const NO_CAPACITY_MAX_RETRIES: usize = 5;
+const NO_CAPACITY_BASE_DELAY_MS: u64 = 500;
+
+// ── 数据结构 ───────────────────────────────────────────────────────────────────
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeminiCliConfig {
+    pub model: String,
+    pub token_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeminiCliToken {
+    pub access_token: String,
+    pub refresh_token: String,
+    pub expires_at: chrono::DateTime<Utc>,
+    pub project_id: Option<String>,
+    pub email: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OAuthTokenResponse {
+    access_token: String,
+    refresh_token: Option<String>,
+    expires_in: i64,
+}
+
+/// Provider 执行错误，带有重试信号供 Gateway 层决策
+#[derive(Debug)]
+pub struct GeminiCliError {
+    pub message: String,
+    pub status_code: Option<u16>,
+    pub retryable: bool,
+}
+
+impl std::fmt::Display for GeminiCliError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "GeminiCliError: {}", self.message)
+    }
+}
+
+impl std::error::Error for GeminiCliError {}
+
+// ── Provider 结构体 ──────────────────────────────────────────────────────────
+pub struct GeminiCliProvider {
+    pub config: GeminiCliConfig,
+    client: reqwest::Client,
+}
+
+// ── 主实现 ─────────────────────────────────────────────────────────────────────
+impl GeminiCliProvider {
+    pub fn new(config: GeminiCliConfig) -> Self {
+        Self {
+            config,
+            client: reqwest::Client::new(),
+        }
+    }
+
+    pub fn default_provider() -> Self {
+        let home = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_else(|_| ".".to_string());
+        let token_path = PathBuf::from(home)
+            .join(".nl_llm")
+            .join("gemini_cli_token.json");
+        Self::new(GeminiCliConfig {
+            model: "gemini-2.5-flash".to_string(),
+            token_path,
+        })
+    }
+
+    pub fn get_spec(&self) -> BlackMagicProxySpec {
+        BlackMagicProxySpec {
+            target: crate::provider::black_magic_proxy::BlackMagicProxyTarget::GeminiCli,
+            default_base_url: GEMINI_CLI_BASE_URLS[0].to_string(),
+            exposures: vec![crate::provider::black_magic_proxy::ProxyExposure {
+                kind: crate::provider::black_magic_proxy::ProxyExposureKind::Api,
+                path: format!("/{}:streamGenerateContent", GEMINI_CLI_API_VERSION),
+                method: "POST".to_string(),
+                auth_header: Some("Authorization".to_string()),
+                auth_prefix: Some("Bearer ".to_string()),
+                cli_command: None,
+                cli_args: vec![],
+                notes: "Gemini CLI streamGenerateContent".to_string(),
+            }],
+            notes: "Gemini CLI provider (official CLI credentials)".to_string(),
+        }
+    }
+
+    // ── 认证 ─────────────────────────────────────────────────────────────────
+
+    /// 确保 token 有效，必要时刷新，返回 access_token
+    pub async fn ensure_authenticated(&self) -> crate::Result<String> {
+        let mut token = self.load_token().await?;
+
+        // 检查是否需要刷新
+        if token.expires_at <= Utc::now() + Duration::seconds(TOKEN_REFRESH_LEAD_SECONDS) {
+            token = self
+                .refresh_token_data(&token.refresh_token, &token)
+                .await?;
+            self.save_token(&token)?;
+        }
+
+        // 如果没有 project_id，尝试获取
+        if token.project_id.is_none() || token.project_id.as_deref() == Some("") {
+            match self.fetch_project_id(&token.access_token).await {
+                Ok(pid) => {
+                    token.project_id = Some(pid);
+                    self.save_token(&token)?;
+                }
+                Err(e) => {
+                    // project_id 不是必须的，只是 warn
+                    eprintln!("Warning: could not fetch project ID: {:?}", e);
+                }
+            }
+        }
+
+        Ok(token.access_token)
+    }
+
+    pub async fn get_auth_headers(&self) -> crate::Result<HeaderMap> {
+        let access_token = self.ensure_authenticated().await?;
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "Authorization",
+            HeaderValue::from_str(&format!("Bearer {}", access_token)).unwrap(),
+        );
+        headers.insert("Content-Type", HeaderValue::from_static("application/json"));
+        headers.insert("User-Agent", HeaderValue::from_static(GEMINI_CLI_USER_AGENT));
+        headers.insert(
+            "X-Goog-Api-Client",
+            HeaderValue::from_static(GEMINI_CLI_API_CLIENT),
+        );
+        headers.insert(
+            "Client-Metadata",
+            HeaderValue::from_static(GEMINI_CLI_CLIENT_METADATA),
+        );
+        Ok(headers)
+    }
+
+    // ── 请求编译 ─────────────────────────────────────────────────────────────
+
+    pub fn compile_request(&self, ast: &PromptAst) -> Value {
+        let openai_msgs = ast.to_openai_messages();
+
+        let mut system_parts: Vec<serde_json::Value> = Vec::new();
+        let mut contents: Vec<serde_json::Value> = Vec::new();
+
+        for msg in &openai_msgs {
+            let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("user");
+            let text = msg.get("content").and_then(|c| c.as_str()).unwrap_or("");
+
+            match role {
+                "system" => {
+                    if !text.is_empty() {
+                        system_parts.push(serde_json::json!({ "text": text }));
+                    }
+                }
+                "assistant" => {
+                    contents.push(serde_json::json!({
+                        "role": "model",
+                        "parts": [{ "text": text }]
+                    }));
+                }
+                _ => {
+                    contents.push(serde_json::json!({
+                        "role": "user",
+                        "parts": [{ "text": text }]
+                    }));
+                }
+            }
+        }
+
+        if contents.is_empty() && !system_parts.is_empty() {
+            contents.push(serde_json::json!({
+                "role": "user",
+                "parts": [{ "text": "" }]
+            }));
+        }
+
+        let session_id = generate_session_id(&contents);
+        let request_id = format!("agent-{}", Uuid::new_v4());
+
+        let project = self
+            .load_project_id()
+            .unwrap_or_else(|| generate_project_id());
+
+        let mut request_inner = serde_json::json!({
+            "contents": contents,
+            "sessionId": session_id
+        });
+
+        if !system_parts.is_empty() {
+            request_inner["systemInstruction"] = serde_json::json!({
+                "parts": system_parts
+            });
+        }
+
+        // 防御性清理
+        if let Some(obj) = request_inner.as_object_mut() {
+            obj.remove("safetySettings");
+            if let Some(gen_config) = obj.get_mut("generationConfig") {
+                if let Some(gc_obj) = gen_config.as_object_mut() {
+                    gc_obj.remove("maxOutputTokens");
+                }
+            }
+        }
+
+        // 移动顶层 toolConfig 到 request.toolConfig
+        let tool_config = request_inner.get("toolConfig").cloned();
+        if let Some(tc) = tool_config {
+            if request_inner
+                .get("request")
+                .and_then(|r| r.get("toolConfig"))
+                .is_none()
+            {
+                request_inner["toolConfig"] = tc;
+            }
+            if let Some(obj) = request_inner.as_object_mut() {
+                obj.remove("toolConfig");
+            }
+        }
+
+        serde_json::json!({
+            "model": self.config.model,
+            "userAgent": "gemini-cli",
+            "requestType": "agent",
+            "project": project,
+            "requestId": request_id,
+            "request": request_inner
+        })
+    }
+
+    /// 从 token 文件读取 project_id
+    fn load_project_id(&self) -> Option<String> {
+        if self.config.token_path.exists() {
+            let content = fs::read_to_string(&self.config.token_path).ok()?;
+            let token: GeminiCliToken = serde_json::from_str(&content).ok()?;
+            token.project_id.filter(|s| !s.is_empty())
+        } else {
+            None
+        }
+    }
+
+    // ── generateContent（非流式）────────────────────────────────────────────
+
+    /// 执行非流式聊天补全（带多 Base URL fallback 和 "no capacity" 重试）
+    pub async fn complete(&self, ast: &PromptAst) -> crate::Result<String> {
+        let access_token = self.ensure_authenticated().await?;
+        let body = self.compile_request(ast);
+
+        for _retry_attempt in 0..NO_CAPACITY_MAX_RETRIES {
+            for (url_idx, base_url) in GEMINI_CLI_BASE_URLS.iter().enumerate() {
+                let url = format!(
+                    "{}/{}:generateContent",
+                    base_url, GEMINI_CLI_API_VERSION
+                );
+
+                let resp = self
+                    .client
+                    .post(&url)
+                    .header("Authorization", format!("Bearer {}", access_token))
+                    .header("Content-Type", "application/json")
+                    .header("User-Agent", GEMINI_CLI_USER_AGENT)
+                    .header("X-Goog-Api-Client", GEMINI_CLI_API_CLIENT)
+                    .header("Client-Metadata", GEMINI_CLI_CLIENT_METADATA)
+                    .json(&body)
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        crate::NeuroLoomError::LlmProvider(format!(
+                            "gemini-cli generateContent request failed: {}",
+                            e
+                        ))
+                    })?;
+
+                let status = resp.status();
+                let raw_text = resp.text().await.unwrap_or_default();
+
+                if status.is_success() {
+                    return Self::parse_generate_response(&raw_text);
+                }
+
+                if Self::is_no_capacity_error(status, &raw_text) || status.as_u16() == 429 {
+                    if url_idx + 1 < GEMINI_CLI_BASE_URLS.len() {
+                        continue;
+                    }
+                    if Self::is_no_capacity_error(status, &raw_text) {
+                        let delay = Self::no_capacity_delay(_retry_attempt);
+                        tokio::time::sleep(StdDuration::from_millis(delay)).await;
+                        break;
+                    }
+                    return Err(crate::NeuroLoomError::LlmProvider(format!(
+                        "gemini-cli rate limited on all base URLs: {}",
+                        raw_text.trim()
+                    )));
+                }
+
+                return Err(crate::NeuroLoomError::LlmProvider(format!(
+                    "gemini-cli generateContent failed ({}): {}",
+                    status,
+                    raw_text.trim()
+                )));
+            }
+        }
+
+        Err(crate::NeuroLoomError::LlmProvider(
+            "gemini-cli: max retries exceeded for 'no capacity' errors".to_string(),
+        ))
+    }
+
+    /// 解析 generateContent 响应
+    fn parse_generate_response(raw_text: &str) -> crate::Result<String> {
+        let json: Value = serde_json::from_str(raw_text).map_err(|e| {
+            crate::NeuroLoomError::LlmProvider(format!(
+                "gemini-cli generateContent: decode response failed: {}",
+                e
+            ))
+        })?;
+
+        let candidates = json
+            .get("response")
+            .and_then(|r| r.get("candidates"))
+            .or_else(|| json.get("candidates"));
+
+        candidates
+            .and_then(|c| c.get(0))
+            .and_then(|c| c.get("content"))
+            .and_then(|c| c.get("parts"))
+            .and_then(|p| p.get(0))
+            .and_then(|p| p.get("text"))
+            .and_then(|t| t.as_str())
+            .map(|s| s.to_string())
+            .ok_or_else(|| {
+                crate::NeuroLoomError::LlmProvider(
+                    "gemini-cli generateContent: unexpected response format".to_string(),
+                )
+            })
+    }
+
+    /// 检测 "no capacity" 错误
+    fn is_no_capacity_error(status: reqwest::StatusCode, body: &str) -> bool {
+        status.as_u16() == 503 && body.to_lowercase().contains("no capacity available")
+    }
+
+    /// 计算 "no capacity" 重试延迟
+    fn no_capacity_delay(attempt: usize) -> u64 {
+        let delay = (attempt + 1) as u64 * NO_CAPACITY_BASE_DELAY_MS;
+        delay.min(2000)
+    }
+
+    // ── streamGenerateContent（流式）────────────────────────────────────────
+
+    /// 执行流式聊天补全，返回完整拼接文本（SSE 格式）
+    pub async fn stream_complete(&self, ast: &PromptAst) -> crate::Result<String> {
+        let access_token = self.ensure_authenticated().await?;
+        let body = self.compile_request(ast);
+
+        for _retry_attempt in 0..NO_CAPACITY_MAX_RETRIES {
+            for (url_idx, base_url) in GEMINI_CLI_BASE_URLS.iter().enumerate() {
+                let url = format!(
+                    "{}/{}:streamGenerateContent?alt=sse",
+                    base_url, GEMINI_CLI_API_VERSION
+                );
+
+                let resp = self
+                    .client
+                    .post(&url)
+                    .header("Authorization", format!("Bearer {}", access_token))
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "text/event-stream")
+                    .header("User-Agent", GEMINI_CLI_USER_AGENT)
+                    .header("X-Goog-Api-Client", GEMINI_CLI_API_CLIENT)
+                    .header("Client-Metadata", GEMINI_CLI_CLIENT_METADATA)
+                    .json(&body)
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        crate::NeuroLoomError::LlmProvider(format!(
+                            "gemini-cli streamGenerateContent request failed: {}",
+                            e
+                        ))
+                    })?;
+
+                let status = resp.status();
+
+                if status.is_success() {
+                    return Self::parse_stream_response(resp).await;
+                }
+
+                let text = resp.text().await.unwrap_or_default();
+
+                if Self::is_no_capacity_error(status, &text) || status.as_u16() == 429 {
+                    if url_idx + 1 < GEMINI_CLI_BASE_URLS.len() {
+                        continue;
+                    }
+                    if Self::is_no_capacity_error(status, &text) {
+                        let delay = Self::no_capacity_delay(_retry_attempt);
+                        tokio::time::sleep(StdDuration::from_millis(delay)).await;
+                        break;
+                    }
+                    return Err(crate::NeuroLoomError::LlmProvider(format!(
+                        "gemini-cli streamGenerateContent rate limited: {}",
+                        text.trim()
+                    )));
+                }
+
+                return Err(crate::NeuroLoomError::LlmProvider(format!(
+                    "gemini-cli streamGenerateContent failed ({}): {}",
+                    status,
+                    text.trim()
+                )));
+            }
+        }
+
+        Err(crate::NeuroLoomError::LlmProvider(
+            "gemini-cli: max retries exceeded for 'no capacity' errors".to_string(),
+        ))
+    }
+
+    /// 解析流式响应
+    async fn parse_stream_response(resp: reqwest::Response) -> crate::Result<String> {
+        let raw = resp.text().await.map_err(|e| {
+            crate::NeuroLoomError::LlmProvider(format!(
+                "gemini-cli streamGenerateContent: read body failed: {}",
+                e
+            ))
+        })?;
+
+        let mut result = String::new();
+        for line in raw.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let json_str = line.strip_prefix("data: ").unwrap_or(line);
+            if let Ok(chunk) = serde_json::from_str::<Value>(json_str) {
+                let text = chunk
+                    .get("response")
+                    .and_then(|r| r.get("candidates"))
+                    .or_else(|| chunk.get("candidates"))
+                    .and_then(|c| c.get(0))
+                    .and_then(|c| c.get("content"))
+                    .and_then(|c| c.get("parts"))
+                    .and_then(|p| p.get(0))
+                    .and_then(|p| p.get("text"))
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("");
+                result.push_str(text);
+            }
+        }
+
+        if result.is_empty() {
+            return Err(crate::NeuroLoomError::LlmProvider(
+                "gemini-cli streamGenerateContent: no text content in response".to_string(),
+            ));
+        }
+
+        Ok(result)
+    }
+
+    // ── countTokens API ─────────────────────────────────────────────────────
+
+    /// 估算 token 数量（带多 Base URL fallback）
+    pub async fn count_tokens(&self, ast: &PromptAst) -> crate::Result<u64> {
+        let access_token = self.ensure_authenticated().await?;
+        let body = self.compile_request(ast);
+
+        let body = {
+            let mut b = body;
+            if let Some(obj) = b.as_object_mut() {
+                obj.remove("project");
+                obj.remove("model");
+                if let Some(req) = obj.get_mut("request") {
+                    if let Some(req_obj) = req.as_object_mut() {
+                        req_obj.remove("safetySettings");
+                    }
+                }
+            }
+            b
+        };
+
+        for base_url in GEMINI_CLI_BASE_URLS {
+            let url = format!(
+                "{}/{}:countTokens",
+                base_url, GEMINI_CLI_API_VERSION
+            );
+
+            let resp = self
+                .client
+                .post(&url)
+                .header("Authorization", format!("Bearer {}", access_token))
+                .header("Content-Type", "application/json")
+                .header("User-Agent", GEMINI_CLI_USER_AGENT)
+                .header("X-Goog-Api-Client", GEMINI_CLI_API_CLIENT)
+                .header("Client-Metadata", GEMINI_CLI_CLIENT_METADATA)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| {
+                    crate::NeuroLoomError::LlmProvider(format!(
+                        "gemini-cli countTokens request failed: {}",
+                        e
+                    ))
+                })?;
+
+            let status = resp.status();
+            let raw = resp.text().await.unwrap_or_default();
+
+            if status.is_success() {
+                let json: Value = serde_json::from_str(&raw).map_err(|e| {
+                    crate::NeuroLoomError::LlmProvider(format!(
+                        "gemini-cli countTokens: decode response failed: {}",
+                        e
+                    ))
+                })?;
+
+                let total = json
+                    .get("response")
+                    .and_then(|r| r.get("totalTokens"))
+                    .or_else(|| json.get("totalTokens"))
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+
+                return Ok(total);
+            }
+
+            if status.as_u16() == 429 || status.as_u16() == 503 {
+                continue;
+            }
+
+            return Err(crate::NeuroLoomError::LlmProvider(format!(
+                "gemini-cli countTokens failed ({}): {}",
+                status,
+                raw.trim()
+            )));
+        }
+
+        Err(crate::NeuroLoomError::LlmProvider(
+            "gemini-cli countTokens failed on all base URLs".to_string(),
+        ))
+    }
+
+    // ── fetchAvailableModels API ─────────────────────────────────────────────
+
+    /// 查询当前账户可用的模型列表（带多 Base URL fallback）
+    pub async fn fetch_available_models(&self) -> crate::Result<Vec<String>> {
+        let access_token = self.ensure_authenticated().await?;
+
+        let body = serde_json::json!({
+            "metadata": {
+                "ideType": "IDE_UNSPECIFIED",
+                "platform": "PLATFORM_UNSPECIFIED",
+                "pluginType": "GEMINI"
+            }
+        });
+
+        for base_url in GEMINI_CLI_BASE_URLS {
+            let url = format!(
+                "{}/{}:fetchAvailableModels",
+                base_url, GEMINI_CLI_API_VERSION
+            );
+
+            let resp = self
+                .client
+                .post(&url)
+                .header("Authorization", format!("Bearer {}", access_token))
+                .header("Content-Type", "application/json")
+                .header("User-Agent", GEMINI_CLI_USER_AGENT)
+                .header("X-Goog-Api-Client", GEMINI_CLI_API_CLIENT)
+                .header("Client-Metadata", GEMINI_CLI_CLIENT_METADATA)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| {
+                    crate::NeuroLoomError::LlmProvider(format!(
+                        "gemini-cli fetchAvailableModels request failed: {}",
+                        e
+                    ))
+                })?;
+
+            let status = resp.status();
+            let raw = resp.text().await.unwrap_or_default();
+
+            if status.is_success() {
+                let json: Value = serde_json::from_str(&raw).map_err(|e| {
+                    crate::NeuroLoomError::LlmProvider(format!(
+                        "gemini-cli fetchAvailableModels: decode response failed: {}",
+                        e
+                    ))
+                })?;
+
+                let models_array = json
+                    .get("response")
+                    .and_then(|r| r.get("models"))
+                    .or_else(|| json.get("models"))
+                    .and_then(|v| v.as_array());
+
+                let names: Vec<String> = models_array
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|m| {
+                                m.get("name")
+                                    .or_else(|| m.get("modelName"))
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string())
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                return Ok(names);
+            }
+
+            if status.as_u16() == 429 || status.as_u16() == 503 {
+                continue;
+            }
+
+            return Err(crate::NeuroLoomError::LlmProvider(format!(
+                "gemini-cli fetchAvailableModels failed ({}): {}",
+                status,
+                raw.trim()
+            )));
+        }
+
+        Err(crate::NeuroLoomError::LlmProvider(
+            "gemini-cli fetchAvailableModels failed on all base URLs".to_string(),
+        ))
+    }
+
+    // ── 内部：Token 文件 I/O ────────────────────────────────────────────────
+
+    async fn load_token(&self) -> crate::Result<GeminiCliToken> {
+        if self.config.token_path.exists() {
+            let content = fs::read_to_string(&self.config.token_path)?;
+            let token: GeminiCliToken = serde_json::from_str(&content)?;
+            return Ok(token);
+        }
+        // 文件不存在，发起 OAuth 登录
+        self.login().await
+    }
+
+    fn save_token(&self, token: &GeminiCliToken) -> crate::Result<()> {
+        if let Some(parent) = self.config.token_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let content = serde_json::to_string_pretty(token)?;
+        fs::write(&self.config.token_path, content)?;
+        Ok(())
+    }
+
+    // ── 内部：OAuth 登录流程 ────────────────────────────────────────────────
+
+    async fn login(&self) -> crate::Result<GeminiCliToken> {
+        // 1. 构造 state 和 Auth URL
+        let state = format!(
+            "{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let client_id = get_client_id();
+        let auth_url = Url::parse_with_params(
+            GEMINI_CLI_AUTH_ENDPOINT,
+            &[
+                ("access_type", "offline"),
+                ("client_id", client_id.as_str()),
+                ("prompt", "consent"),
+                ("redirect_uri", GEMINI_CLI_REDIRECT_URI),
+                ("response_type", "code"),
+                ("scope", &GEMINI_CLI_SCOPES.join(" ")),
+                ("state", &state),
+            ],
+        )
+        .unwrap();
+
+        eprintln!("\n=== Gemini CLI OAuth Login ===");
+        eprintln!("请在浏览器中打开以下链接完成登录:\n{}\n", auth_url);
+
+        // 2. 本地回调服务器等待 code
+        let (tx, rx) = std::sync::mpsc::channel();
+        let server =
+            tiny_http::Server::http(format!("127.0.0.1:{}", GEMINI_CLI_CALLBACK_PORT))
+                .map_err(|e| {
+                    crate::NeuroLoomError::LlmProvider(format!(
+                        "Failed to start callback server: {}",
+                        e
+                    ))
+                })?;
+
+        std::thread::spawn(move || {
+            for request in server.incoming_requests() {
+                let url = request.url().to_string();
+                if url.contains("code=") {
+                    let code = url
+                        .split("code=")
+                        .nth(1)
+                        .unwrap_or("")
+                        .split('&')
+                        .next()
+                        .unwrap_or("")
+                        .to_string();
+                    let html = "<h1>Login successful</h1><p>You can close this window.</p>";
+                    let response = tiny_http::Response::from_string(html)
+                        .with_header(
+                            "Content-Type: text/html"
+                                .parse::<tiny_http::Header>()
+                                .unwrap(),
+                        );
+                    let _ = request.respond(response);
+                    let _ = tx.send(Ok(code));
+                    break;
+                } else if url.contains("error=") {
+                    let err = url
+                        .split("error=")
+                        .nth(1)
+                        .unwrap_or("unknown")
+                        .split('&')
+                        .next()
+                        .unwrap_or("unknown")
+                        .to_string();
+                    let _ = request.respond(tiny_http::Response::from_string(
+                        "<h1>Login failed</h1><p>Please check the CLI output.</p>",
+                    ));
+                    let _ = tx.send(Err(err));
+                    break;
+                }
+            }
+        });
+
+        eprintln!("Waiting for callback on port {}...", GEMINI_CLI_CALLBACK_PORT);
+        let code = match rx.recv() {
+            Ok(Ok(code)) => code,
+            Ok(Err(e)) => {
+                return Err(crate::NeuroLoomError::LlmProvider(format!(
+                    "OAuth error returned: {}",
+                    e
+                )))
+            }
+            Err(_) => {
+                return Err(crate::NeuroLoomError::LlmProvider(
+                    "Failed to receive auth code from callback server".to_string(),
+                ))
+            }
+        };
+
+        // 3. 用 code 换 token
+        let token_resp = self.exchange_code(&code).await?;
+
+        let access_token = token_resp.access_token.clone();
+        let refresh_token = token_resp.refresh_token.ok_or_else(|| {
+            crate::NeuroLoomError::LlmProvider("No refresh_token in token response".to_string())
+        })?;
+        let expires_at = Utc::now() + Duration::seconds(token_resp.expires_in);
+
+        // 4. 获取用户 email
+        let email = self.fetch_user_email(&access_token).await.ok();
+
+        // 5. 获取 Project ID（可选，失败不中断）
+        let project_id = self.fetch_project_id(&access_token).await.ok();
+
+        let token = GeminiCliToken {
+            access_token,
+            refresh_token,
+            expires_at,
+            project_id,
+            email,
+        };
+
+        self.save_token(&token)?;
+        eprintln!("Token saved to {:?}", self.config.token_path);
+        Ok(token)
+    }
+
+    async fn exchange_code(&self, code: &str) -> crate::Result<OAuthTokenResponse> {
+        let client_id = get_client_id();
+        let client_secret = get_client_secret();
+        let params = [
+            ("code", code),
+            ("client_id", client_id.as_str()),
+            ("client_secret", client_secret.as_str()),
+            ("redirect_uri", GEMINI_CLI_REDIRECT_URI),
+            ("grant_type", "authorization_code"),
+        ];
+
+        let res = self
+            .client
+            .post(GEMINI_CLI_TOKEN_ENDPOINT)
+            .form(&params)
+            .send()
+            .await
+            .map_err(|e| {
+                crate::NeuroLoomError::LlmProvider(format!("Token exchange request failed: {}", e))
+            })?;
+
+        if !res.status().is_success() {
+            let body = res.text().await.unwrap_or_default();
+            return Err(crate::NeuroLoomError::LlmProvider(format!(
+                "Token exchange failed ({}): {}",
+                body.len(),
+                body
+            )));
+        }
+
+        res.json::<OAuthTokenResponse>().await.map_err(|e| {
+            crate::NeuroLoomError::LlmProvider(format!(
+                "Failed to parse token response: {}",
+                e
+            ))
+        })
+    }
+
+    async fn refresh_token_data(
+        &self,
+        refresh_token: &str,
+        existing: &GeminiCliToken,
+    ) -> crate::Result<GeminiCliToken> {
+        let client_id = get_client_id();
+        let client_secret = get_client_secret();
+        let params = [
+            ("client_id", client_id.as_str()),
+            ("client_secret", client_secret.as_str()),
+            ("refresh_token", refresh_token),
+            ("grant_type", "refresh_token"),
+        ];
+
+        let res = self
+            .client
+            .post(GEMINI_CLI_TOKEN_ENDPOINT)
+            .form(&params)
+            .send()
+            .await
+            .map_err(|e| {
+                crate::NeuroLoomError::LlmProvider(format!("Token refresh request failed: {}", e))
+            })?;
+
+        if !res.status().is_success() {
+            let body = res.text().await.unwrap_or_default();
+            return Err(crate::NeuroLoomError::LlmProvider(format!(
+                "Token refresh failed: {}",
+                body
+            )));
+        }
+
+        let token_resp = res.json::<OAuthTokenResponse>().await.map_err(|e| {
+            crate::NeuroLoomError::LlmProvider(format!(
+                "Failed to parse refresh token response: {}",
+                e
+            ))
+        })?;
+
+        Ok(GeminiCliToken {
+            access_token: token_resp.access_token,
+            refresh_token: token_resp
+                .refresh_token
+                .unwrap_or_else(|| refresh_token.to_string()),
+            expires_at: Utc::now() + Duration::seconds(token_resp.expires_in),
+            project_id: existing.project_id.clone(),
+            email: existing.email.clone(),
+        })
+    }
+
+    // ── 内部：用户信息 ──────────────────────────────────────────────────────
+
+    async fn fetch_user_email(&self, access_token: &str) -> crate::Result<String> {
+        let res = self
+            .client
+            .get(GEMINI_CLI_USERINFO_ENDPOINT)
+            .header("Authorization", format!("Bearer {}", access_token))
+            .send()
+            .await
+            .map_err(|e| {
+                crate::NeuroLoomError::LlmProvider(format!("UserInfo request failed: {}", e))
+            })?;
+
+        let json: Value = res.json().await.map_err(|e| {
+            crate::NeuroLoomError::LlmProvider(format!("Failed to parse UserInfo: {}", e))
+        })?;
+
+        json.get("email")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .ok_or_else(|| {
+                crate::NeuroLoomError::LlmProvider("No email in UserInfo response".to_string())
+            })
+    }
+
+    // ── 内部：loadCodeAssist + OnboardUser ──────────────────────────────────
+
+    async fn fetch_project_id(&self, access_token: &str) -> crate::Result<String> {
+        let base_url = GEMINI_CLI_BASE_URLS[0];
+        let url = format!(
+            "{}/{}:loadCodeAssist",
+            base_url, GEMINI_CLI_API_VERSION
+        );
+        // Gemini CLI 用 IDE_UNSPECIFIED 而不是 ANTIGRAVITY
+        let body = serde_json::json!({
+            "metadata": {
+                "ideType": "IDE_UNSPECIFIED",
+                "platform": "PLATFORM_UNSPECIFIED",
+                "pluginType": "GEMINI"
+            }
+        });
+
+        let res = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", access_token))
+            .header("Content-Type", "application/json")
+            .header("User-Agent", GEMINI_CLI_USER_AGENT)
+            .header("X-Goog-Api-Client", GEMINI_CLI_API_CLIENT)
+            .header("Client-Metadata", GEMINI_CLI_CLIENT_METADATA)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| {
+                crate::NeuroLoomError::LlmProvider(format!("loadCodeAssist request failed: {}", e))
+            })?;
+
+        let status = res.status();
+        let text = res.text().await.map_err(|e| {
+            crate::NeuroLoomError::LlmProvider(format!("Failed to read loadCodeAssist body: {}", e))
+        })?;
+
+        if !status.is_success() {
+            return Err(crate::NeuroLoomError::LlmProvider(format!(
+                "loadCodeAssist returned {}: {}",
+                status,
+                text.trim()
+            )));
+        }
+
+        let json: Value = serde_json::from_str(&text)?;
+
+        // 解析 project_id（两种可能的结构）
+        let mut project_id = String::new();
+        if let Some(id) = json.get("cloudaicompanionProject").and_then(|v| v.as_str()) {
+            project_id = id.trim().to_string();
+        } else if let Some(obj) = json
+            .get("cloudaicompanionProject")
+            .and_then(|v| v.as_object())
+        {
+            if let Some(id) = obj.get("id").and_then(|v| v.as_str()) {
+                project_id = id.trim().to_string();
+            }
+        }
+
+        if !project_id.is_empty() {
+            return Ok(project_id);
+        }
+
+        // project_id 为空时，尝试从 allowedTiers 获取 tierId，然后调用 onboardUser
+        let tier_id = json
+            .get("allowedTiers")
+            .and_then(|v| v.as_array())
+            .and_then(|tiers| {
+                tiers.iter().find_map(|t| {
+                    if t.get("isDefault").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        t.get("id").and_then(|v| v.as_str()).map(|s| s.to_string())
+                    } else {
+                        None
+                    }
+                })
+            })
+            .unwrap_or_else(|| "legacy-tier".to_string());
+
+        self.onboard_user(access_token, &tier_id).await
+    }
+
+    async fn onboard_user(
+        &self,
+        access_token: &str,
+        tier_id: &str,
+    ) -> crate::Result<String> {
+        let base_url = GEMINI_CLI_BASE_URLS[0];
+        let url = format!(
+            "{}/{}:onboardUser",
+            base_url, GEMINI_CLI_API_VERSION
+        );
+        let body = serde_json::json!({
+            "tierId": tier_id,
+            "metadata": {
+                "ideType": "IDE_UNSPECIFIED",
+                "platform": "PLATFORM_UNSPECIFIED",
+                "pluginType": "GEMINI"
+            }
+        });
+
+        for _attempt in 1..=5 {
+            let res = self
+                .client
+                .post(&url)
+                .header("Authorization", format!("Bearer {}", access_token))
+                .header("Content-Type", "application/json")
+                .header("User-Agent", GEMINI_CLI_USER_AGENT)
+                .header("X-Goog-Api-Client", GEMINI_CLI_API_CLIENT)
+                .header("Client-Metadata", GEMINI_CLI_CLIENT_METADATA)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| {
+                    crate::NeuroLoomError::LlmProvider(format!(
+                        "onboardUser request failed: {}",
+                        e
+                    ))
+                })?;
+
+            let status = res.status();
+            let text = res.text().await.map_err(|e| {
+                crate::NeuroLoomError::LlmProvider(format!(
+                    "Failed to read onboardUser body: {}",
+                    e
+                ))
+            })?;
+
+            if !status.is_success() {
+                return Err(crate::NeuroLoomError::LlmProvider(format!(
+                    "onboardUser returned {}: {}",
+                    status,
+                    text.trim()
+                )));
+            }
+
+            let json: Value = serde_json::from_str(&text)?;
+
+            if json.get("done").and_then(|v| v.as_bool()).unwrap_or(false) {
+                let pid = json
+                    .get("response")
+                    .and_then(|r| r.get("cloudaicompanionProject"))
+                    .and_then(|p| match p {
+                        Value::String(s) => Some(s.trim().to_string()),
+                        Value::Object(o) => o
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.trim().to_string()),
+                        _ => None,
+                    });
+
+                return pid.ok_or_else(|| {
+                    crate::NeuroLoomError::LlmProvider(
+                        "onboardUser done but no project_id in response".to_string(),
+                    )
+                });
+            }
+
+            // 还没完成，等 2 秒后重试
+            tokio::time::sleep(StdDuration::from_secs(2)).await;
+        }
+
+        Err(crate::NeuroLoomError::LlmProvider(
+            "onboardUser: max attempts reached without completion".to_string(),
+        ))
+    }
+}
+
+// ── 模块级辅助函数 ──────────────────────────────────────────────────────────
+
+/// 生成 stable session ID
+fn generate_session_id(contents: &[serde_json::Value]) -> String {
+    for content in contents {
+        if content.get("role").and_then(|r| r.as_str()) == Some("user") {
+            if let Some(text) = content
+                .get("parts")
+                .and_then(|p| p.get(0))
+                .and_then(|p| p.get("text"))
+                .and_then(|t| t.as_str())
+            {
+                if !text.is_empty() {
+                    let mut hasher = Sha256::new();
+                    hasher.update(text.as_bytes());
+                    let hash = hasher.finalize();
+                    let n = i64::from_be_bytes(hash[..8].try_into().unwrap()) & 0x7FFFFFFFFFFFFFFF;
+                    return format!("-{}", n);
+                }
+            }
+        }
+    }
+    let n = rand_i64() & 0x7FFFFFFFFFFFFFFF;
+    format!("-{}", n)
+}
+
+/// 生成随机 project ID
+fn generate_project_id() -> String {
+    let adjectives = ["useful", "bright", "swift", "calm", "bold"];
+    let nouns = ["fuze", "wave", "spark", "flow", "core"];
+    let uid = Uuid::new_v4().to_string();
+    let random_part = &uid[..5];
+    let adj = adjectives[rand_usize() % adjectives.len()];
+    let noun = nouns[rand_usize() % nouns.len()];
+    format!("{}-{}-{}", adj, noun, random_part)
+}
+
+fn rand_i64() -> i64 {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    (now as i64)
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407)
+}
+
+fn rand_usize() -> usize {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    now as usize
+}

@@ -160,7 +160,7 @@ impl RadixTreeCache {
     }
 
     /// 查找最长前缀匹配
-    pub fn find_longest_prefix(&self, key: &str) -> Option<&str> {
+    pub fn find_longest_prefix<'a>(&self, key: &'a str) -> Option<&'a str> {
         let mut node = &self.root;
         let mut last_match: Option<&str> = None;
 

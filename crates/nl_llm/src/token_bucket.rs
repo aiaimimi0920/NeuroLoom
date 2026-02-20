@@ -6,7 +6,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use tokio::sync::{Mutex, Semaphore};
-use tokio::time::sleep;
 
 /// 令牌桶配置
 #[derive(Debug, Clone)]
@@ -69,6 +68,7 @@ impl TokenBucket {
             self.config.max_wait,
             self.semaphore.acquire(),
         )
+        .await
         .map_err(|_| crate::NeuroLoomError::TokenBucketExhausted(
             "Timeout waiting for token".to_string()
         ))?

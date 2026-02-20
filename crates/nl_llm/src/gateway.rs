@@ -10,7 +10,11 @@ use tokio::sync::Mutex;
 
 use crate::fallback::FallbackRouter;
 use crate::prompt_ast::PromptAst;
-use crate::provider::{AnthropicProvider, OllamaProvider, OpenAIProvider};
+use crate::provider::anthropic::AnthropicProvider;
+use crate::provider::antigravity::AntigravityProvider;
+use crate::provider::iflow::IFlowProvider;
+use crate::provider::ollama::OllamaProvider;
+use crate::provider::openai::OpenAIProvider;
 use crate::token_bucket::TokenBucket;
 
 #[derive(Debug, Clone)]
@@ -54,6 +58,8 @@ impl LlmGateway {
             "openai" => OpenAIProvider::default_provider().compile_request(ast),
             "anthropic" => AnthropicProvider::default_provider().compile_request(ast),
             "ollama" => OllamaProvider::default_provider().compile_request(ast),
+            "iflow" => IFlowProvider::new(Default::default()).compile_request(ast),
+            "antigravity" => AntigravityProvider::default_provider().compile_request(ast),
             other => {
                 self.token_bucket.release();
                 return Err(crate::NeuroLoomError::LlmProvider(format!(

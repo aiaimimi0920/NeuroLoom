@@ -1,12 +1,8 @@
-//! CLI Proxy - PTY 通信模块
+//! CLI Proxy - 命令行通信模块
 //!
-//! 劫持本地 Claude/Gemini 命令行的 PTY 通信。
+//! 与本地 LLM CLI 交互（Claude、Gemini 等）。
 
 use std::process::Command;
-
-use anyhow::Result;
-use portable_pty::{native_pty_system, PtySize, CommandBuilder};
-use tokio::sync::mpsc;
 
 /// CLI Provider 配置
 #[derive(Debug, Clone)]
@@ -52,14 +48,32 @@ impl CliProxy {
     pub async fn execute(&self, input: &str) -> crate::Result<String> {
         let command = self.config.command.clone();
         let args = self.config.args.clone();
+        let env = self.config.env.clone();
         let input = input.to_string();
 
         // 在阻塞任务中执行
         let output = tokio::task::spawn_blocking(move || {
             let mut cmd = Command::new(&command);
             cmd.args(&args);
+            for (key, value) in &env {
+                cmd.env(key, value);
+            }
 
-            let output = cmd.output()?;
+            // 如果有输入，通过 stdin 传递
+            if !input.is_empty() {
+                cmd.stdin(std::process::Stdio::piped());
+            }
+
+            let mut child = cmd.spawn()?;
+
+            if !input.is_empty() {
+                use std::io::Write;
+                if let Some(mut stdin) = child.stdin.take() {
+                    stdin.write_all(input.as_bytes())?;
+                }
+            }
+
+            let output = child.wait_with_output()?;
             Ok::<_, std::io::Error>(String::from_utf8_lossy(&output.stdout).to_string())
         })
         .await
@@ -69,40 +83,29 @@ impl CliProxy {
         Ok(output)
     }
 
-    /// 启动交互式 PTY 会话
-    pub fn start_pty(&self) -> crate::Result<PtySession> {
-        let pty_system = native_pty_system();
-
-        let pair = pty_system
-            .openpty(PtySize {
-                rows: 24,
-                cols: 80,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .map_err(|e| crate::NeuroLoomError::LlmProvider(e.to_string()))?;
-
-        let mut cmd = CommandBuilder::new(&self.config.command);
-        cmd.args(&self.config.args);
-
-        for (key, value) in &self.config.env {
-            cmd.env(key, value);
-        }
-
-        let _child = pair
-            .slave
-            .spawn_command(cmd)
-            .map_err(|e| crate::NeuroLoomError::LlmProvider(e.to_string()))?;
-
-        Ok(PtySession {
-            _master: pair.master,
-        })
+    /// 检查命令是否可用
+    pub fn is_available(&self) -> bool {
+        Command::new(&self.config.command)
+            .arg("--version")
+            .output()
+            .is_ok()
     }
 }
 
-/// PTY 会话
-pub struct PtySession {
-    _master: Box<dyn portable_pty::PtyMaster>,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-// PtySession 可以扩展以支持交互式通信
+    #[test]
+    fn test_cli_proxy_config() {
+        let proxy = CliProxy::claude();
+        assert_eq!(proxy.config.command, "claude");
+        assert!(proxy.config.args.is_empty());
+    }
+
+    #[test]
+    fn test_gemini_proxy_config() {
+        let proxy = CliProxy::gemini();
+        assert_eq!(proxy.config.command, "gemini");
+    }
+}

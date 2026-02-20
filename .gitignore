@@ -65,3 +65,13 @@ temp/
 # 原始设计文档 (已整合到 docs/)
 *.docx
 *.doc
+
+# 调试输出文件
+debug_*.json
+debug_*.txt
+errors*.txt
+errors.json
+chat_*.txt
+test_output.txt
+build_err.txt
+check*.json

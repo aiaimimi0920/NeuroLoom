@@ -46,6 +46,9 @@ pub enum BlackMagicProxyTarget {
     NewApi,
     CcSwitch,
     ClaudeCodeRouter,
+    IFlow,
+    Antigravity,
+    GeminiCli,
 }
 
 /// 反代接口形态
@@ -240,6 +243,87 @@ impl BlackMagicProxyCatalog {
                 ],
                 notes: "专注 Claude Code 路由与分流".to_string(),
             },
+            BlackMagicProxySpec {
+                target: BlackMagicProxyTarget::IFlow,
+                default_base_url: "https://apis.iflow.cn".to_string(),
+                exposures: vec![
+                    ProxyExposure {
+                        kind: ProxyExposureKind::Auth,
+                        path: "https://platform.iflow.cn/api/openapi/apikey".to_string(),
+                        method: "POST".to_string(),
+                        auth_header: Some("Cookie".to_string()),
+                        auth_prefix: None,
+                        cli_command: None,
+                        cli_args: vec![],
+                        notes: "Cookie 换取 API Key".to_string(),
+                    },
+                    ProxyExposure {
+                        kind: ProxyExposureKind::Api,
+                        path: "/v1/chat/completions".to_string(),
+                        method: "POST".to_string(),
+                        auth_header: Some("Authorization".to_string()),
+                        auth_prefix: Some("Bearer ".to_string()),
+                        cli_command: None,
+                        cli_args: vec![],
+                        notes: "标准 Chat API".to_string(),
+                    },
+                ],
+                notes: "iFlow Cookie 自动保活".to_string(),
+            },
+            BlackMagicProxySpec {
+                target: BlackMagicProxyTarget::Antigravity,
+                default_base_url: "https://cloudcode-pa.googleapis.com".to_string(),
+                exposures: vec![
+                    ProxyExposure {
+                        kind: ProxyExposureKind::Auth,
+                        path: "https://accounts.google.com/o/oauth2/v2/auth".to_string(),
+                        method: "GET".to_string(),
+                        auth_header: None,
+                        auth_prefix: None,
+                        cli_command: None,
+                        cli_args: vec![],
+                        notes: "OAuth2 登录入口".to_string(),
+                    },
+                    ProxyExposure {
+                        kind: ProxyExposureKind::Api,
+                        path: "/v1internal/request".to_string(), // Approximate path, handled by provider
+                        method: "POST".to_string(),
+                        auth_header: Some("Authorization".to_string()),
+                        auth_prefix: Some("Bearer ".to_string()),
+                        cli_command: None,
+                        cli_args: vec![],
+                        notes: "Gemini Code Assist 内部接口".to_string(),
+                    },
+                ],
+                notes: "Gemini Code Assist (Antigravity) 专用".to_string(),
+            },
+            BlackMagicProxySpec {
+                target: BlackMagicProxyTarget::GeminiCli,
+                default_base_url: "https://cloudcode-pa.googleapis.com".to_string(),
+                exposures: vec![
+                    ProxyExposure {
+                        kind: ProxyExposureKind::Auth,
+                        path: "https://accounts.google.com/o/oauth2/v2/auth".to_string(),
+                        method: "GET".to_string(),
+                        auth_header: None,
+                        auth_prefix: None,
+                        cli_command: None,
+                        cli_args: vec![],
+                        notes: "OAuth2 登录入口 (Gemini CLI)".to_string(),
+                    },
+                    ProxyExposure {
+                        kind: ProxyExposureKind::Api,
+                        path: "/v1internal:streamGenerateContent".to_string(),
+                        method: "POST".to_string(),
+                        auth_header: Some("Authorization".to_string()),
+                        auth_prefix: Some("Bearer ".to_string()),
+                        cli_command: None,
+                        cli_args: vec![],
+                        notes: "Gemini CLI 流式生成接口".to_string(),
+                    },
+                ],
+                notes: "Gemini CLI (官方 CLI 凭据)".to_string(),
+            },
         ]
     }
 
@@ -404,6 +488,9 @@ impl BlackMagicProxyClient {
 }
 
 fn normalize_url(base_url: &str, path: &str) -> String {
+    if path.starts_with("http://") || path.starts_with("https://") {
+        return path.to_string();
+    }
     format!(
         "{}/{}",
         base_url.trim_end_matches('/'),
@@ -427,9 +514,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_catalog_covers_four_targets() {
+    fn test_catalog_covers_seven_targets() {
         let all = BlackMagicProxyCatalog::all_specs();
-        assert_eq!(all.len(), 4);
+        assert_eq!(all.len(), 7);
     }
 
     #[test]
