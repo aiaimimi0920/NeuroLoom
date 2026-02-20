@@ -1,0 +1,67 @@
+# ==========================================
+# NeuroLoom (神织机)
+# SOTA Agent Operating System
+# ==========================================
+
+# 编译输出
+/target/
+**/*.rs.bk
+*.pdb
+
+# IDE 和编辑器
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 数据库文件
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# 日志文件
+*.log
+logs/
+
+# 环境变量和密钥
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# 构建产物
+/dist/
+/build/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# 测试覆盖率
+/coverage/
+*.profraw
+*.profdata
+
+# 文档生成
+/doc/
+
+# 临时文件
+/tmp/
+temp/
+*.tmp
+
+# 归档��件
+/archives/
+*.zst
+
+# 原始设计文档 (已整合到 docs/)
+*.docx
+*.doc

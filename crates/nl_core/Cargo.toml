@@ -1,0 +1,19 @@
+[package]
+name = "nl_core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "NeuroLoom Core Primitives - Event Sourcing, UUID, Error Handling"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio-test.workspace = true

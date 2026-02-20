@@ -1,0 +1,24 @@
+[package]
+name = "nl_durable"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "NeuroLoom Durable Execution - SQLite Event Sourcing, Actor Persistence"
+
+[dependencies]
+nl_core.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+futures.workspace = true
+
+[dev-dependencies]
+tokio-test.workspace = true

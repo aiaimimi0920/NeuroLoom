@@ -1,0 +1,89 @@
+# ==========================================
+# NeuroLoom (神织机)
+# SOTA Agent Operating System Workspace
+# ==========================================
+
+[workspace]
+resolver = "2"
+members = [
+    # 应用程序入口 (Binaries)
+    "apps/daemon",      # [核心引擎] Headless 后台守护进程 (Actor Mesh与状态机引擎)
+    "apps/desktop",     # [空间��布] Tauri 流式前端 (视觉层与 CRDTs)
+    "apps/cli",         # [极客终端] 命令行交互接口
+
+    # 系统器官与基建 (Libraries)
+    "crates/nl_core",      # 1. 核心原语 (EventSourcing 事件枚举, UUID, 错误处理)
+    "crates/nl_durable",   # 2. 持久化底座 (SQLite 事件溯源重放, Actor 休眠/唤醒)
+    "crates/nl_llm",       # 3. 算力与网关 (全局令牌桶反压, 基数树前缀缓存)
+    "crates/nl_memory",    # 4. 记忆底座 (HAMT 漏斗检索, 快照归档)
+    "crates/nl_cognitive", # 5. 认知与法庭 (SOP 引擎, MCTS 自适应算法, MoA 议会)
+    "crates/nl_sandbox",   # 6. 物理执行网 (God Mode, 微型虚拟机验证)
+    "crates/nl_vision",    # 7. 视觉流 (语义帧差分感知器, 防止显存爆炸)
+    "crates/nl_hap",       # 8. 星际联邦协议 (HAP 跨网竞标与 WebSocket 通信)
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["The Architect <architect@neuroloom.os>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/neuroloom/neuroloom"
+description = "SOTA Agent Operating System - The Neural Loom that Weaves Intelligence"
+
+# 全局统一依赖版本控制 (Dependency Inheritance)
+[workspace.dependencies]
+# 核心异步与高并发基建
+tokio = { version = "1.36", features = ["full", "tracing"] }
+async-trait = "0.1"
+futures = "0.3"
+
+# 序列化与数据流转
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+bincode = "1.3"
+
+# UUID 与标识
+uuid = { version = "1.7", features = ["v4", "serde"] }
+
+# 持久化与数据库 (事件溯源与 GraphRAG)
+sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite"] }
+surrealdb = { version = "1.4", features = ["kv-mem"] }
+
+# 网络、观测性与底层物理操作
+axum = { version = "0.7", features = ["ws"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# PTY 与进程管理
+portable-pty = "0.8"
+
+# 错误处理
+thiserror = "1.0"
+anyhow = "1.0"
+
+# 时间处理
+chrono = { version = "0.4", features = ["serde"] }
+
+# 密码学与安全
+sha2 = "0.10"
+base64 = "0.22"
+
+# 异步通道与消息
+flume = "0.11"
+
+# 内部 crates
+nl_core = { path = "crates/nl_core" }
+nl_durable = { path = "crates/nl_durable" }
+nl_llm = { path = "crates/nl_llm" }
+nl_memory = { path = "crates/nl_memory" }
+nl_cognitive = { path = "crates/nl_cognitive" }
+nl_sandbox = { path = "crates/nl_sandbox" }
+nl_vision = { path = "crates/nl_vision" }
+nl_hap = { path = "crates/nl_hap" }
+
+# 开发依赖
+[workspace.dev-dependencies]
+tokio-test = "0.4"
+criterion = "0.5"

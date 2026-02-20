@@ -1,0 +1,28 @@
+[package]
+name = "neuroloom-daemon"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "NeuroLoom Daemon - Headless Backend Actor Engine"
+
+[[bin]]
+name = "neuroloom-daemon"
+path = "src/main.rs"
+
+[dependencies]
+nl_core.workspace = true
+nl_durable.workspace = true
+nl_llm.workspace = true
+nl_memory.workspace = true
+nl_cognitive.workspace = true
+nl_sandbox.workspace = true
+nl_vision.workspace = true
+nl_hap.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+
+[dev-dependencies]
+tokio-test.workspace = true
