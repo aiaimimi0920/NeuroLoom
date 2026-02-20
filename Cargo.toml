@@ -8,7 +8,7 @@ resolver = "2"
 members = [
     # 应用程序入口 (Binaries)
     "apps/daemon",      # [核心引擎] Headless 后台守护进程 (Actor Mesh与状态机引擎)
-    "apps/desktop",     # [空间��布] Tauri 流式前端 (视觉层与 CRDTs)
+    "apps/desktop",     # [空间画布] Tauri 流式前端 (视觉层与 CRDTs)
     "apps/cli",         # [极客终端] 命令行交互接口
 
     # 系统器官与基建 (Libraries)
@@ -83,7 +83,6 @@ nl_sandbox = { path = "crates/nl_sandbox" }
 nl_vision = { path = "crates/nl_vision" }
 nl_hap = { path = "crates/nl_hap" }
 
-# 开发依赖
-[workspace.dev-dependencies]
+# 开发依赖（供子 crate 通过 `workspace = true` 继承）
 tokio-test = "0.4"
 criterion = "0.5"
