@@ -27,7 +27,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["The Architect <architect@neuroloom.os>"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/neuroloom/neuroloom"
+repository = "https://github.com/aiaimimi0920/NeuroLoom"
 description = "SOTA Agent Operating System - The Neural Loom that Weaves Intelligence"
 
 # 全局统一依赖版本控制 (Dependency Inheritance)
