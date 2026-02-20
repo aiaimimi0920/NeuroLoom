@@ -23,19 +23,9 @@ use url::Url;
 use uuid::Uuid;
 
 // ── 常量定义（对齐 CLIProxyAPI 参考实现）──────────────────────────────────────
-// OAuth 凭据从环境变量读取
-// 凭据可从 CLIProxyAPI 等开源项目获取，或设置环境变量：
-//   ANTIGRAVITY_CLIENT_ID=xxx ANTIGRAVITY_CLIENT_SECRET=xxx
-
-fn get_client_id() -> String {
-    std::env::var("ANTIGRAVITY_CLIENT_ID")
-        .expect("ANTIGRAVITY_CLIENT_ID environment variable not set")
-}
-
-fn get_client_secret() -> String {
-    std::env::var("ANTIGRAVITY_CLIENT_SECRET")
-        .expect("ANTIGRAVITY_CLIENT_SECRET environment variable not set")
-}
+const ANTIGRAVITY_CLIENT_ID: &str =
+    "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com";
+const ANTIGRAVITY_CLIENT_SECRET: &str = "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";
 
 const ANTIGRAVITY_TOKEN_ENDPOINT: &str = "https://oauth2.googleapis.com/token";
 const ANTIGRAVITY_AUTH_ENDPOINT: &str = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -768,12 +758,11 @@ impl AntigravityProvider {
                 .unwrap()
                 .as_nanos()
         );
-        let client_id = get_client_id();
         let auth_url = Url::parse_with_params(
             ANTIGRAVITY_AUTH_ENDPOINT,
             &[
                 ("access_type", "offline"),
-                ("client_id", client_id.as_str()),
+                ("client_id", ANTIGRAVITY_CLIENT_ID),
                 ("prompt", "consent"),
                 ("redirect_uri", ANTIGRAVITY_REDIRECT_URI),
                 ("response_type", "code"),
@@ -882,12 +871,10 @@ impl AntigravityProvider {
     }
 
     async fn exchange_code(&self, code: &str) -> crate::Result<OAuthTokenResponse> {
-        let client_id = get_client_id();
-        let client_secret = get_client_secret();
         let params = [
             ("code", code),
-            ("client_id", client_id.as_str()),
-            ("client_secret", client_secret.as_str()),
+            ("client_id", ANTIGRAVITY_CLIENT_ID),
+            ("client_secret", ANTIGRAVITY_CLIENT_SECRET),
             ("redirect_uri", ANTIGRAVITY_REDIRECT_URI),
             ("grant_type", "authorization_code"),
         ];
@@ -924,11 +911,9 @@ impl AntigravityProvider {
         refresh_token: &str,
         existing: &AntigravityToken,
     ) -> crate::Result<AntigravityToken> {
-        let client_id = get_client_id();
-        let client_secret = get_client_secret();
         let params = [
-            ("client_id", client_id.as_str()),
-            ("client_secret", client_secret.as_str()),
+            ("client_id", ANTIGRAVITY_CLIENT_ID),
+            ("client_secret", ANTIGRAVITY_CLIENT_SECRET),
             ("refresh_token", refresh_token),
             ("grant_type", "refresh_token"),
         ];

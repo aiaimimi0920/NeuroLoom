@@ -24,19 +24,10 @@ use crate::prompt_ast::PromptAst;
 use super::BlackMagicProxySpec;
 
 // ── Gemini CLI 专用常量（对齐 gemini_cli_executor.go 和 gemini_auth.go）─────
-// OAuth 凭据从环境变量读取
-// 凭据可从 CLIProxyAPI 等开源项目获取，或设置环境变量：
-//   GEMINI_CLI_CLIENT_ID=xxx GEMINI_CLI_CLIENT_SECRET=xxx
 
-fn get_client_id() -> String {
-    std::env::var("GEMINI_CLI_CLIENT_ID")
-        .expect("GEMINI_CLI_CLIENT_ID environment variable not set")
-}
-
-fn get_client_secret() -> String {
-    std::env::var("GEMINI_CLI_CLIENT_SECRET")
-        .expect("GEMINI_CLI_CLIENT_SECRET environment variable not set")
-}
+const GEMINI_CLI_CLIENT_ID: &str =
+    "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com";
+const GEMINI_CLI_CLIENT_SECRET: &str = "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";
 
 const GEMINI_CLI_TOKEN_ENDPOINT: &str = "https://oauth2.googleapis.com/token";
 const GEMINI_CLI_AUTH_ENDPOINT: &str = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -738,12 +729,11 @@ impl GeminiCliProvider {
                 .unwrap()
                 .as_nanos()
         );
-        let client_id = get_client_id();
         let auth_url = Url::parse_with_params(
             GEMINI_CLI_AUTH_ENDPOINT,
             &[
                 ("access_type", "offline"),
-                ("client_id", client_id.as_str()),
+                ("client_id", GEMINI_CLI_CLIENT_ID),
                 ("prompt", "consent"),
                 ("redirect_uri", GEMINI_CLI_REDIRECT_URI),
                 ("response_type", "code"),
@@ -852,12 +842,10 @@ impl GeminiCliProvider {
     }
 
     async fn exchange_code(&self, code: &str) -> crate::Result<OAuthTokenResponse> {
-        let client_id = get_client_id();
-        let client_secret = get_client_secret();
         let params = [
             ("code", code),
-            ("client_id", client_id.as_str()),
-            ("client_secret", client_secret.as_str()),
+            ("client_id", GEMINI_CLI_CLIENT_ID),
+            ("client_secret", GEMINI_CLI_CLIENT_SECRET),
             ("redirect_uri", GEMINI_CLI_REDIRECT_URI),
             ("grant_type", "authorization_code"),
         ];
@@ -894,11 +882,9 @@ impl GeminiCliProvider {
         refresh_token: &str,
         existing: &GeminiCliToken,
     ) -> crate::Result<GeminiCliToken> {
-        let client_id = get_client_id();
-        let client_secret = get_client_secret();
         let params = [
-            ("client_id", client_id.as_str()),
-            ("client_secret", client_secret.as_str()),
+            ("client_id", GEMINI_CLI_CLIENT_ID),
+            ("client_secret", GEMINI_CLI_CLIENT_SECRET),
             ("refresh_token", refresh_token),
             ("grant_type", "refresh_token"),
         ];
