@@ -5,17 +5,19 @@
 //!   2. API Key
 //!
 //! 用法:
-//!   test_vertex_chat.exe [prompt] [--stream] [--sa path/to/sa.json] [--key AIza...]
+//!   test_vertex_chat.exe [prompt] [--stream] [--sa path/to/sa.json] [--key AIza...] [--base-url URL]
 //!
 //! 示例:
 //!   test_vertex_chat.exe "你好" --sa C:\my-sa.json
 //!   test_vertex_chat.exe "解释 Rust 生命周期" --key AIzaSy... --stream
+//!   test_vertex_chat.exe "你好" --key AIzaSy... --base-url https://zenmux.ai/api
 //!
 //! 环境变量（可替代命令行参数）:
 //!   VERTEX_SA_JSON_PATH   - Service Account JSON 文件路径
 //!   VERTEX_API_KEY        - Google API Key
 //!   VERTEX_MODEL          - 模型名称（默认 gemini-2.0-flash）
 //!   VERTEX_LOCATION       - 区域（默认 us-central1）
+//!   VERTEX_BASE_URL       - 自定义 Base URL（第三方兼容服务）
 
 use nl_llm::prompt_ast::{PromptAst, PromptNode};
 use nl_llm::provider::vertex::{VertexConfig, VertexProvider};
@@ -55,6 +57,13 @@ fn main() {
         .map(|w| w[1].clone())
         .or_else(|| std::env::var("VERTEX_LOCATION").ok());
 
+    // --base-url <url>
+    let base_url = args
+        .windows(2)
+        .find(|w| w[0] == "--base-url")
+        .map(|w| w[1].clone())
+        .or_else(|| std::env::var("VERTEX_BASE_URL").ok());
+
     // prompt（跳过所有 -- 选项和其值）
     let mut skip_next = false;
     let prompt = args
@@ -65,7 +74,7 @@ fn main() {
                 skip_next = false;
                 return false;
             }
-            if *a == "--sa" || *a == "--key" || *a == "--model" || *a == "--location" {
+            if *a == "--sa" || *a == "--key" || *a == "--model" || *a == "--location" || *a == "--base-url" {
                 skip_next = true;
                 return false;
             }
@@ -104,6 +113,9 @@ fn main() {
         "  区域: {}",
         location.as_deref().unwrap_or("us-central1 (默认)")
     );
+    if let Some(ref url) = base_url {
+        println!("  Base URL: {}", url);
+    }
     println!(
         "  模式: {}",
         if use_stream {
@@ -130,6 +142,7 @@ fn main() {
         api_key,
         location,
         model,
+        base_url,
     };
     let provider = VertexProvider::new(config);
 

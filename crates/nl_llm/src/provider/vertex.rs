@@ -30,10 +30,14 @@ pub struct VertexConfig {
     pub service_account_json: Option<String>,
     /// Google API Key。与 service_account_json 二选一。
     pub api_key: Option<String>,
-    /// 区域，默认 "us-central1"
+    /// 区域，默认 "us-central1"（仅 SA 模式有效）
     pub location: Option<String>,
     /// 模型，如 "gemini-2.5-flash"
     pub model: String,
+    /// 自定义 base URL（可选，用于第三方 Vertex 兼容服务如 zenmux.ai）
+    /// - SA 模式：覆盖默认的 aiplatform.googleapis.com
+    /// - API Key 模式：覆盖默认的 generativelanguage.googleapis.com
+    pub base_url: Option<String>,
 }
 
 /// 从 SA JSON 解析出的核心字段
@@ -94,16 +98,29 @@ impl VertexProvider {
             api_key: None,
             location,
             model,
+            base_url: None,
         })
     }
 
-    /// 以 API key 构建
+    /// ��� API key 构建
     pub fn from_api_key(api_key: String, model: String) -> Self {
         Self::new(VertexConfig {
             service_account_json: None,
             api_key: Some(api_key),
             location: None,
             model,
+            base_url: None,
+        })
+    }
+
+    /// 以 API key 和自定义 base URL 构建（用于第三方兼容服务）
+    pub fn from_api_key_with_base_url(api_key: String, model: String, base_url: String) -> Self {
+        Self::new(VertexConfig {
+            service_account_json: None,
+            api_key: Some(api_key),
+            location: None,
+            model,
+            base_url: Some(base_url),
         })
     }
 
@@ -327,21 +344,35 @@ impl VertexProvider {
     /// 构造 API URL
     ///
     /// - SA 模式：`https://{region}-aiplatform.googleapis.com/v1/projects/{proj}/locations/{region}/publishers/google/models/{model}:{action}`
-    /// - API key 模式：`https://generativelanguage.googleapis.com/v1beta/models/{model}:{action}`
-    ///   注意：generativelanguage.googleapis.com **不使用** publishers/google/ 路径，
-    ///   且版本为 v1beta（v1 不支持部分模型）
+    /// - API key 模式（无自定义 base_url）：`https://generativelanguage.googleapis.com/v1beta/models/{model}:{action}`
+    /// - API key 模式（有自定义 base_url）：`{base_url}/v1/publishers/google/models/{model}:{action}`
+    ///
+    /// 注意：Go 实现中的 `/v1/publishers/google/models/` 路径是给 Vertex Compat Key 用的
+    /// （第三方服务如 zenmux.ai），标准 Google AI Studio Key 使用 `/v1beta/models/` 格式
     fn build_url(&self, project_id: &str, action: &str) -> String {
         if project_id.is_empty() {
-            // API key 模式：走 Google AI (generativelanguage.googleapis.com)
-            // 正确格式：/v1beta/models/{model}:{action}
-            format!(
-                "https://generativelanguage.googleapis.com/v1beta/models/{}:{}",
-                self.config.model, action
-            )
+            // API key 模式
+            if let Some(custom_base) = self.config.base_url.as_deref() {
+                // Vertex Compat 模式：第三方兼容服务（如 zenmux.ai）
+                // 使用 Vertex 风格路径
+                format!(
+                    "{}/{}/publishers/google/models/{}:{}",
+                    custom_base, VERTEX_API_VERSION, self.config.model, action
+                )
+            } else {
+                // 标准 Google AI Studio API
+                // 使用 /v1beta/models/ 格式
+                format!(
+                    "https://generativelanguage.googleapis.com/v1beta/models/{}:{}",
+                    self.config.model, action
+                )
+            }
         } else {
             // SA 模式：走 Vertex AI (aiplatform.googleapis.com)
             let location = self.location();
-            let base = vertex_base_url(location);
+            let default_base = vertex_base_url(location);
+            let base = self.config.base_url.as_deref()
+                .unwrap_or(&default_base);
             format!(
                 "{}/{}/projects/{}/locations/{}/publishers/google/models/{}:{}",
                 base, VERTEX_API_VERSION, project_id, location, self.config.model, action
@@ -659,6 +690,7 @@ mod tests {
             api_key: Some("test-key".to_string()),
             location: None,
             model: "gemini-2.5-flash".to_string(),
+            base_url: None,
         };
         let provider = VertexProvider::new(config);
         let ast = PromptAst::new().push(PromptNode::User("Hello Vertex!".to_string()));
@@ -677,6 +709,7 @@ mod tests {
             api_key: Some("test-key".to_string()),
             location: None,
             model: "gemini-2.5-flash".to_string(),
+            base_url: None,
         };
         let provider = VertexProvider::new(config);
         let ast = PromptAst::new()
@@ -702,6 +735,7 @@ mod tests {
             api_key: None,
             location: Some("us-central1".to_string()),
             model: "gemini-2.5-flash".to_string(),
+            base_url: None,
         };
         let provider = VertexProvider::new(config);
         let url = provider.build_url("my-proj", "generateContent");
@@ -717,13 +751,33 @@ mod tests {
             service_account_json: None,
             api_key: Some("my-api-key".to_string()),
             location: None,
-            model: "gemini-2.5-flash".to_string(),
+            model: "gemini-2.0-flash".to_string(),
+            base_url: None,
         };
         let provider = VertexProvider::new(config);
         let url = provider.build_url("", "generateContent");
+        // 标准 Google AI Studio API 格式
         assert_eq!(
             url,
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+        );
+    }
+
+    #[test]
+    fn test_build_url_api_key_mode_with_custom_base_url() {
+        let config = VertexConfig {
+            service_account_json: None,
+            api_key: Some("my-api-key".to_string()),
+            location: None,
+            model: "gemini-2.0-flash".to_string(),
+            base_url: Some("https://zenmux.ai/api".to_string()),
+        };
+        let provider = VertexProvider::new(config);
+        let url = provider.build_url("", "generateContent");
+        // Vertex Compat 模式：使用 Vertex 风格路径
+        assert_eq!(
+            url,
+            "https://zenmux.ai/api/v1/publishers/google/models/gemini-2.0-flash:generateContent"
         );
     }
 }
