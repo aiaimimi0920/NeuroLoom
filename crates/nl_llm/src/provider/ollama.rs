@@ -1,6 +1,6 @@
 //! Ollama Provider (本地模型)
 
-use serde::{Deserialize, Serialize};
+use crate::prompt_ast::PromptAst;
 
 /// Ollama 配置
 #[derive(Debug, Clone)]
@@ -32,8 +32,20 @@ impl OllamaProvider {
         Self::new(OllamaConfig::default())
     }
 
-    pub async fn complete(&self, prompt: &str) -> nl_core::Result<String> {
-        // TODO: 实现 Ollama API 调用
-        Ok("Ollama response placeholder".to_string())
+    /// 将 Prompt AST 编译为 Ollama 友好的 ChatML 请求
+    pub fn compile_request(&self, ast: &PromptAst) -> serde_json::Value {
+        serde_json::json!({
+            "model": self.config.model,
+            "prompt": ast.to_chatml(),
+            "stream": false
+        })
+    }
+
+    pub async fn complete(&self, ast: &PromptAst) -> nl_core::Result<String> {
+        let body = self.compile_request(ast);
+        Ok(format!(
+            "ollama request prepared: {}",
+            serde_json::to_string(&body).unwrap_or_default()
+        ))
     }
 }

@@ -1,6 +1,6 @@
 //! Anthropic Provider
 
-use serde::{Deserialize, Serialize};
+use crate::prompt_ast::PromptAst;
 
 /// Anthropic 配置
 #[derive(Debug, Clone)]
@@ -34,8 +34,21 @@ impl AnthropicProvider {
         Self::new(AnthropicConfig::default())
     }
 
-    pub async fn complete(&self, prompt: &str) -> nl_core::Result<String> {
-        // TODO: 实现 Anthropic API 调用
-        Ok("Anthropic response placeholder".to_string())
+    /// 将 Prompt AST 编译为 Anthropic 风格 payload（XML 封装）
+    pub fn compile_request(&self, ast: &PromptAst) -> serde_json::Value {
+        serde_json::json!({
+            "model": self.config.model,
+            "max_tokens": 4096,
+            "input_format": "xml",
+            "prompt": ast.to_anthropic_xml()
+        })
+    }
+
+    pub async fn complete(&self, ast: &PromptAst) -> nl_core::Result<String> {
+        let body = self.compile_request(ast);
+        Ok(format!(
+            "anthropic request prepared: {}",
+            serde_json::to_string(&body).unwrap_or_default()
+        ))
     }
 }
