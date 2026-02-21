@@ -1,13 +1,13 @@
 @echo off
 setlocal EnableDelayedExpansion
 
-set "SA_JSON_PATH=%~dp0vertex_sa.json"
+set "API_KEY=AIzaSyBtCqclXkiT7l9spBtTDGFLr_ssZikiY54"
 set "MODEL=gemini-2.5-flash"
 set "PROMPT=%~1"
 if "%PROMPT%"=="" set "PROMPT=Hello!"
 
 echo ========================================
-echo   Vertex AI Chat Test
+echo   Google AI Studio Chat Test
 echo ========================================
 echo.
 
@@ -18,20 +18,24 @@ if !errorlevel! neq 0 (
     )
 )
 
-echo Checking SA file: %SA_JSON_PATH%
-if not exist "%SA_JSON_PATH%" (
-    echo ERROR: File not found!
+if "%API_KEY%"=="" (
+    echo ERROR: No API Key configured!
+    echo Please set API_KEY in this bat file.
+    echo Get your key from: https://aistudio.google.com/app/apikey
     pause
     exit /b 1
 )
-echo File found, proceeding...
+
+echo API Key: %API_KEY:~0,8%...
+echo Model: %MODEL%
+echo Base URL: https://generativelanguage.googleapis.com
 echo.
 
 set "PROJECT_ROOT=%~dp0..\..\.."
-set "EXE=%PROJECT_ROOT%\target\debug\examples\test_vertex_chat.exe"
+set "EXE=%PROJECT_ROOT%\target\debug\examples\test_google_ai_studio_chat.exe"
 
 echo Building...
-cargo build --example test_vertex_chat -p nl_llm
+cargo build --example test_google_ai_studio_chat -p nl_llm
 if !errorlevel! neq 0 (
     echo Build failed!
     pause
@@ -40,11 +44,11 @@ if !errorlevel! neq 0 (
 echo.
 
 echo Running non-streaming test...
-"%EXE%" "%PROMPT%" --sa "%SA_JSON_PATH%" --model %MODEL%
+"%EXE%" "%PROMPT%" --key %API_KEY% --model %MODEL%
 echo.
 
 echo Running streaming test...
-"%EXE%" "%PROMPT%" --sa "%SA_JSON_PATH%" --model %MODEL% --stream
+"%EXE%" "%PROMPT%" --key %API_KEY% --model %MODEL% --stream
 echo.
 
 echo Done!

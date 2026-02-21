@@ -39,7 +39,7 @@ impl ProxyMessage {
     }
 }
 
-/// 目标代理类型（按上游项目分类）
+/// 目��代理类型（按上游项目分类）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BlackMagicProxyTarget {
     CliProxyApi,
@@ -50,6 +50,10 @@ pub enum BlackMagicProxyTarget {
     Antigravity,
     GeminiCli,
     Vertex,
+    /// Google AI Studio (generativelanguage.googleapis.com) - API Key 认证
+    GoogleAIStudio,
+    /// Vertex Compat - 第三方转发站代理（如 zenmux.ai）
+    VertexCompat,
 }
 
 /// 反代接口形态
@@ -340,7 +344,41 @@ impl BlackMagicProxyCatalog {
                         notes: "Vertex AI Gemini 非流式生成接口（SA JSON 认证）".to_string(),
                     },
                 ],
-                notes: "Google Cloud Vertex AI Gemini 接口（Service Account JSON 或 API Key）".to_string(),
+                notes: "Google Cloud Vertex AI Gemini 接口（仅 Service Account JSON 认证）".to_string(),
+            },
+            BlackMagicProxySpec {
+                target: BlackMagicProxyTarget::GoogleAIStudio,
+                default_base_url: "https://generativelanguage.googleapis.com".to_string(),
+                exposures: vec![
+                    ProxyExposure {
+                        kind: ProxyExposureKind::Api,
+                        path: "/v1beta/models/{model}:generateContent".to_string(),
+                        method: "POST".to_string(),
+                        auth_header: Some("x-goog-api-key".to_string()),
+                        auth_prefix: Some("".to_string()),
+                        cli_command: None,
+                        cli_args: vec![],
+                        notes: "Google AI Studio Gemini API（API Key 认证）".to_string(),
+                    },
+                ],
+                notes: "Google AI Studio (generativelanguage.googleapis.com)".to_string(),
+            },
+            BlackMagicProxySpec {
+                target: BlackMagicProxyTarget::VertexCompat,
+                default_base_url: "".to_string(), // 必须由用户提供
+                exposures: vec![
+                    ProxyExposure {
+                        kind: ProxyExposureKind::Api,
+                        path: "/v1/publishers/google/models/{model}:generateContent".to_string(),
+                        method: "POST".to_string(),
+                        auth_header: Some("x-goog-api-key".to_string()),
+                        auth_prefix: Some("".to_string()),
+                        cli_command: None,
+                        cli_args: vec![],
+                        notes: "Vertex Compat 第三方转发站接口".to_string(),
+                    },
+                ],
+                notes: "Vertex Compat Provider（第三方转发站如 zenmux.ai）".to_string(),
             },
         ]
     }
@@ -532,9 +570,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_catalog_covers_eight_targets() {
+    fn test_catalog_covers_ten_targets() {
         let all = BlackMagicProxyCatalog::all_specs();
-        assert_eq!(all.len(), 8);
+        assert_eq!(all.len(), 10);
     }
 
     #[test]
