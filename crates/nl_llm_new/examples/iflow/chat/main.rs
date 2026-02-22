@@ -67,7 +67,12 @@ fn main() {
     println!("用户: {}", prompt);
     println!();
 
-    let provider = IFlowProvider::new(IFlowConfig::new(cookie, model));
+    let token_path = dirs::cache_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("neuroloom")
+        .join("iflow_token.json");
+
+    let provider = IFlowProvider::new(IFlowConfig::new(cookie, model, token_path));
 
     let primitive = PrimitiveRequest::single_user_message(&prompt);
     let body = provider.compile(&primitive);

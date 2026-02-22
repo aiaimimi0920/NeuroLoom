@@ -60,7 +60,12 @@ impl IFlowProvider {
 
     /// 使用外部指定的 HTTP 客户端创建 IFlow Provider
     pub fn with_client(config: IFlowConfig, http: reqwest::Client) -> Self {
-        let auth = IFlowAuth::new(config.cookie.clone());
+        // 尝试从文件加载 token，如果失败则创建新实例
+        let mut auth = IFlowAuth::from_file(&config.token_path).unwrap_or_else(|_| IFlowAuth::new());
+
+        // 设置 Cookie（如果文件中没有或需要更新）
+        auth.set_cookie(&config.cookie);
+
         let auth_enum = Auth::ApiKey(crate::auth::ApiKeyConfig::new(
             config.cookie.clone(),
             crate::auth::ApiKeyProvider::IFlow,
@@ -74,11 +79,14 @@ impl IFlowProvider {
         }
     }
 
-    /// 获取 API Key（从��存或新获取）
+    /// 获取 API Key（从缓存或新获取）
     async fn get_api_key(&self) -> crate::Result<String> {
         let mut auth_guard = self.auth.lock().await;
-        let key = auth_guard.get_api_key().await.map_err(|e| crate::Error::Auth(e.to_string()))?;
-        Ok(key.to_string())
+        auth_guard.ensure_authenticated().await.map_err(|e| crate::Error::Auth(e.to_string()))?;
+
+        auth_guard.api_key()
+            .map(|s| s.to_string())
+            .ok_or_else(|| crate::Error::Auth("No API key available".to_string()))
     }
 
     /// 清除 API Key 缓存
@@ -92,11 +100,7 @@ impl IFlowProvider {
     /// 强制刷新并返回新的 API Key
     pub async fn fetch_api_key(&self) -> crate::Result<String> {
         let mut auth_guard = self.auth.lock().await;
-        let key = auth_guard
-            .fetch_api_key()
-            .await
-            .map_err(|e| crate::Error::Auth(e.to_string()))?;
-        Ok(key.to_string())
+        auth_guard.fetch_api_key().await.map_err(|e| crate::Error::Auth(e.to_string()))
     }
 
     /// 检查模型是否支持 Thinking 模式
@@ -288,13 +292,17 @@ impl LlmProvider for IFlowProvider {
     }
 
     fn needs_refresh(&self) -> bool {
-        // IFlow API Key 无明确过期时间，不需要自动刷新
-        false
+        // 调用认证层的 needs_refresh() 方法
+        if let Ok(guard) = self.auth.try_lock() {
+            guard.needs_refresh()
+        } else {
+            false
+        }
     }
 
     async fn refresh_auth(&mut self) -> crate::Result<()> {
-        // 清除缓存，下次请求时会重新获取
-        self.clear_cache().await;
+        let mut auth_guard = self.auth.lock().await;
+        auth_guard.ensure_authenticated().await.map_err(|e| crate::Error::Auth(e.to_string()))?;
         Ok(())
     }
 }

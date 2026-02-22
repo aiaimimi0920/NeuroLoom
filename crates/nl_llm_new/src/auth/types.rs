@@ -109,7 +109,6 @@ pub enum OAuthProvider {
     Claude,
     GeminiCli,
     Antigravity,
-    IFlow,
 }
 
 /// Service Account Provider 标识

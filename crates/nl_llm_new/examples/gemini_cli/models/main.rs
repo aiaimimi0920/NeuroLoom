@@ -1,5 +1,4 @@
 use nl_llm_new::auth::providers::gemini_cli::GeminiCliOAuth;
-use reqwest;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

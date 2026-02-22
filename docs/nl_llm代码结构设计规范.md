@@ -129,8 +129,15 @@ nl_llm/src/
 │   │   ├── config.rs             # GeminiConfig（API Key 认证）
 │   │   ├── provider.rs           # API Key 认证（官方/兼容站）
 │   │   ├── vertex.rs             # Service Account 认证
-│   │   ├── cli.rs                # OAuth 认证
-│   │   └── antigravity.rs        # OAuth 认证
+│   ├── gemini_cli/               # Gemini CLI 协议（从 gemini 拆分）
+│   │   ├── mod.rs
+│   │   ├── config.rs
+│   │   └── provider.rs
+│   │
+│   ├── antigravity/              # Antigravity 协议（独立于 gemini）
+│   │   ├── mod.rs
+│   │   ├── config.rs
+│   │   └── provider.rs
 │   │
 │   ├── codex/                    # Codex 协议
 │   │   ├── mod.rs
@@ -239,7 +246,6 @@ pub enum OAuthProvider {
     Claude,
     GeminiCli,
     Antigravity,
-    IFlow,
 }
 
 /// Service Account Provider 标识
@@ -289,6 +295,9 @@ impl TokenStorage {
     }
 }
 ```
+
+#### TokenStorage 向后兼容解析机制
+由于 `TokenStorage` 的演化（如引入了必需的 `provider` 字段取代了专有 Struct），各个 Provider（GeminiCLI / Antigravity / IFlow）的 `from_file()` 加载逻辑中包含**容灾解析机制**：如果遭遇 JSON Payload 结构不匹配或缺失字段的旧缓存文件，解析系统会优雅地捕获 `serde_json::Error`，丢弃损坏的内存实例，并强制触发一次平滑的重新认证或 Cookie 重新注入流程，而不能引发运行时崩溃。
 
 #### providers/claude.rs - Claude OAuth 独立实现
 
@@ -969,7 +978,7 @@ Provider 层的错误需要携带足够的信息供 Gateway 层决策：
 /// Provider 执行错误，带有重试信号
 pub struct ProviderError {
     pub message: String,
-    /// 是否应该在同一 Provider 重试
+    /// 是否应该在同一 Provider 重试 (例如 500, 429)
     pub retryable: bool,
     /// 是否应该触发跨 Provider 降级
     pub should_fallback: bool,
@@ -977,6 +986,12 @@ pub struct ProviderError {
     pub retry_after_ms: Option<u64>,
 }
 ```
+
+#### HTTP Client 连接池与资源控制
+**架构红线**：Provider 层 (`auth/providers/*` 和 `provider/*`) **严禁**自行在内部调用 `reqwest::Client::builder().build()` 去重复创建 HTTP 连接池。
+1. `reqwest::Client` 内部自带连接池 (Connection Pooling) 机制。如果在每次 `Provider::new()` 或者验证 Auth 时重新初始化 Client，会导致严重的文件描述符（SOCKET/TCP/TLS 握手）泄漏并拖垮网关。
+2. 所有的 `Provider` 实例化时，都必须接受由 `Gateway` 或外部上下文注入的同一个 `reqwest::Client` 引用/克隆传递。
+3. `Gateway` 负责持有全局唯一的 `Client`，统一定义 DNS 解析策略、Proxy 设置、超时阈值等。
 
 ### 4.4 错误处理流程
 

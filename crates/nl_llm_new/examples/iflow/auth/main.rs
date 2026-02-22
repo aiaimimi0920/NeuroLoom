@@ -32,7 +32,16 @@ fn main() {
     println!("Cookie: {}...", &cookie[..20_usize.min(cookie.len())]);
     println!();
 
-    let provider = IFlowProvider::new(IFlowConfig::new(cookie, "qwen3-max".to_string()));
+    let token_path = dirs::cache_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("neuroloom")
+        .join("iflow_token_test.json");
+
+    let provider = IFlowProvider::new(IFlowConfig::new(
+        cookie,
+        "qwen3-max".to_string(),
+        token_path,
+    ));
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {

@@ -24,7 +24,16 @@ fn main() {
         }
     };
 
-    let provider = IFlowProvider::new(IFlowConfig::new(cookie, "qwen3-max".to_string()));
+    let token_path = dirs::cache_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("neuroloom")
+        .join("iflow_token.json");
+
+    let provider = IFlowProvider::new(IFlowConfig::new(
+        cookie,
+        "qwen3-max".to_string(),
+        token_path,
+    ));
 
     println!("Getting iFlow API Key and model list...");
     println!();

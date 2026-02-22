@@ -3,71 +3,208 @@
 //! iFlow 使用 Cookie 认证获取临时 API Key，与标准 OAuth 流程不同：
 //! - 无需浏览器登录，Cookie 由用户提供
 //! - API Key 通过两步获取：GET 获取信息 → POST 刷新获取完整 Key
-//! - API Key 无明确过期时间，但建议缓存复用
+//! - API Key 有过期时间，支持持久化缓存复用
 
-use crate::auth::{AuthError, TokenStatus};
+use crate::auth::{AuthError, TokenStatus, TokenStorage};
 use reqwest::header::{HeaderMap, HeaderValue};
 use serde::Deserialize;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// iFlow 认证客户端
 ///
-/// 负责 Cookie → API Key 的获取和缓存
+/// 负责 Cookie → API Key 的获取和持久化缓存
 pub struct IFlowAuth {
-    /// 用户提供的 Cookie (BXAuth=...)
-    cookie: String,
-    /// 缓存的 API Key
-    cached_api_key: Option<String>,
+    /// Token 文件路径
+    path: Option<PathBuf>,
+    /// 当前 Token（使用统一 TokenStorage）
+    pub token: Option<TokenStorage>,
     /// 复用的 HTTP Client
     http: reqwest::Client,
 }
 
 impl IFlowAuth {
-    /// 创建新的 IFlow 认证实例
-    pub fn new(cookie: String) -> Self {
+    /// 创建新的认证客户端（内存模式）
+    pub fn new() -> Self {
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
             .expect("Failed to create HTTP client for IFlowAuth");
 
         Self {
-            cookie,
-            cached_api_key: None,
+            path: None,
+            token: None,
             http,
         }
     }
 
-    /// 从 Cookie 字符串创建
-    pub fn from_cookie(cookie: &str) -> Result<Self, AuthError> {
-        Ok(Self::new(cookie.to_string()))
+    /// 从文件加载 Token
+    pub fn from_file(path: &Path) -> Result<Self, AuthError> {
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .expect("Failed to create HTTP client for IFlowAuth");
+
+        if path.exists() {
+            let content = std::fs::read_to_string(path).unwrap_or_default();
+            match serde_json::from_str::<TokenStorage>(&content) {
+                Ok(token) => Ok(Self {
+                    path: Some(path.to_path_buf()),
+                    token: Some(token),
+                    http,
+                }),
+                Err(e) => {
+                    eprintln!("Warning: Failed to parse token file: {}. Will fetch new cookie.", e);
+                    Ok(Self {
+                        path: Some(path.to_path_buf()),
+                        token: None,
+                        http,
+                    })
+                }
+            }
+        } else {
+            Ok(Self {
+                path: Some(path.to_path_buf()),
+                token: None,
+                http,
+            })
+        }
     }
 
-    /// 获取 API Key（带缓存）
+    /// 从 Cookie 字符串创建（内存模式）
     ///
-    /// 如果已有缓存的 API Key，直接返回；
-    /// 否则通过 Cookie 获取新的 API Key
-    pub async fn get_api_key(&mut self) -> Result<&str, AuthError> {
-        if self.cached_api_key.is_some() {
-            return Ok(self.cached_api_key.as_ref().unwrap());
+    /// 用于用户直接提供 Cookie 的场景，不进行文件持久化
+    pub fn from_cookie(cookie: &str) -> Result<Self, AuthError> {
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .expect("Failed to create HTTP client for IFlowAuth");
+
+        // 提取 BXAuth 部分
+        let bx_auth = Self::extract_bx_auth(cookie);
+
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("cookie".to_string(), serde_json::Value::String(bx_auth));
+
+        Ok(Self {
+            path: None,
+            token: Some(TokenStorage {
+                access_token: String::new(),
+                refresh_token: None,
+                expires_at: None,
+                email: None,
+                provider: "IFlow".to_string(),
+                extra,
+            }),
+            http,
+        })
+    }
+
+    /// 设置 Cookie（用于后续获取 API Key）
+    pub fn set_cookie(&mut self, cookie: &str) {
+        let bx_auth = Self::extract_bx_auth(cookie);
+
+        if let Some(ref mut token) = self.token {
+            token.extra.insert("cookie".to_string(), serde_json::Value::String(bx_auth));
+        } else {
+            let mut extra = std::collections::HashMap::new();
+            extra.insert("cookie".to_string(), serde_json::Value::String(bx_auth));
+            self.token = Some(TokenStorage {
+                access_token: String::new(),
+                refresh_token: None,
+                expires_at: None,
+                email: None,
+                provider: "IFlow".to_string(),
+                extra,
+            });
+        }
+    }
+
+    /// 确保已认证（获取 API Key）
+    pub async fn ensure_authenticated(&mut self) -> Result<(), AuthError> {
+        // 检查是否有 Cookie
+        let has_cookie = self.token.as_ref().map_or(false, |t| {
+            t.extra.get("cookie").and_then(|v| v.as_str()).map_or(false, |s| !s.is_empty())
+        });
+
+        if !has_cookie {
+            return Err(AuthError::InvalidCredentials("No cookie provided".to_string()));
         }
 
-        self.fetch_api_key().await
+        // 检查是否需要获取/刷新 API Key
+        let needs_fetch = self.needs_refresh();
+
+        if needs_fetch {
+            let api_key = self.fetch_api_key_static().await?;
+
+            if let Some(ref mut token) = self.token {
+                token.access_token = api_key.clone();
+                // 更新过期时间（假设 7 天有效）
+                token.expires_at = Some(chrono::Utc::now() + chrono::Duration::days(7));
+
+                if let Some(ref path) = self.path {
+                    let _ = Self::save_token_to_path_static(token, path);
+                }
+            }
+        }
+
+        Ok(())
     }
 
-    /// 获取当前缓���的 API Key（不触发刷新）
-    pub fn cached_key(&self) -> Option<&str> {
-        self.cached_api_key.as_deref()
+    /// 获取 Token 状态
+    pub fn token_status(&self) -> TokenStatus {
+        self.token.as_ref().map_or(TokenStatus::Expired, |t| {
+            // 检查是否有 API Key
+            if t.access_token.is_empty() {
+                return TokenStatus::Expired;
+            }
+            // 使用 7 天的提前量检查过期
+            t.status(7 * 24 * 3600)
+        })
+    }
+
+    /// 检查是否需要刷新
+    pub fn needs_refresh(&self) -> bool {
+        matches!(self.token_status(), TokenStatus::Expired | TokenStatus::ExpiringSoon)
+    }
+
+    /// 获取 API Key
+    pub fn api_key(&self) -> Option<&str> {
+        self.token.as_ref().map(|t| t.access_token.as_str()).filter(|s| !s.is_empty())
+    }
+
+    /// 获取 Cookie
+    pub fn cookie(&self) -> Option<&str> {
+        self.token.as_ref().and_then(|t| t.extra.get("cookie")?.as_str())
     }
 
     /// 强制刷新 API Key
-    ///
-    /// 执行 GET + POST 两步获取新的 API Key
-    pub async fn fetch_api_key(&mut self) -> Result<&str, AuthError> {
+    pub async fn fetch_api_key(&mut self) -> Result<String, AuthError> {
+        let api_key = self.fetch_api_key_static().await?;
+
+        if let Some(ref mut token) = self.token {
+            token.access_token = api_key.clone();
+            token.expires_at = Some(chrono::Utc::now() + chrono::Duration::days(7));
+
+            if let Some(ref path) = self.path {
+                let _ = Self::save_token_to_path_static(token, path);
+            }
+        }
+
+        Ok(api_key)
+    }
+
+    /// 获取 API Key（静态方法，供内部调用）
+    async fn fetch_api_key_static(&self) -> Result<String, AuthError> {
+        let cookie = self.cookie().ok_or_else(|| {
+            AuthError::InvalidCredentials("No cookie available".to_string())
+        })?;
+
         // 1. GET 获取基础信息
         let get_resp = self
             .http
             .get("https://platform.iflow.cn/api/openapi/apikey")
-            .headers(Self::build_headers(&self.cookie, false))
+            .headers(Self::build_headers(cookie, false))
             .send()
             .await
             .map_err(|e| AuthError::Http(format!("GET apikey failed: {}", e)))?;
@@ -99,7 +236,7 @@ impl IFlowAuth {
         let post_resp = self
             .http
             .post("https://platform.iflow.cn/api/openapi/apikey")
-            .headers(Self::build_headers(&self.cookie, true))
+            .headers(Self::build_headers(cookie, true))
             .json(&post_body)
             .send()
             .await
@@ -126,23 +263,10 @@ impl IFlowAuth {
             AuthError::RefreshFailed("Missing data in POST response".to_string())
         })?;
 
-        self.cached_api_key = Some(post_data.api_key);
-        Ok(self.cached_api_key.as_ref().unwrap())
+        Ok(post_data.api_key)
     }
 
-    /// 清除缓存的 API Key
-    ///
-    /// 当 Cookie 失效或需要强制刷新时调用
-    pub fn clear_cache(&mut self) {
-        self.cached_api_key = None;
-    }
-
-    /// 检查是否有缓存的 API Key
-    pub fn has_cache(&self) -> bool {
-        self.cached_api_key.is_some()
-    }
-
-    /// 构建请求头
+    /// 构建 API 请求头
     fn build_headers(cookie: &str, is_post: bool) -> HeaderMap {
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -172,26 +296,53 @@ impl IFlowAuth {
         headers
     }
 
-    /// 获取 Cookie 引用
-    pub fn cookie(&self) -> &str {
-        &self.cookie
-    }
-}
-
-/// iFlow Token 状态（兼容 TokenStorage trait）
-impl IFlowAuth {
-    /// iFlow API Key 无明确过期时间，始终返回 Valid
-    pub fn status(&self) -> TokenStatus {
-        if self.cached_api_key.is_some() {
-            TokenStatus::Valid
+    /// 从 Cookie 字符串中提取 BXAuth 部分
+    fn extract_bx_auth(cookie: &str) -> String {
+        // 尝试提取 BXAuth=xxx 格式
+        for part in cookie.split(';') {
+            let part = part.trim();
+            if part.starts_with("BXAuth=") {
+                return format!("{};", part);
+            }
+        }
+        // 如果没有找到 BXAuth，返回整个 cookie
+        if !cookie.is_empty() && !cookie.ends_with(';') {
+            format!("{};", cookie)
         } else {
-            TokenStatus::Expired
+            cookie.to_string()
         }
     }
 
-    /// 是否需要获取 API Key
-    pub fn needs_fetch(&self) -> bool {
-        self.cached_api_key.is_none()
+    /// 保存 Token 到文件（静态方法）
+    fn save_token_to_path_static(
+        token: &TokenStorage,
+        path: &Path,
+    ) -> Result<(), std::io::Error> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let content = serde_json::to_string_pretty(token)?;
+        std::fs::write(path, content)?;
+        Ok(())
+    }
+
+    /// 清除缓存的 API Key
+    pub fn clear_cache(&mut self) {
+        if let Some(ref mut token) = self.token {
+            token.access_token = String::new();
+            token.expires_at = None;
+        }
+    }
+
+    /// 检查是否有缓存的 API Key
+    pub fn has_cache(&self) -> bool {
+        self.api_key().is_some()
+    }
+}
+
+impl Default for IFlowAuth {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -219,14 +370,36 @@ mod tests {
 
     #[test]
     fn test_iflow_auth_new() {
-        let auth = IFlowAuth::new("BXAuth=test".to_string());
-        assert!(auth.needs_fetch());
+        let auth = IFlowAuth::new();
+        assert!(auth.needs_refresh());
         assert!(!auth.has_cache());
     }
 
     #[test]
+    fn test_from_cookie() {
+        let auth = IFlowAuth::from_cookie("BXAuth=test123; other=value").unwrap();
+        assert_eq!(auth.cookie(), Some("BXAuth=test123;"));
+    }
+
+    #[test]
+    fn test_extract_bx_auth() {
+        assert_eq!(
+            IFlowAuth::extract_bx_auth("BXAuth=abc123; other=value"),
+            "BXAuth=abc123;"
+        );
+        assert_eq!(
+            IFlowAuth::extract_bx_auth("other=value; BXAuth=xyz789;"),
+            "BXAuth=xyz789;"
+        );
+        assert_eq!(
+            IFlowAuth::extract_bx_auth("some_cookie_value"),
+            "some_cookie_value;"
+        );
+    }
+
+    #[test]
     fn test_status_without_cache() {
-        let auth = IFlowAuth::new("BXAuth=test".to_string());
-        assert_eq!(auth.status(), TokenStatus::Expired);
+        let auth = IFlowAuth::new();
+        assert_eq!(auth.token_status(), TokenStatus::Expired);
     }
 }

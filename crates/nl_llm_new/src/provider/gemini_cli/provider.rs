@@ -52,9 +52,9 @@ impl GeminiCliProvider {
         auth_guard.ensure_authenticated().await.map_err(|e| crate::Error::Auth(e.to_string()))?;
         
         let token = auth_guard.access_token().ok_or_else(|| crate::Error::Auth("No access token available".to_string()))?.to_string();
-        let project_id = auth_guard.token.as_ref()
-            .and_then(|t| t.project_id.clone())
-            .unwrap_or_else(|| "fallback-project-id".to_string());
+        let project_id = auth_guard.project_id()
+            .unwrap_or("fallback-project-id")
+            .to_string();
             
         Ok((token, project_id))
     }

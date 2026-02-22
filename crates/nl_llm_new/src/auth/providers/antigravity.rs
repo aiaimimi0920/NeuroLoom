@@ -2,9 +2,8 @@
 //!
 //! 使用 Google OAuth2 流程获取 Access Token，用于调用 Cloud Code PA API。
 
-use crate::auth::AuthError;
 use reqwest::header::{HeaderMap, HeaderValue};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use url::Url;
@@ -36,20 +35,7 @@ pub struct AntigravityOAuthConfig {
     pub scopes: &'static [&'static str],
 }
 
-/// Antigravity Token 结构
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AntigravityToken {
-    /// Access Token
-    pub access_token: String,
-    /// Refresh Token
-    pub refresh_token: String,
-    /// 过期时间
-    pub expires_at: chrono::DateTime<chrono::Utc>,
-    /// Project ID
-    pub project_id: Option<String>,
-    /// 用户邮箱
-    pub email: Option<String>,
-}
+use crate::auth::{AuthError, TokenStatus, TokenStorage};
 
 /// OAuth Token 响应
 #[derive(Debug, Deserialize)]
@@ -64,7 +50,7 @@ pub struct AntigravityOAuth {
     /// Token 文件路径
     path: Option<PathBuf>,
     /// 当前 Token
-    pub token: Option<AntigravityToken>,
+    pub token: Option<TokenStorage>,
     /// 复用的 HTTP Client
     http: reqwest::Client,
 }
@@ -92,13 +78,22 @@ impl AntigravityOAuth {
             .expect("Failed to create HTTP client for AntigravityOAuth");
 
         if path.exists() {
-            let content = std::fs::read_to_string(path)?;
-            let token: AntigravityToken = serde_json::from_str(&content)?;
-            Ok(Self {
-                path: Some(path.to_path_buf()),
-                token: Some(token),
-                http,
-            })
+            let content = std::fs::read_to_string(path).unwrap_or_default();
+            match serde_json::from_str::<TokenStorage>(&content) {
+                Ok(token) => Ok(Self {
+                    path: Some(path.to_path_buf()),
+                    token: Some(token),
+                    http,
+                }),
+                Err(e) => {
+                    eprintln!("Warning: Failed to parse token file: {}. Please re-authenticate.", e);
+                    Ok(Self {
+                        path: Some(path.to_path_buf()),
+                        token: None,
+                        http,
+                    })
+                }
+            }
         } else {
             Ok(Self {
                 path: Some(path.to_path_buf()),
@@ -121,9 +116,7 @@ impl AntigravityOAuth {
         }
 
         // 检查是否需要刷新
-        let needs_refresh = self.token.as_ref().map_or(true, |t| {
-            t.expires_at <= chrono::Utc::now() + chrono::Duration::seconds(300)
-        });
+        let needs_refresh = self.needs_refresh();
 
         if needs_refresh {
             let old_token = self.token.clone().unwrap();
@@ -135,15 +128,13 @@ impl AntigravityOAuth {
         }
 
         // 确保 project_id 存在
-        let needs_project_id = self.token.as_ref().map_or(true, |t| {
-            t.project_id.is_none() || t.project_id.as_ref().map(|p| p.starts_with("project-")).unwrap_or(false)
-        });
+        let needs_project_id = self.project_id().map_or(true, |p| p.starts_with("project-"));
 
         if needs_project_id {
             let access_token = self.token.as_ref().unwrap().access_token.clone();
             if let Ok(pid) = Self::fetch_project_id_static(&self.http, &access_token).await {
                 if let Some(ref mut token) = self.token {
-                    token.project_id = Some(pid);
+                    token.extra.insert("project_id".to_string(), serde_json::Value::String(pid));
                     if let Some(ref path) = self.path {
                         let _ = Self::save_token_to_path_static(token, path);
                     }
@@ -154,11 +145,14 @@ impl AntigravityOAuth {
         Ok(())
     }
 
+    /// 获取 Token 状态
+    pub fn token_status(&self) -> TokenStatus {
+        self.token.as_ref().map_or(TokenStatus::Expired, |t| t.status(300))
+    }
+
     /// 检查是否需要刷新
     pub fn needs_refresh(&self) -> bool {
-        self.token.as_ref().map_or(true, |t| {
-            t.expires_at <= chrono::Utc::now() + chrono::Duration::seconds(300)
-        })
+        matches!(self.token_status(), TokenStatus::Expired | TokenStatus::ExpiringSoon)
     }
 
     /// 获取 Access Token
@@ -168,11 +162,11 @@ impl AntigravityOAuth {
 
     /// 获取 Project ID
     pub fn project_id(&self) -> Option<&str> {
-        self.token.as_ref().and_then(|t| t.project_id.as_deref())
+        self.token.as_ref().and_then(|t| t.extra.get("project_id")?.as_str())
     }
 
     /// OAuth 登录流程
-    async fn login(&mut self) -> Result<AntigravityToken, AuthError> {
+    async fn login(&mut self) -> Result<TokenStorage, AuthError> {
         let state = format!(
             "{}",
             SystemTime::now()
@@ -269,12 +263,18 @@ impl AntigravityOAuth {
         })?;
         let project_id = Self::fetch_project_id_static(&self.http, &token_resp.access_token).await.ok();
 
-        Ok(AntigravityToken {
+        let mut extra = std::collections::HashMap::new();
+        if let Some(pid) = project_id {
+            extra.insert("project_id".to_string(), serde_json::Value::String(pid));
+        }
+
+        Ok(TokenStorage {
             access_token: token_resp.access_token,
-            refresh_token,
-            expires_at,
-            project_id,
+            refresh_token: Some(refresh_token),
+            expires_at: Some(expires_at),
             email: None,
+            provider: "Antigravity".to_string(),
+            extra,
         })
     }
 
@@ -317,9 +317,9 @@ impl AntigravityOAuth {
     /// 刷新 Token（静态方法）
     async fn refresh_token_data_static(
         http: &reqwest::Client,
-        existing_token: &AntigravityToken,
-    ) -> Result<AntigravityToken, AuthError> {
-        let refresh_token_str = existing_token.refresh_token.clone();
+        existing_token: &TokenStorage,
+    ) -> Result<TokenStorage, AuthError> {
+        let refresh_token_str = existing_token.refresh_token.clone().unwrap_or_default();
         let params = [
             ("client_id", ANTIGRAVITY_OAUTH_CONFIG.client_id),
             ("client_secret", ANTIGRAVITY_OAUTH_CONFIG.client_secret),
@@ -347,12 +347,13 @@ impl AntigravityOAuth {
             .await
             .map_err(|e| AuthError::Http(e.to_string()))?;
 
-        Ok(AntigravityToken {
+        Ok(TokenStorage {
             access_token: token_resp.access_token,
-            refresh_token: token_resp.refresh_token.unwrap_or_else(|| refresh_token_str),
-            expires_at: chrono::Utc::now() + chrono::Duration::seconds(token_resp.expires_in),
-            project_id: existing_token.project_id.clone(),
+            refresh_token: Some(token_resp.refresh_token.unwrap_or_else(|| refresh_token_str)),
+            expires_at: Some(chrono::Utc::now() + chrono::Duration::seconds(token_resp.expires_in)),
             email: existing_token.email.clone(),
+            provider: existing_token.provider.clone(),
+            extra: existing_token.extra.clone(),
         })
     }
 
@@ -511,7 +512,7 @@ impl AntigravityOAuth {
 
     /// 保存 Token 到文件（静态方法）
     fn save_token_to_path_static(
-        token: &AntigravityToken,
+        token: &TokenStorage,
         path: &Path,
     ) -> Result<(), std::io::Error> {
         if let Some(parent) = path.parent() {
