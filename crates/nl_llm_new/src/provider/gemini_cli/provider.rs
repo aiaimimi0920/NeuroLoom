@@ -247,10 +247,9 @@ impl LlmProvider for GeminiCliProvider {
     }
 
     fn needs_refresh(&self) -> bool {
+        // 调用认证层的 needs_refresh() 方法
         if let Ok(guard) = self.auth.try_lock() {
-            guard.token.as_ref().map_or(true, |t| {
-                t.expires_at <= chrono::Utc::now() + chrono::Duration::seconds(300)
-            })
+            guard.needs_refresh()
         } else {
             false
         }

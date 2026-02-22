@@ -89,3 +89,11 @@ path = "examples/iflow/models/main.rs"
 [[example]]
 name = "gemini_cli_models"
 path = "examples/gemini_cli/models/main.rs"
+
+[[example]]
+name = "gemini_cli_chat"
+path = "examples/gemini_cli/chat/main.rs"
+
+[[example]]
+name = "gemini_cli_auth"
+path = "examples/gemini_cli/auth/main.rs"

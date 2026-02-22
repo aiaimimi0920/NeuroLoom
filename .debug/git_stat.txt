@@ -1,0 +1,56 @@
+commit 5c8f0faed81ded31fd9a00ca665b7b28798d0852
+Author: aiaimimi0920 <153103332+aiaimimi0920@users.noreply.github.com>
+Date:   Mon Feb 23 00:10:43 2026 +0800
+
+    cache code
+
+ .../nl_llm_new/src/auth/providers/antigravity.rs   | 369 +++++++++++++++-----
+ .../nl_llm_new/src/provider/antigravity/config.rs  |  36 ++
+ crates/nl_llm_new/src/provider/antigravity/mod.rs  |   7 +
+ .../src/provider/antigravity/provider.rs           | 376 +++++++++++++++++++++
+ 4 files changed, 699 insertions(+), 89 deletions(-)
+
+commit ac67cca660773a894514ec4c8c27c6eb78fb3193
+Author: aiaimimi0920 <153103332+aiaimimi0920@users.noreply.github.com>
+Date:   Sun Feb 22 22:47:42 2026 +0800
+
+    cache code
+
+ .../nl_llm_new/examples/antigravity/chat/main.rs   |   9 +-
+ .../nl_llm_new/examples/antigravity/models/main.rs |  65 +++++++---
+ .../nl_llm_new/src/auth/providers/antigravity.rs   | 136 +++++++++++++++++++++
+ 3 files changed, 194 insertions(+), 16 deletions(-)
+
+commit b0bc930d5e43c2d1b38fc2f2c1ce731960a6b328
+Author: aiaimimi0920 <153103332+aiaimimi0920@users.noreply.github.com>
+Date:   Sun Feb 22 22:20:53 2026 +0800
+
+    feat: implement provider architecture with auth, config, and translators
+    
+    - Add auth providers for Claude, Gemini, Antigravity, iFlow, Vertex
+    - Implement provider configs and compilers for Claude, Gemini, OpenAI, iFlow, Codex
+    - Add request/response translators (wrappers/unwrappers) for all providers
+    - Reorganize examples into provider-specific subdirectories (auth/chat/models)
+    - Update .gitignore and Cargo.lock
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+ .../examples/antigravity/auth/antigravity_auth.bat |  14 ++
+ .../nl_llm_new/examples/antigravity/auth/main.rs   |  43 ++++
+ .../examples/antigravity/chat/antigravity_chat.bat |  19 ++
+ .../antigravity/chat/antigravity_chat_stream.bat   |  19 ++
+ .../nl_llm_new/examples/antigravity/chat/main.rs   | 269 +++++++++++++++++++++
+ .../antigravity/models/antigravity_models.bat      |  14 ++
+ .../nl_llm_new/examples/antigravity/models/main.rs |  27 +++
+ .../nl_llm_new/src/auth/providers/antigravity.rs   | 212 ++++++++++++++++
+ 8 files changed, 617 insertions(+)
+
+commit 8dbac7779e4908414e689744b5c49442ff760f6f
+Author: aiaimimi0920 <153103332+aiaimimi0920@users.noreply.github.com>
+Date:   Sun Feb 22 17:36:25 2026 +0800
+
+    chore: manual revert and update
+
+ .../nl_llm_new/examples/antigravity/antigravity_config.txt | 14 ++++++++++++++
+ crates/nl_llm_new/src/auth/providers/antigravity.rs        |  0
+ 2 files changed, 14 insertions(+)

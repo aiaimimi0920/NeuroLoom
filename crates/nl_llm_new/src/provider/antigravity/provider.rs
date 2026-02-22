@@ -95,47 +95,6 @@ impl AntigravityProvider {
         format!("{}-{}-{}", adj, noun, random_part)
     }
 
-    /// 编译请求体
-    fn compile_request(
-        &self,
-        primitive: &PrimitiveRequest,
-        project_id: Option<&str>,
-    ) -> serde_json::Value {
-        let project = match project_id {
-            Some(pid) if !pid.is_empty() => pid.to_string(),
-            _ => Self::generate_project_id(),
-        };
-
-        // 提取用户消息
-        let user_message = primitive
-            .messages
-            .iter()
-            .find_map(|m| {
-                if m.role == crate::primitive::Role::User {
-                    m.content.iter().find_map(|c| match c {
-                        crate::primitive::PrimitiveContent::Text { text } => Some(text.clone()),
-                        _ => None,
-                    })
-                } else {
-                    None
-                }
-            })
-            .unwrap_or_default();
-
-        serde_json::json!({
-            "model": primitive.model,
-            "userAgent": "antigravity",
-            "requestType": "agent",
-            "project": project,
-            "requestId": format!("agent-{}", uuid::Uuid::new_v4()),
-            "request": {
-                "contents": [{
-                    "role": "user",
-                    "parts": [{ "text": user_message }]
-                }]
-            }
-        })
-    }
 
     /// 构建 API 请求头
     fn build_headers(access_token: &str) -> HeaderMap {
@@ -204,27 +163,53 @@ impl LlmProvider for AntigravityProvider {
     }
 
     fn compile(&self, primitive: &PrimitiveRequest) -> serde_json::Value {
-        // Antigravity 需要异步获取 project_id，这里返回一个基础结构
-        // 实际请求体在 complete/stream 中构建
+        let mut req = primitive.clone();
+        if req.model.is_empty() {
+            req.model = self.config.model.clone();
+        }
+
+        let compiler = crate::provider::gemini::compiler::GeminiCompiler;
+        let inner_request = compiler.compile(&req);
+        
+        let mut request_payload = serde_json::json!({
+            "sessionId": format!("-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos() & 0x7FFFFFFFFFFFFFFF)
+        });
+        
+        if let Some(contents) = inner_request.get("contents") {
+            request_payload["contents"] = contents.clone();
+        } else {
+            request_payload["contents"] = serde_json::json!([]);
+        }
+        
+        if let Some(sys) = inner_request.get("systemInstruction") {
+            if !sys.is_null() {
+                request_payload["systemInstruction"] = sys.clone();
+            }
+        }
+
         serde_json::json!({
-            "model": primitive.model,
+            "model": req.model,
+            "userAgent": "antigravity",
+            "requestType": "agent",
+            "project": "", // 会在 complete/stream 动态注入
+            "requestId": format!("agent-{}", uuid::Uuid::new_v4()),
+            "request": request_payload
         })
     }
 
-    async fn complete(&self, body: serde_json::Value) -> crate::Result<LlmResponse> {
+    async fn complete(&self, mut body: serde_json::Value) -> crate::Result<LlmResponse> {
         let access_token = self.get_access_token().await?;
         let project_id = self.get_project_id().await?;
 
-        // 从原始请求构建完整请求体
-        let primitive = PrimitiveRequest {
-            model: body
-                .get("model")
-                .and_then(|m| m.as_str())
-                .unwrap_or(&self.config.model)
-                .to_string(),
-            ..Default::default()
+        let project = match project_id.as_deref() {
+            Some(pid) if !pid.is_empty() => pid.to_string(),
+            _ => Self::generate_project_id(),
         };
-        let request_body = self.compile_request(&primitive, project_id.as_deref());
+
+        if let Some(obj) = body.as_object_mut() {
+            obj.insert("project".to_string(), serde_json::Value::String(project));
+        }
+        let request_body = body;
 
         let url = format!("{}/{}:generateContent", BASE_URL, API_VERSION);
 
@@ -260,21 +245,20 @@ impl LlmProvider for AntigravityProvider {
 
     async fn stream(
         &self,
-        body: serde_json::Value,
+        mut body: serde_json::Value,
     ) -> crate::Result<BoxStream<'_, crate::Result<LlmChunk>>> {
         let access_token = self.get_access_token().await?;
         let project_id = self.get_project_id().await?;
 
-        // 从原始请求构建完整请求体
-        let primitive = PrimitiveRequest {
-            model: body
-                .get("model")
-                .and_then(|m| m.as_str())
-                .unwrap_or(&self.config.model)
-                .to_string(),
-            ..Default::default()
+        let project = match project_id.as_deref() {
+            Some(pid) if !pid.is_empty() => pid.to_string(),
+            _ => Self::generate_project_id(),
         };
-        let request_body = self.compile_request(&primitive, project_id.as_deref());
+
+        if let Some(obj) = body.as_object_mut() {
+            obj.insert("project".to_string(), serde_json::Value::String(project));
+        }
+        let request_body = body;
 
         let url = format!(
             "{}/{}:streamGenerateContent?alt=sse",
