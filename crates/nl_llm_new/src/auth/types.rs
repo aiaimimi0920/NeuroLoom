@@ -104,14 +104,12 @@ impl ApiKeyProvider {
 }
 
 /// OAuth Provider 标识
-///
-/// 注意：仅包含真正的 OAuth 流程 Provider
-/// iFlow 使用 Cookie → API Key 认证，不是 OAuth，通过 ApiKeyProvider::IFlow 标识
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OAuthProvider {
     Claude,
     GeminiCli,
     Antigravity,
+    IFlow,
 }
 
 /// Service Account Provider 标识
@@ -148,8 +146,7 @@ pub struct TokenStorage {
     pub expires_at: Option<DateTime<Utc>>,
     /// 用户邮箱
     pub email: Option<String>,
-    /// Provider 类型标识（旧格式可能缺失，使用默认值）
-    #[serde(default)]
+    /// Provider 类型标识
     pub provider: String,
     /// Provider 特有字段
     #[serde(flatten)]
@@ -184,12 +181,6 @@ impl TokenStorage {
     /// 设置邮箱
     pub fn with_email(mut self, email: impl Into<String>) -> Self {
         self.email = Some(email.into());
-        self
-    }
-
-    /// 设置邮箱（可选）
-    pub fn with_email_optional(mut self, email: Option<String>) -> Self {
-        self.email = email;
         self
     }
 

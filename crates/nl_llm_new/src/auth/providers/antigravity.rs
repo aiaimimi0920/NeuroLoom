@@ -2,9 +2,9 @@
 //!
 //! 使用 Google OAuth2 流程获取 Access Token，用于调用 Cloud Code PA API。
 
-use crate::auth::{AuthError, TokenStorage, TokenStatus};
+use crate::auth::AuthError;
 use reqwest::header::{HeaderMap, HeaderValue};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use url::Url;
@@ -25,9 +25,6 @@ pub const ANTIGRAVITY_OAUTH_CONFIG: AntigravityOAuthConfig = AntigravityOAuthCon
     ],
 };
 
-/// Provider 标识
-const PROVIDER_NAME: &str = "antigravity";
-
 /// Antigravity OAuth 配置
 #[derive(Debug, Clone)]
 pub struct AntigravityOAuthConfig {
@@ -37,6 +34,21 @@ pub struct AntigravityOAuthConfig {
     pub auth_url: &'static str,
     pub token_url: &'static str,
     pub scopes: &'static [&'static str],
+}
+
+/// Antigravity Token 结构
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AntigravityToken {
+    /// Access Token
+    pub access_token: String,
+    /// Refresh Token
+    pub refresh_token: String,
+    /// 过期时间
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+    /// Project ID
+    pub project_id: Option<String>,
+    /// 用户邮箱
+    pub email: Option<String>,
 }
 
 /// OAuth Token 响应
@@ -51,8 +63,8 @@ struct OAuthTokenResponse {
 pub struct AntigravityOAuth {
     /// Token 文件路径
     path: Option<PathBuf>,
-    /// 当前 Token（使用通用的 TokenStorage）
-    token: Option<TokenStorage>,
+    /// 当前 Token
+    pub token: Option<AntigravityToken>,
     /// 复用的 HTTP Client
     http: reqwest::Client,
 }
@@ -80,13 +92,8 @@ impl AntigravityOAuth {
             .expect("Failed to create HTTP client for AntigravityOAuth");
 
         if path.exists() {
-            let mut token = crate::auth::storage::TokenStorageManager::load(path)?;
-
-            // 修正 provider 字段（向后兼容旧格式）
-            if token.provider.is_empty() {
-                token.provider = PROVIDER_NAME.to_string();
-            }
-
+            let content = std::fs::read_to_string(path)?;
+            let token: AntigravityToken = serde_json::from_str(&content)?;
             Ok(Self {
                 path: Some(path.to_path_buf()),
                 token: Some(token),
@@ -108,31 +115,37 @@ impl AntigravityOAuth {
             let token = self.login().await?;
             self.token = Some(token.clone());
             if let Some(ref path) = self.path {
-                let _ = crate::auth::storage::TokenStorageManager::save(&token, path);
+                let _ = Self::save_token_to_path_static(&token, path);
             }
             return Ok(());
         }
 
         // 检查是否需要刷新
-        if self.needs_refresh() {
+        let needs_refresh = self.token.as_ref().map_or(true, |t| {
+            t.expires_at <= chrono::Utc::now() + chrono::Duration::seconds(300)
+        });
+
+        if needs_refresh {
             let old_token = self.token.clone().unwrap();
             let new_token = Self::refresh_token_data_static(&self.http, &old_token).await?;
             self.token = Some(new_token.clone());
             if let Some(ref path) = self.path {
-                let _ = crate::auth::storage::TokenStorageManager::save(&new_token, path);
+                let _ = Self::save_token_to_path_static(&new_token, path);
             }
         }
 
         // 确保 project_id 存在
-        let needs_project_id = self.project_id().map_or(true, |p| p.starts_with("project-"));
+        let needs_project_id = self.token.as_ref().map_or(true, |t| {
+            t.project_id.is_none() || t.project_id.as_ref().map(|p| p.starts_with("project-")).unwrap_or(false)
+        });
 
         if needs_project_id {
             let access_token = self.token.as_ref().unwrap().access_token.clone();
             if let Ok(pid) = Self::fetch_project_id_static(&self.http, &access_token).await {
                 if let Some(ref mut token) = self.token {
-                    token.extra.insert("project_id".to_string(), serde_json::Value::String(pid));
+                    token.project_id = Some(pid);
                     if let Some(ref path) = self.path {
-                        let _ = crate::auth::storage::TokenStorageManager::save(token, path);
+                        let _ = Self::save_token_to_path_static(token, path);
                     }
                 }
             }
@@ -141,16 +154,11 @@ impl AntigravityOAuth {
         Ok(())
     }
 
-    /// 获取 Token 状态
-    pub fn token_status(&self) -> TokenStatus {
-        self.token.as_ref().map_or(TokenStatus::Expired, |t| {
-            t.status(300)
-        })
-    }
-
     /// 检查是否需要刷新
     pub fn needs_refresh(&self) -> bool {
-        self.token.as_ref().map_or(true, |t| t.needs_refresh(300))
+        self.token.as_ref().map_or(true, |t| {
+            t.expires_at <= chrono::Utc::now() + chrono::Duration::seconds(300)
+        })
     }
 
     /// 获取 Access Token
@@ -160,18 +168,11 @@ impl AntigravityOAuth {
 
     /// 获取 Project ID
     pub fn project_id(&self) -> Option<&str> {
-        self.token.as_ref().and_then(|t| {
-            t.extra.get("project_id").and_then(|v| v.as_str())
-        })
-    }
-
-    /// 获取 Token 存储（只读）
-    pub fn token_storage(&self) -> Option<&TokenStorage> {
-        self.token.as_ref()
+        self.token.as_ref().and_then(|t| t.project_id.as_deref())
     }
 
     /// OAuth 登录流程
-    async fn login(&mut self) -> Result<TokenStorage, AuthError> {
+    async fn login(&mut self) -> Result<AntigravityToken, AuthError> {
         let state = format!(
             "{}",
             SystemTime::now()
@@ -200,10 +201,10 @@ impl AntigravityOAuth {
         println!("\n=== Antigravity OAuth Login ===");
         println!("请在浏览器中打开以下链接完成登录:\n{}\n", auth_url);
 
-        // 尝试自动打开浏览器
+        // 尝试自动打开浏览器（使用 PowerShell 避免 & 字符被截断）
         #[cfg(target_os = "windows")]
-        let _ = std::process::Command::new("cmd")
-            .args(["/C", "start", auth_url.as_str()])
+        let _ = std::process::Command::new("powershell")
+            .args(["-Command", &format!("Start-Process '{}'", auth_url)])
             .spawn();
 
         let (tx, rx) = std::sync::mpsc::channel();
@@ -268,16 +269,13 @@ impl AntigravityOAuth {
         })?;
         let project_id = Self::fetch_project_id_static(&self.http, &token_resp.access_token).await.ok();
 
-        // 构建 TokenStorage
-        let mut storage = TokenStorage::new(token_resp.access_token, PROVIDER_NAME)
-            .with_refresh_token(refresh_token)
-            .with_expires_at(expires_at);
-
-        if let Some(pid) = project_id {
-            storage = storage.with_extra("project_id", serde_json::Value::String(pid));
-        }
-
-        Ok(storage)
+        Ok(AntigravityToken {
+            access_token: token_resp.access_token,
+            refresh_token,
+            expires_at,
+            project_id,
+            email: None,
+        })
     }
 
     /// 用授权码换取 Token（静态方法）
@@ -319,12 +317,9 @@ impl AntigravityOAuth {
     /// 刷新 Token（静态方法）
     async fn refresh_token_data_static(
         http: &reqwest::Client,
-        existing_token: &TokenStorage,
-    ) -> Result<TokenStorage, AuthError> {
-        let refresh_token_str = existing_token.refresh_token.clone().ok_or_else(|| {
-            AuthError::RefreshFailed("No refresh_token available".to_string())
-        })?;
-
+        existing_token: &AntigravityToken,
+    ) -> Result<AntigravityToken, AuthError> {
+        let refresh_token_str = existing_token.refresh_token.clone();
         let params = [
             ("client_id", ANTIGRAVITY_OAUTH_CONFIG.client_id),
             ("client_secret", ANTIGRAVITY_OAUTH_CONFIG.client_secret),
@@ -352,16 +347,13 @@ impl AntigravityOAuth {
             .await
             .map_err(|e| AuthError::Http(e.to_string()))?;
 
-        // 构建新的 TokenStorage，保留 extra 字段
-        let mut storage = TokenStorage::new(token_resp.access_token, PROVIDER_NAME)
-            .with_refresh_token(token_resp.refresh_token.unwrap_or(refresh_token_str))
-            .with_expires_at(chrono::Utc::now() + chrono::Duration::seconds(token_resp.expires_in))
-            .with_email_optional(existing_token.email.clone());
-
-        // 保留原有的 extra 字段
-        storage.extra = existing_token.extra.clone();
-
-        Ok(storage)
+        Ok(AntigravityToken {
+            access_token: token_resp.access_token,
+            refresh_token: token_resp.refresh_token.unwrap_or_else(|| refresh_token_str),
+            expires_at: chrono::Utc::now() + chrono::Duration::seconds(token_resp.expires_in),
+            project_id: existing_token.project_id.clone(),
+            email: existing_token.email.clone(),
+        })
     }
 
     /// 获取 Project ID（静态方法）
@@ -516,6 +508,17 @@ impl AntigravityOAuth {
         );
         headers
     }
+
+    /// 保存 Token 到文件（静态方法）
+    fn save_token_to_path_static(
+        token: &AntigravityToken,
+        path: &Path,
+    ) -> Result<(), std::io::Error> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, serde_json::to_string_pretty(token)?)
+    }
 }
 
 impl Default for AntigravityOAuth {
@@ -532,6 +535,5 @@ mod tests {
     fn test_needs_refresh_without_token() {
         let auth = AntigravityOAuth::new();
         assert!(auth.needs_refresh());
-        assert_eq!(auth.token_status(), TokenStatus::Expired);
     }
 }

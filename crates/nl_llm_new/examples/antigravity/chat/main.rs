@@ -227,7 +227,7 @@ fn main() {
             std::process::exit(1);
         }
         let access_token = auth.access_token().unwrap();
-        let project_id = auth.project_id();
+        let project_id = auth.token.as_ref().and_then(|t| t.project_id.as_deref());
         println!(
             "✓ (token: {}...)",
             &access_token[..20.min(access_token.len())]
