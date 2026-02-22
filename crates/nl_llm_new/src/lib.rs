@@ -31,7 +31,7 @@ pub enum Error {
     Auth(String),
 
     #[error("Provider 错误: {0}")]
-    Provider(String),
+    Provider(#[from] crate::provider::ProviderError),
 
     #[error("转换错误: {0}")]
     Translate(#[from] TranslateError),

@@ -21,6 +21,16 @@ pub struct GeminiCliProvider {
 
 impl GeminiCliProvider {
     pub fn new(config: GeminiCliConfig) -> crate::Result<Self> {
+        Self::with_client(
+            config,
+            reqwest::Client::builder()
+                .timeout(Duration::from_secs(60))
+                .build()
+                .expect("Failed to create HTTP client")
+        )
+    }
+
+    pub fn with_client(config: GeminiCliConfig, http: reqwest::Client) -> crate::Result<Self> {
         let auth_engine = GeminiCliOAuth::from_file(&config.token_path)
             .map_err(|e| crate::Error::Auth(e.to_string()))?;
 
@@ -28,11 +38,6 @@ impl GeminiCliProvider {
             provider: OAuthProvider::GeminiCli,
             token_path: config.token_path.clone(),
         };
-
-        let http = reqwest::Client::builder()
-            .timeout(Duration::from_secs(60))
-            .build()
-            .expect("Failed to create HTTP client");
 
         Ok(Self {
             config,
@@ -131,11 +136,11 @@ impl LlmProvider for GeminiCliProvider {
             .map_err(|e| crate::Error::Http(e.to_string()))?;
 
         if !resp.status().is_success() {
-            let status = resp.status();
+            let status = resp.status().as_u16();
             let text = resp.text().await.unwrap_or_default();
-            return Err(crate::Error::Provider(format!(
-                "gemini-cli generate Content failed: [{}] {}",
-                status, text
+            return Err(crate::Error::Provider(crate::provider::ProviderError::from_http_status(
+                status,
+                format!("gemini-cli generate Content failed: [{}] {}", status, text),
             )));
         }
 
@@ -185,11 +190,11 @@ impl LlmProvider for GeminiCliProvider {
             .map_err(|e| crate::Error::Http(e.to_string()))?;
 
         if !resp.status().is_success() {
-            let status = resp.status();
+            let status = resp.status().as_u16();
             let text = resp.text().await.unwrap_or_default();
-            return Err(crate::Error::Provider(format!(
-                "gemini-cli stream failed: [{}] {}",
-                status, text
+            return Err(crate::Error::Provider(crate::provider::ProviderError::from_http_status(
+                status,
+                format!("gemini-cli stream failed: [{}] {}", status, text),
             )));
         }
 

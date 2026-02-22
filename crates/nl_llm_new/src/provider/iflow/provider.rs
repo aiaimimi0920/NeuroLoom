@@ -47,18 +47,24 @@ pub struct IFlowProvider {
 }
 
 impl IFlowProvider {
-    /// 创建新的 IFlow Provider
+    /// 创建新的 IFlow Provider（使用默认 HTTP 客户端）
     pub fn new(config: IFlowConfig) -> Self {
+        Self::with_client(
+            config,
+            reqwest::Client::builder()
+                .timeout(Duration::from_secs(60))
+                .build()
+                .expect("Failed to create HTTP client"),
+        )
+    }
+
+    /// 使用外部指定的 HTTP 客户端创建 IFlow Provider
+    pub fn with_client(config: IFlowConfig, http: reqwest::Client) -> Self {
         let auth = IFlowAuth::new(config.cookie.clone());
         let auth_enum = Auth::ApiKey(crate::auth::ApiKeyConfig::new(
             config.cookie.clone(),
             crate::auth::ApiKeyProvider::IFlow,
         ));
-
-        let http = reqwest::Client::builder()
-            .timeout(Duration::from_secs(60))
-            .build()
-            .expect("Failed to create HTTP client");
 
         Self {
             config,
@@ -176,11 +182,11 @@ impl LlmProvider for IFlowProvider {
             .map_err(|e| crate::Error::Http(e.to_string()))?;
 
         if !resp.status().is_success() {
-            let status = resp.status();
+            let status = resp.status().as_u16();
             let text = resp.text().await.unwrap_or_default();
-            return Err(crate::Error::Provider(format!(
-                "iflow chat failed: [{}] {}",
-                status, text
+            return Err(crate::Error::Provider(crate::provider::ProviderError::from_http_status(
+                status,
+                format!("iflow chat failed: [{}] {}", status, text),
             )));
         }
 
@@ -224,11 +230,11 @@ impl LlmProvider for IFlowProvider {
             .map_err(|e| crate::Error::Http(e.to_string()))?;
 
         if !resp.status().is_success() {
-            let status = resp.status();
+            let status = resp.status().as_u16();
             let text = resp.text().await.unwrap_or_default();
-            return Err(crate::Error::Provider(format!(
-                "iflow chat stream failed: [{}] {}",
-                status, text
+            return Err(crate::Error::Provider(crate::provider::ProviderError::from_http_status(
+                status,
+                format!("iflow chat stream failed: [{}] {}", status, text),
             )));
         }
 

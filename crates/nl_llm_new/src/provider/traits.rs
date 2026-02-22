@@ -126,6 +126,43 @@ pub struct ProviderError {
     pub retry_after_ms: Option<u64>,
 }
 
+impl ProviderError {
+    /// 构造一个不可重试、不支持降级的基本错误
+    pub fn fail(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            retryable: false,
+            should_fallback: false,
+            retry_after_ms: None,
+        }
+    }
+
+    /// 构造一个可重试的错误
+    pub fn retryable(
+        message: impl Into<String>,
+        should_fallback: bool,
+        retry_after_ms: Option<u64>,
+    ) -> Self {
+        Self {
+            message: message.into(),
+            retryable: true,
+            should_fallback,
+            retry_after_ms,
+        }
+    }
+
+    /// 从 HTTP 状态码自动推导是否可重试
+    pub fn from_http_status(status: u16, message: impl Into<String>) -> Self {
+        let msg = message.into();
+        // 429 Too Many Requests 或者 5xx 服务器内部错误 -> 可重试+应降级
+        if status == 429 || status >= 500 {
+            Self::retryable(msg, true, None)
+        } else {
+            Self::fail(msg)
+        }
+    }
+}
+
 impl std::fmt::Display for ProviderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.message)
@@ -134,11 +171,6 @@ impl std::fmt::Display for ProviderError {
 
 impl std::error::Error for ProviderError {}
 
-impl From<ProviderError> for crate::Error {
-    fn from(e: ProviderError) -> Self {
-        crate::Error::Provider(e.message)
-    }
-}
 
 /// BoxStream 类型别名
 pub type BoxStream<'a, T> = std::pin::Pin<Box<dyn Stream<Item = T> + Send + 'a>>;

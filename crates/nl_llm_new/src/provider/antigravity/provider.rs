@@ -32,6 +32,17 @@ pub struct AntigravityProvider {
 impl AntigravityProvider {
     /// 创建新的 Provider
     pub fn new(config: AntigravityConfig) -> Self {
+        Self::with_client(
+            config,
+            reqwest::Client::builder()
+                .timeout(Duration::from_secs(60))
+                .build()
+                .expect("Failed to create HTTP client")
+        )
+    }
+
+    /// 使用外部指定的 HTTP Client 创建 Provider
+    pub fn with_client(config: AntigravityConfig, http: reqwest::Client) -> Self {
         let auth = AntigravityOAuth::from_file(&config.token_path)
             .expect("Failed to load AntigravityOAuth");
 
@@ -39,11 +50,6 @@ impl AntigravityProvider {
             provider: OAuthProvider::Antigravity,
             token_path: config.token_path.clone(),
         };
-
-        let http = reqwest::Client::builder()
-            .timeout(Duration::from_secs(60))
-            .build()
-            .expect("Failed to create HTTP client");
 
         Self {
             config,
@@ -226,10 +232,10 @@ impl LlmProvider for AntigravityProvider {
         let text = resp.text().await.unwrap_or_default();
 
         if !status.is_success() {
-            return Err(crate::Error::Provider(format!(
-                "Antigravity API failed ({}): {}",
-                status,
-                text.trim()
+            let status_code = status.as_u16();
+            return Err(crate::Error::Provider(crate::provider::ProviderError::from_http_status(
+                status_code,
+                format!("Antigravity API failed ({}): {}", status_code, text.trim()),
             )));
         }
 
@@ -276,11 +282,11 @@ impl LlmProvider for AntigravityProvider {
 
         let status = resp.status();
         if !status.is_success() {
+            let status_code = status.as_u16();
             let text = resp.text().await.unwrap_or_default();
-            return Err(crate::Error::Provider(format!(
-                "Antigravity stream failed ({}): {}",
-                status,
-                text.trim()
+            return Err(crate::Error::Provider(crate::provider::ProviderError::from_http_status(
+                status_code,
+                format!("Antigravity stream failed ({}): {}", status_code, text.trim()),
             )));
         }
 

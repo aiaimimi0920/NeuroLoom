@@ -175,12 +175,10 @@ impl Gateway {
             match provider.complete(body.clone()).await {
                 Ok(response) => return Ok(response),
                 Err(e) => {
-                    // 构造 ProviderError
-                    let provider_error = ProviderError {
-                        message: e.to_string(),
-                        retryable: retries < self.config.max_retries,
-                        should_fallback: true,
-                        retry_after_ms: None,
+                    // 解析内部真正的 ProviderError 信号
+                    let provider_error = match e {
+                        crate::Error::Provider(pe) => pe,
+                        _ => ProviderError::fail(e.to_string()),
                     };
 
                     // 检查是否可重试
@@ -191,7 +189,7 @@ impl Gateway {
                         continue;
                     }
 
-                    // 转换为 GatewayError
+                    // 转换为 GatewayError 并传导回源级降级配置
                     return Err(GatewayError::ProviderError {
                         provider_id: provider_id.to_string(),
                         message: provider_error.message,
