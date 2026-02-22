@@ -1,0 +1,295 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+error[E0432]: unresolved import `nl_llm_new::primitive::message::Message`
+ --> crates\nl_llm_new\examples\gemini_cli_chat\main.rs:1:38
+  |
+1 | use nl_llm_new::primitive::message::{Message, Role};
+  |                                      ^^^^^^^ no `Message` in `primitive::message`
+  |
+  = help: consider importing this variant instead:
+          tokio::net::windows::named_pipe::PipeMode::Message
+
+
+error[E0603]: module `message` is private
+ --> crates\nl_llm_new\examples\gemini_cli_chat\main.rs:1:28
+  |
+1 | use nl_llm_new::primitive::message::{Message, Role};
+  |                            ^^^^^^^ private module
+  |
+note: the module `message` is defined here
+ --> C:\Users\Public\nas_home\AI\GameEditor\NeuroLoom\crates\nl_llm_new\src\primitive\mod.rs:7:1
+  |
+7 | mod message;
+  | ^^^^^^^^^^^
+
+
+error[E0603]: module `message` is private
+ --> crates\nl_llm_new\examples\gemini_cli_chat\main.rs:1:28
+  |
+1 | use nl_llm_new::primitive::message::{Message, Role};
+  |                            ^^^^^^^ private module
+  |
+help: consider importing this enum instead:
+      nl_llm_new::primitive::Role
+ --> crates\nl_llm_new\examples\gemini_cli_chat\main.rs:1:47
+  |
+1 | use nl_llm_new::primitive::message::{Message, Role};
+  |                                               ^^^^
+note: the module `message` is defined here
+ --> C:\Users\Public\nas_home\AI\GameEditor\NeuroLoom\crates\nl_llm_new\src\primitive\mod.rs:7:1
+  |
+7 | mod message;
+  | ^^^^^^^^^^^
+
+
+error[E0308]: mismatched types
+  --> crates\nl_llm_new\examples\gemini_cli_chat\main.rs:70:19
+   |
+70 |         metadata: std::collections::HashMap::new(),
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `PrimitiveMetadata`, found `HashMap<_, _>`
+   |
+   = note: expected struct `PrimitiveMetadata`
+              found struct `HashMap<_, _>`
+
+
+error[E0308]: mismatched types
+  --> crates\nl_llm_new\examples\gemini_cli_chat\main.rs:71:21
+   |
+71 |         parameters: None,
+   |                     ^^^^ expected `PrimitiveParameters`, found `Option<_>`
+   |
+   = note: expected struct `PrimitiveParameters`
+                found enum `Option<_>`
+
+
+warning: unused import: `tokio::io::AsyncWriteExt`
+ --> crates\nl_llm_new\examples\gemini_cli_chat\main.rs:5:5
+  |
+5 | use tokio::io::AsyncWriteExt;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+
+Some errors have detailed explanations: E0308, E0432, E0603.
+
+For more information about an error, try `rustc --explain E0308`.
+

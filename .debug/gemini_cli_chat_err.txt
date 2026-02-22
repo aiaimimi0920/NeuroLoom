@@ -1,0 +1,43 @@
+   Compiling nl_llm_new v0.1.0 (C:\Users\Public\nas_home\AI\GameEditor\NeuroLoom\crates\nl_llm_new)
+error[E0432]: unresolved import `nl_llm_new::primitive::Message`
+ --> crates\nl_llm_new\examples\gemini_cli_chat\main.rs:1:29
+  |
+1 | use nl_llm_new::primitive::{Message, PrimitiveRequest, Role};
+  |                             ^^^^^^^
+  |                             |
+  |                             no `Message` in `primitive`
+  |                             help: a similar name exists in the module: `message`
+  |
+  = help: consider importing this variant instead:
+          tokio::net::windows::named_pipe::PipeMode::Message
+
+error[E0063]: missing fields `metadata` and `parameters` in initializer of `PrimitiveRequest`
+  --> crates\nl_llm_new\examples\gemini_cli_chat\main.rs:61:19
+   |
+61 |     let request = PrimitiveRequest {
+   |                   ^^^^^^^^^^^^^^^^ missing `metadata` and `parameters`
+
+error[E0599]: the method `flush` exists for struct `std::io::Stdout`, but its trait bounds were not satisfied
+  --> crates\nl_llm_new\examples\gemini_cli_chat\main.rs:81:51
+   |
+81 | ...                   std::io::stdout().flush().await.unwrap();
+   |                                         ^^^^^ method cannot be called on `std::io::Stdout` due to unsatisfied trait bounds
+   |
+   = note: the following trait bounds were not satisfied:
+           `std::io::Stdout: tokio::io::AsyncWrite`
+           which is required by `std::io::Stdout: tokio::io::AsyncWriteExt`
+   = help: items from traits can only be used if the trait is in scope
+help: trait `Write` which provides `flush` is implemented but not in scope; perhaps you want to import it
+   |
+ 1 + use std::io::Write;
+   |
+
+error[E0282]: type annotations needed
+  --> crates\nl_llm_new\examples\gemini_cli_chat\main.rs:81:33
+   |
+81 | ...                   std::io::stdout().flush().await.unwrap();
+   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+Some errors have detailed explanations: E0063, E0282, E0432, E0599.
+For more information about an error, try `rustc --explain E0063`.
+error: could not compile `nl_llm_new` (example "gemini_cli_chat") due to 4 previous errors
