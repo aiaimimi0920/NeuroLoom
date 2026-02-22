@@ -25,12 +25,17 @@ fn generate_project_id() -> String {
     format!("{}-{}-{}", adj, noun, random_part)
 }
 
-fn compile_request(prompt: &str, _project_id: Option<&str>) -> serde_json::Value {
+fn compile_request(prompt: &str, project_id: Option<&str>) -> serde_json::Value {
+    let project = match project_id {
+        Some(pid) if !pid.is_empty() => pid.to_string(),
+        _ => generate_project_id(),
+    };
+
     serde_json::json!({
         "model": MODEL,
         "userAgent": "antigravity",
         "requestType": "agent",
-        "project": generate_project_id(),
+        "project": project,
         "requestId": format!("agent-{}", uuid::Uuid::new_v4()),
         "request": {
             "contents": [{

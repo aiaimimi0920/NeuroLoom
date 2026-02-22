@@ -1,15 +1,70 @@
-﻿cargo :     Checking nl_llm_new v0.1.0 (C:
-\Users\Public\nas_home\AI\GameEditor\Neuro
-Loom\crates\nl_llm_new)
+﻿cargo :     Checking nl_llm_new v0.1.0 (C:\Users\Public\na
+s_home\AI\GameEditor\NeuroLoom\crates\nl_llm_new)
 At line:1 char:1
-+ cargo check -p nl_llm_new 2>&1 | Out-Fil
-e -Encoding utf8 .debug/cargo ...
++ cargo check -p nl_llm_new 2>&1 | Out-File -Encoding utf8
+ .debug/cargo ...
 + ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecifie 
-   d: (    Checking nl...tes\nl_llm_new)  
-  :String) [], RemoteException
-    + FullyQualifiedErrorId : NativeComma 
-   ndError
+    + CategoryInfo          : NotSpecified: (    Checking 
+    nl...tes\nl_llm_new):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
  
-    Finished `dev` profile [unoptimized + 
-debuginfo] target(s) in 1.98s
+error[E0425]: cannot find value `refresh_token` in this sc
+ope
+   --> crates\nl_llm_new\src\auth\providers\antigravity.rs
+:146:13
+    |
+146 |             refresh_token,
+    |             ^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `expires_at` in this scope
+   --> crates\nl_llm_new\src\auth\providers\antigravity.rs
+:147:13
+    |
+147 |             expires_at,
+    |             ^^^^^^^^^^ not found in this scope
+
+error[E0599]: no function or associated item named `fetch_
+project_id` found for struct `AntigravityOAuth` in the cur
+rent scope
+   --> crates\nl_llm_new\src\auth\providers\antigravity.rs
+:142:32
+    |
+ 49 | pub struct AntigravityOAuth {
+    | --------------------------- function or associated i
+tem `fetch_project_id` not found for this struct
+...
+142 |         let project_id = Self::fetch_project_id(&tok
+en_resp.access_token).await.ok();
+    |                                ^^^^^^^^^^^^^^^^ func
+tion or associated item not found in `AntigravityOAuth`
+    |
+note: if you're trying to build a new `AntigravityOAuth` c
+onsider using one of the following associated functions:
+      AntigravityOAuth::new
+      AntigravityOAuth::from_file
+   --> crates\nl_llm_new\src\auth\providers\antigravity.rs
+:55:5
+    |
+ 55 |     pub fn new() -> Self {
+    |     ^^^^^^^^^^^^^^^^^^^^
+...
+ 59 |     pub fn from_file(path: &Path) -> Result<Self, Au
+thError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^
+
+error[E0282]: type annotations needed
+   --> crates\nl_llm_new\src\auth\providers\antigravity.rs
+:142:26
+    |
+142 |         let project_id = Self::fetch_project_id(&tok
+en_resp.access_token).await.ok();
+    |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+Some errors have detailed explanations: E0282, E0425, E059
+9.
+For more information about an error, try `rustc --explain 
+E0282`.
+error: could not compile `nl_llm_new` (lib) due to 4 previ
+ous errors

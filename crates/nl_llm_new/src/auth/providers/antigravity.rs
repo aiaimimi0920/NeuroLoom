@@ -74,6 +74,14 @@ impl AntigravityOAuth {
                     let _ = Self::save_token_to_path(token, path);
                 }
             }
+            if token.project_id.is_none() || token.project_id.as_ref().map(|p| p.starts_with("project-")).unwrap_or(false) {
+                if let Ok(pid) = Self::fetch_project_id(&token.access_token).await {
+                    token.project_id = Some(pid);
+                    if let Some(ref path) = self.path {
+                        let _ = Self::save_token_to_path(token, path);
+                    }
+                }
+            }
             Ok(())
         } else {
             let token = Self::login().await?;
@@ -139,6 +147,8 @@ impl AntigravityOAuth {
         };
 
         let token_resp = Self::exchange_code(&code, &redirect_uri).await?;
+        let expires_at = chrono::Utc::now() + chrono::Duration::seconds(token_resp.expires_in);
+        let refresh_token = token_resp.refresh_token.ok_or_else(|| AuthError::OAuthFailed("No refresh_token returned".to_string()))?;
         let project_id = Self::fetch_project_id(&token_resp.access_token).await.ok();
 
         Ok(AntigravityToken {
@@ -197,6 +207,132 @@ impl AntigravityOAuth {
             project_id: existing_token.project_id.clone(),
             email: existing_token.email.clone(),
         })
+    }
+
+    async fn fetch_project_id(access_token: &str) -> Result<String, AuthError> {
+        let url = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist";
+        let body = serde_json::json!({
+            "metadata": {
+                "ideType": "ANTIGRAVITY",
+                "platform": "PLATFORM_UNSPECIFIED",
+                "pluginType": "GEMINI"
+            }
+        });
+
+        let client = reqwest::Client::new();
+        let res = client
+            .post(url)
+            .header("Authorization", format!("Bearer {}", access_token))
+            .header("Content-Type", "application/json")
+            .header("User-Agent", "google-cloud-sdk gcloud/0.0.0.dev")
+            .header("X-Goog-Api-Client", "gl-python/3.12.0")
+            .header(
+                "Client-Metadata",
+                r#"{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}"#,
+            )
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AuthError::Http(format!("loadCodeAssist request failed: {}", e)))?;
+
+        let status = res.status();
+        let text = res.text().await.unwrap_or_default();
+
+        if !status.is_success() {
+            return Err(AuthError::Http(format!("loadCodeAssist returned {}: {}", status, text.trim())));
+        }
+
+        let json: serde_json::Value = serde_json::from_str(&text).map_err(|e| AuthError::Json(e))?;
+
+        let mut project_id = String::new();
+        if let Some(id) = json.get("cloudaicompanionProject").and_then(|v| v.as_str()) {
+            project_id = id.trim().to_string();
+        } else if let Some(obj) = json.get("cloudaicompanionProject").and_then(|v| v.as_object()) {
+            if let Some(id) = obj.get("id").and_then(|v| v.as_str()) {
+                project_id = id.trim().to_string();
+            }
+        }
+
+        if !project_id.is_empty() {
+            return Ok(project_id);
+        }
+
+        let tier_id = json
+            .get("allowedTiers")
+            .and_then(|v| v.as_array())
+            .and_then(|tiers| {
+                tiers.iter().find_map(|t| {
+                    if t.get("isDefault").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        t.get("id").and_then(|v| v.as_str()).map(|s| s.to_string())
+                    } else {
+                        None
+                    }
+                })
+            })
+            .unwrap_or_else(|| "legacy-tier".to_string());
+
+        Self::onboard_user(access_token, &tier_id).await
+    }
+
+    async fn onboard_user(access_token: &str, tier_id: &str) -> Result<String, AuthError> {
+        let url = "https://cloudcode-pa.googleapis.com/v1internal:onboardUser";
+        let body = serde_json::json!({
+            "tierId": tier_id,
+            "metadata": {
+                "ideType": "ANTIGRAVITY",
+                "platform": "PLATFORM_UNSPECIFIED",
+                "pluginType": "GEMINI"
+            }
+        });
+
+        let client = reqwest::Client::new();
+        for _ in 1..=5 {
+            let res = client
+                .post(url)
+                .header("Authorization", format!("Bearer {}", access_token))
+                .header("Content-Type", "application/json")
+                .header("User-Agent", "google-cloud-sdk gcloud/0.0.0.dev")
+                .header("X-Goog-Api-Client", "gl-python/3.12.0")
+                .header(
+                    "Client-Metadata",
+                    r#"{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}"#,
+                )
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| AuthError::Http(format!("onboardUser request failed: {}", e)))?;
+
+            let status = res.status();
+            let text = res.text().await.unwrap_or_default();
+
+            if !status.is_success() {
+                return Err(AuthError::Http(format!("onboardUser returned {}: {}", status, text.trim())));
+            }
+
+            let json: serde_json::Value = serde_json::from_str(&text).map_err(|e| AuthError::Json(e))?;
+
+            if json.get("done").and_then(|v| v.as_bool()).unwrap_or(false) {
+                let pid = json
+                    .get("response")
+                    .and_then(|r| r.get("cloudaicompanionProject"))
+                    .and_then(|p| match p {
+                        serde_json::Value::String(s) => Some(s.trim().to_string()),
+                        serde_json::Value::Object(o) => o
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.trim().to_string()),
+                        _ => None,
+                    });
+
+                return pid.ok_or_else(|| {
+                    AuthError::Http("onboardUser done but no project_id in response".to_string())
+                });
+            }
+
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+
+        Err(AuthError::Http("onboardUser: max attempts reached without completion".to_string()))
     }
 
     fn save_token_to_path(token: &AntigravityToken, path: &Path) -> Result<(), std::io::Error> {
