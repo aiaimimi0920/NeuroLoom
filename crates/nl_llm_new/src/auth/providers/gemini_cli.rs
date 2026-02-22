@@ -2,9 +2,9 @@
 //!
 //! 使用 Google OAuth2 流程获取 Access Token，用于调用 Cloud Code PA API。
 
-use crate::auth::AuthError;
+use crate::auth::{AuthError, TokenStorage, TokenStatus};
 use reqwest::header::{HeaderMap, HeaderValue};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use url::Url;
@@ -23,6 +23,9 @@ pub const GEMINI_CLI_OAUTH_CONFIG: GeminiCliOAuthConfig = GeminiCliOAuthConfig {
     ],
 };
 
+/// Provider 标识
+const PROVIDER_NAME: &str = "gemini_cli";
+
 /// Gemini CLI OAuth 配置
 #[derive(Debug, Clone)]
 pub struct GeminiCliOAuthConfig {
@@ -32,21 +35,6 @@ pub struct GeminiCliOAuthConfig {
     pub auth_url: &'static str,
     pub token_url: &'static str,
     pub scopes: &'static [&'static str],
-}
-
-/// Gemini CLI Token 结构
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GeminiCliToken {
-    /// Access Token
-    pub access_token: String,
-    /// Refresh Token
-    pub refresh_token: String,
-    /// 过期时间
-    pub expires_at: chrono::DateTime<chrono::Utc>,
-    /// Project ID
-    pub project_id: Option<String>,
-    /// 用户邮箱
-    pub email: Option<String>,
 }
 
 /// OAuth Token 响应
@@ -61,8 +49,8 @@ struct OAuthTokenResponse {
 pub struct GeminiCliOAuth {
     /// Token 文件路径
     path: Option<PathBuf>,
-    /// 当前 Token
-    pub token: Option<GeminiCliToken>,
+    /// 当前 Token（使用通用的 TokenStorage）
+    token: Option<TokenStorage>,
     /// 复用的 HTTP Client
     http: reqwest::Client,
 }
@@ -90,8 +78,13 @@ impl GeminiCliOAuth {
             .expect("Failed to create HTTP client for GeminiCliOAuth");
 
         if path.exists() {
-            let content = std::fs::read_to_string(path)?;
-            let token: GeminiCliToken = serde_json::from_str(&content)?;
+            let mut token = crate::auth::storage::TokenStorageManager::load(path)?;
+
+            // 修正 provider 字��（向后兼容旧格式）
+            if token.provider.is_empty() {
+                token.provider = PROVIDER_NAME.to_string();
+            }
+
             Ok(Self {
                 path: Some(path.to_path_buf()),
                 token: Some(token),
@@ -113,37 +106,31 @@ impl GeminiCliOAuth {
             let token = self.login().await?;
             self.token = Some(token.clone());
             if let Some(ref path) = self.path {
-                let _ = Self::save_token_to_path_static(&token, path);
+                let _ = crate::auth::storage::TokenStorageManager::save(&token, path);
             }
             return Ok(());
         }
 
         // 检查是否需要刷新
-        let needs_refresh = self.token.as_ref().map_or(true, |t| {
-            t.expires_at <= chrono::Utc::now() + chrono::Duration::seconds(300)
-        });
-
-        if needs_refresh {
+        if self.needs_refresh() {
             let old_token = self.token.clone().unwrap();
             let new_token = Self::refresh_token_data_static(&self.http, &old_token).await?;
             self.token = Some(new_token.clone());
             if let Some(ref path) = self.path {
-                let _ = Self::save_token_to_path_static(&new_token, path);
+                let _ = crate::auth::storage::TokenStorageManager::save(&new_token, path);
             }
         }
 
         // 确保 project_id 存在
-        let needs_project_id = self.token.as_ref().map_or(true, |t| {
-            t.project_id.is_none() || t.project_id.as_ref().map(|p| p.starts_with("project-")).unwrap_or(false)
-        });
+        let needs_project_id = self.project_id().map_or(true, |p| p.starts_with("project-"));
 
         if needs_project_id {
             let access_token = self.token.as_ref().unwrap().access_token.clone();
             if let Ok(pid) = Self::fetch_project_id_static(&self.http, &access_token).await {
                 if let Some(ref mut token) = self.token {
-                    token.project_id = Some(pid);
+                    token.extra.insert("project_id".to_string(), serde_json::Value::String(pid));
                     if let Some(ref path) = self.path {
-                        let _ = Self::save_token_to_path_static(token, path);
+                        let _ = crate::auth::storage::TokenStorageManager::save(token, path);
                     }
                 }
             }
@@ -152,13 +139,16 @@ impl GeminiCliOAuth {
         Ok(())
     }
 
-    /// 检查是否需要刷新
-    ///
-    /// 供 Provider 层的 `needs_refresh()` 方法调用
-    pub fn needs_refresh(&self) -> bool {
-        self.token.as_ref().map_or(true, |t| {
-            t.expires_at <= chrono::Utc::now() + chrono::Duration::seconds(300)
+    /// 获取 Token 状态
+    pub fn token_status(&self) -> TokenStatus {
+        self.token.as_ref().map_or(TokenStatus::Expired, |t| {
+            t.status(300)
         })
+    }
+
+    /// 检查是否需要刷新
+    pub fn needs_refresh(&self) -> bool {
+        self.token.as_ref().map_or(true, |t| t.needs_refresh(300))
     }
 
     /// 获取 Access Token
@@ -168,11 +158,18 @@ impl GeminiCliOAuth {
 
     /// 获取 Project ID
     pub fn project_id(&self) -> Option<&str> {
-        self.token.as_ref().and_then(|t| t.project_id.as_deref())
+        self.token.as_ref().and_then(|t| {
+            t.extra.get("project_id").and_then(|v| v.as_str())
+        })
+    }
+
+    /// 获取 Token 存储（只读）
+    pub fn token_storage(&self) -> Option<&TokenStorage> {
+        self.token.as_ref()
     }
 
     /// OAuth 登录流程
-    async fn login(&mut self) -> Result<GeminiCliToken, AuthError> {
+    async fn login(&mut self) -> Result<TokenStorage, AuthError> {
         let state = format!(
             "{}",
             SystemTime::now()
@@ -270,13 +267,16 @@ impl GeminiCliOAuth {
         })?;
         let project_id = Self::fetch_project_id_static(&self.http, &token_resp.access_token).await.ok();
 
-        Ok(GeminiCliToken {
-            access_token: token_resp.access_token,
-            refresh_token,
-            expires_at,
-            project_id,
-            email: None,
-        })
+        // 构建 TokenStorage
+        let mut storage = TokenStorage::new(token_resp.access_token, PROVIDER_NAME)
+            .with_refresh_token(refresh_token)
+            .with_expires_at(expires_at);
+
+        if let Some(pid) = project_id {
+            storage = storage.with_extra("project_id", serde_json::Value::String(pid));
+        }
+
+        Ok(storage)
     }
 
     /// 用授权码换取 Token（静态方法）
@@ -318,12 +318,16 @@ impl GeminiCliOAuth {
     /// 刷新 Token（静态方法）
     async fn refresh_token_data_static(
         http: &reqwest::Client,
-        existing: &GeminiCliToken,
-    ) -> Result<GeminiCliToken, AuthError> {
+        existing: &TokenStorage,
+    ) -> Result<TokenStorage, AuthError> {
+        let refresh_token_str = existing.refresh_token.clone().ok_or_else(|| {
+            AuthError::RefreshFailed("No refresh_token available".to_string())
+        })?;
+
         let params = [
             ("client_id", GEMINI_CLI_OAUTH_CONFIG.client_id),
             ("client_secret", GEMINI_CLI_OAUTH_CONFIG.client_secret),
-            ("refresh_token", existing.refresh_token.as_str()),
+            ("refresh_token", &refresh_token_str),
             ("grant_type", "refresh_token"),
         ];
 
@@ -347,15 +351,16 @@ impl GeminiCliOAuth {
             .await
             .map_err(|e| AuthError::RefreshFailed(format!("Parse refresh response failed: {}", e)))?;
 
-        Ok(GeminiCliToken {
-            access_token: token_resp.access_token,
-            refresh_token: token_resp
-                .refresh_token
-                .unwrap_or_else(|| existing.refresh_token.clone()),
-            expires_at: chrono::Utc::now() + chrono::Duration::seconds(token_resp.expires_in),
-            project_id: existing.project_id.clone(),
-            email: existing.email.clone(),
-        })
+        // 构建新的 TokenStorage，保留 extra 字段
+        let mut storage = TokenStorage::new(token_resp.access_token, PROVIDER_NAME)
+            .with_refresh_token(token_resp.refresh_token.unwrap_or(refresh_token_str))
+            .with_expires_at(chrono::Utc::now() + chrono::Duration::seconds(token_resp.expires_in))
+            .with_email_optional(existing.email.clone());
+
+        // 保留原有的 extra 字段
+        storage.extra = existing.extra.clone();
+
+        Ok(storage)
     }
 
     /// 获取 Project ID（静态方法）
@@ -517,19 +522,6 @@ impl GeminiCliOAuth {
         );
         headers
     }
-
-    /// 保存 Token 到文件（静态方法）
-    fn save_token_to_path_static(
-        token: &GeminiCliToken,
-        path: &Path,
-    ) -> Result<(), std::io::Error> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let content = serde_json::to_string_pretty(token)?;
-        std::fs::write(path, content)?;
-        Ok(())
-    }
 }
 
 impl Default for GeminiCliOAuth {
@@ -546,5 +538,6 @@ mod tests {
     fn test_needs_refresh_without_token() {
         let auth = GeminiCliOAuth::new();
         assert!(auth.needs_refresh());
+        assert_eq!(auth.token_status(), TokenStatus::Expired);
     }
 }
