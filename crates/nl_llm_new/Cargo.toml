@@ -1,0 +1,62 @@
+[package]
+name = "nl_llm_new"
+version = "0.1.0"
+edition = "2021"
+description = "NeuroLoom LLM Gateway - 重构版本"
+
+[dependencies]
+# 异步运行时
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+futures = "0.3"
+
+# HTTP 客户端
+reqwest = { version = "0.12", features = ["json", "stream", "cookies"] }
+
+# 序列化
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# 时间处理
+chrono = { version = "0.4", features = ["serde"] }
+
+# 错误处理
+thiserror = "1"
+anyhow = "1"
+
+# 加密
+sha2 = "0.10"
+jsonwebtoken = "9"
+
+# 日志
+tracing = "0.1"
+
+# UUID
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# URL 处理
+url = "2"
+
+# 正则表达式
+regex = "1"
+
+# 随机数
+rand = "0.8"
+
+# Base64
+base64 = "0.22"
+
+# URL 编码
+urlencoding = "2"
+
+# Cookie
+cookie = "0.18"
+
+# HTTP 服务器（OAuth 回调）
+tiny_http = "0.12"
+
+# 核心模块
+nl_core = { path = "../nl_core" }
+
+[dev-dependencies]
+tokio-test = "0.4"
