@@ -9,6 +9,7 @@ description = "NeuroLoom LLM Gateway - 重构版本"
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 futures = "0.3"
+async-stream = "0.3"
 
 # HTTP 客户端
 reqwest = { version = "0.12", features = ["json", "stream", "cookies"] }
@@ -60,3 +61,27 @@ nl_core = { path = "../nl_core" }
 
 [dev-dependencies]
 tokio-test = "0.4"
+
+[[example]]
+name = "antigravity_chat"
+path = "examples/antigravity/chat/main.rs"
+
+[[example]]
+name = "antigravity_auth"
+path = "examples/antigravity/auth/main.rs"
+
+[[example]]
+name = "antigravity_models"
+path = "examples/antigravity/models/main.rs"
+
+[[example]]
+name = "iflow_chat"
+path = "examples/iflow/chat/main.rs"
+
+[[example]]
+name = "iflow_auth"
+path = "examples/iflow/auth/main.rs"
+
+[[example]]
+name = "iflow_models"
+path = "examples/iflow/models/main.rs"

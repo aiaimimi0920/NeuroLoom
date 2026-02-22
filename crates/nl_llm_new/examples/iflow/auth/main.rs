@@ -1,7 +1,7 @@
 //! iFlow 认证测试 (Cookie → API Key)
 
-use nl_llm_new::provider::iflow::config::IflowConfig;
-use nl_llm_new::provider::iflow::provider::IflowProvider;
+use nl_llm_new::provider::iflow::config::IFlowConfig;
+use nl_llm_new::provider::iflow::provider::IFlowProvider;
 use std::path::Path;
 
 fn main() {
@@ -29,10 +29,10 @@ fn main() {
     println!("  iFlow Auth Test (nl_llm_new)");
     println!("========================================");
     println!();
-    println!("Cookie: {}...", &cookie[..20.min(cookie.len())]);
+    println!("Cookie: {}...", &cookie[..20_usize.min(cookie.len())]);
     println!();
 
-    let provider = IflowProvider::new(IflowConfig::new(cookie, "qwen3-max".to_string()));
+    let provider = IFlowProvider::new(IFlowConfig::new(cookie, "qwen3-max".to_string()));
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
@@ -41,7 +41,7 @@ fn main() {
             Ok(api_key) => {
                 println!();
                 println!("===== 认证成功! =====");
-                println!("API Key: {}...{}", &api_key[..8.min(api_key.len())], &api_key[api_key.len().saturating_sub(4)..]);
+                println!("API Key: {}...{}", &api_key[..8_usize.min(api_key.len())], &api_key[api_key.len().saturating_sub(4)..]);
             }
             Err(e) => {
                 println!("===== 认证失败 =====");

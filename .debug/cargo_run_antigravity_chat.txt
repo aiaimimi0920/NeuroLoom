@@ -1,0 +1,54 @@
+﻿cargo :     Finished `dev` profile [unoptimized + debuginf
+o] target(s) in 0.42s
+At line:1 char:1
++ cargo run --example antigravity_chat -p nl_llm_new -- "你
+好" > .debug/c ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (    Finished 
+    `d...get(s) in 0.42s:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+     Running `C:/Users/vmjcv/AppData/Local/Temp/NeuroLoom_
+target\debug\examples\antigravity_chat.exe 你好`
+========================================
+  Antigravity (Gemini Code Assist) Chat
+========================================
+  模式: 非流式 (generateContent)
+========================================
+
+用户: 你好
+
+正在验证身份... ✓ (token: ya29.a0ATkoCc6XQsKZt...)
+
+正在请求模型...
+
+
+请求失败: "API 请求失败 (403 Forbidden): {\n  \"error\": {\n    \"
+code\": 403,\n    \"message\": \"Permission denied on reso
+urce project useful-fuze-bd9bf.\",\n    \"status\": \"PERM
+ISSION_DENIED\",\n    \"details\": [\n      {\n        \"@
+type\": \"type.googleapis.com/google.rpc.ErrorInfo\",\n   
+     \"reason\": \"CONSUMER_INVALID\",\n        \"domain\"
+: \"googleapis.com\",\n        \"metadata\": {\n          
+\"service\": \"cloudaicompanion.googleapis.com\",\n       
+   \"consumer\": \"projects/useful-fuze-bd9bf\",\n        
+  \"containerInfo\": \"useful-fuze-bd9bf\"\n        }\n   
+   },\n      {\n        \"@type\": \"type.googleapis.com/g
+oogle.rpc.LocalizedMessage\",\n        \"locale\": \"en-US
+\",\n        \"message\": \"Permission denied on resource 
+project useful-fuze-bd9bf.\"\n      },\n      {\n        \
+"@type\": \"type.googleapis.com/google.rpc.Help\",\n      
+  \"links\": [\n          {\n            \"description\": 
+\"Google developers console\",\n            \"url\": \"htt
+ps://console.developers.google.com\"\n          }\n       
+ ]\n      }\n    ]\n  }\n}"
+
+排查建议:
+  1. 检查账户是否有 Gemini Code Assist 订阅
+  2. 删除 "C:\\Users\\vmjcv\\.nl_llm\\antigravity_token.json
+" 后重新登录
+  3. 检查是否能访问 cloudcode-pa.googleapis.com
+error: process didn't exit successfully: `C:/Users/vmjcv/A
+ppData/Local/Temp/NeuroLoom_target\debug\examples\antigrav
+ity_chat.exe 你好` (exit code: 1)

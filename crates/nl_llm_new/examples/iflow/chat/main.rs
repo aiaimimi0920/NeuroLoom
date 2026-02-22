@@ -6,8 +6,8 @@
 //! 或命令行: --cookie BXAuth=...
 
 use nl_llm_new::primitive::PrimitiveRequest;
-use nl_llm_new::provider::iflow::config::IflowConfig;
-use nl_llm_new::provider::iflow::provider::IflowProvider;
+use nl_llm_new::provider::iflow::config::IFlowConfig;
+use nl_llm_new::provider::iflow::provider::IFlowProvider;
 use nl_llm_new::provider::LlmProvider;
 use futures::StreamExt;
 use std::path::Path;
@@ -67,7 +67,7 @@ fn main() {
     println!("用户: {}", prompt);
     println!();
 
-    let provider = IflowProvider::new(IflowConfig::new(cookie, model));
+    let provider = IFlowProvider::new(IFlowConfig::new(cookie, model));
 
     let primitive = PrimitiveRequest::single_user_message(&prompt);
     let body = provider.compile(&primitive);

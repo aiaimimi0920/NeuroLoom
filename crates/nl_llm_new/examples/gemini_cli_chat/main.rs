@@ -198,6 +198,7 @@ async fn stream_complete(
     }
 
     use futures::StreamExt;
+    use std::io::Write;
     let mut stream = resp.bytes_stream();
     let mut buffer = String::new();
 
@@ -205,9 +206,11 @@ async fn stream_complete(
         let bytes = chunk?;
         buffer.push_str(&String::from_utf8_lossy(&bytes));
 
-        while let Some(pos) = buffer.find("\n\n") {
+        // Detect SSE event boundaries which could be \r\n\r\n or \n\n
+        while let Some(pos) = buffer.find("\r\n\r\n").or_else(|| buffer.find("\n\n")) {
+            let offset = if buffer[pos..].starts_with("\r\n\r\n") { 4 } else { 2 };
             let event = buffer[..pos].to_string();
-            buffer = buffer[pos + 2..].to_string();
+            buffer = buffer[pos + offset..].to_string();
 
             for line in event.lines() {
                 if let Some(data) = line.strip_prefix("data: ") {
@@ -221,14 +224,15 @@ async fn stream_complete(
                             .and_then(|r| r.get("candidates"))
                             .or_else(|| v.get("candidates"));
                         if let Some(text) = candidates
-                            .and_then(|c| c.get(0))
+                            .and_then(|c| c.get(0).or_else(|| c.as_array().and_then(|a| a.get(0))))
                             .and_then(|c| c.get("content"))
                             .and_then(|c| c.get("parts"))
-                            .and_then(|p| p.get(0))
+                            .and_then(|p| p.get(0).or_else(|| p.as_array().and_then(|a| a.get(0))))
                             .and_then(|p| p.get("text"))
                             .and_then(|t| t.as_str())
                         {
                             print!("{}", text);
+                            std::io::stdout().flush().unwrap();
                         }
                     }
                 }

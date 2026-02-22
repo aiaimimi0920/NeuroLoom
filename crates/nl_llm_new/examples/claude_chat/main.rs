@@ -25,19 +25,15 @@ fn main() {
     println!("========================================");
     println!("  Claude Chat (nl_llm_new)");
     println!("========================================");
-    println!("  Key: {}...", &api_key[..12.min(api_key.len())]);
+    println!("  Key: {}...", &api_key[..12_usize.min(api_key.len())]);
     println!("  Model: {}", model);
     println!("========================================");
     println!();
 
-    let provider = ClaudeProvider::new(ClaudeConfig {
-        api_key,
-        model,
-        base_url: None,
-        max_tokens: Some(4096),
-    });
+    let provider = ClaudeProvider::new(ClaudeConfig::new(api_key, model));
 
-    let primitive = PrimitiveRequest::single_user_message(&prompt);
+    let primitive = PrimitiveRequest::single_user_message(&prompt)
+        .with_max_tokens(4096);
     let body = provider.compile(&primitive);
 
     let rt = tokio::runtime::Runtime::new().unwrap();

@@ -20,7 +20,7 @@ fn main() {
     let model = args.windows(2).find(|w| w[0] == "--model").map(|w| w[1].clone())
         .unwrap_or_else(|| "gpt-4o".to_string());
 
-    let base_url = args.windows(2).find(|w| w[0] == "--base-url").map(|w| w[1].clone())
+    let _base_url = args.windows(2).find(|w| w[0] == "--base-url").map(|w| w[1].clone())
         .or_else(|| std::env::var("OPENAI_BASE_URL").ok());
 
     let prompt = "Hello! Please introduce yourself briefly.".to_string();
@@ -28,22 +28,15 @@ fn main() {
     println!("========================================");
     println!("  OpenAI Chat (nl_llm_new)");
     println!("========================================");
-    println!("  Key: {}...", &api_key[..12.min(api_key.len())]);
+    println!("  Key: {}...", &api_key[..12_usize.min(api_key.len())]);
     println!("  Model: {}", model);
-    if let Some(ref url) = base_url {
-        println!("  Base URL: {}", url);
-    }
     println!("========================================");
     println!();
 
-    let provider = OpenAIProvider::new(OpenAIConfig {
-        api_key,
-        model,
-        base_url,
-        max_tokens: Some(4096),
-    });
+    let provider = OpenAIProvider::new(OpenAIConfig::new(api_key, model));
 
-    let primitive = PrimitiveRequest::single_user_message(&prompt);
+    let primitive = PrimitiveRequest::single_user_message(&prompt)
+        .with_max_tokens(4096);
     let body = provider.compile(&primitive);
 
     let rt = tokio::runtime::Runtime::new().unwrap();

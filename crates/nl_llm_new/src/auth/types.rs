@@ -87,6 +87,7 @@ pub enum ApiKeyProvider {
     OpenAI,
     GeminiAIStudio,
     Codex,
+    IFlow,
 }
 
 impl ApiKeyProvider {
@@ -97,6 +98,7 @@ impl ApiKeyProvider {
             ApiKeyProvider::OpenAI => "https://api.openai.com",
             ApiKeyProvider::GeminiAIStudio => "https://generativelanguage.googleapis.com",
             ApiKeyProvider::Codex => "https://chatgpt.com/backend-api/codex",
+            ApiKeyProvider::IFlow => "https://apis.iflow.cn",
         }
     }
 }

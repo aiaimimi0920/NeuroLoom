@@ -1,0 +1,15 @@
+{
+  "messages": [
+    {
+      "content": [
+        {
+          "text": "介绍一下你自己",
+          "type": "text"
+        }
+      ],
+      "role": "user"
+    }
+  ],
+  "model": "qwen3-max",
+  "stream": true
+}

@@ -1,0 +1,15 @@
+﻿cargo :     Checking nl_llm_new v0.1.0 (C:
+\Users\Public\nas_home\AI\GameEditor\Neuro
+Loom\crates\nl_llm_new)
+At line:1 char:1
++ cargo check -p nl_llm_new 2>&1 | Out-Fil
+e -Encoding utf8 .debug/cargo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecifie 
+   d: (    Checking nl...tes\nl_llm_new)  
+  :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeComma 
+   ndError
+ 
+    Finished `dev` profile [unoptimized + 
+debuginfo] target(s) in 1.98s

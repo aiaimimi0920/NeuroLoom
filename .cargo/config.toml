@@ -1,0 +1,3 @@
+[build]
+# 将编译目录重定向到本地临时文件夹，解决在 NAS (SMB网络驱动器) 上 MSVC 链接器写入 PDB 失败的 LNK1201 错误
+target-dir = "C:/Users/vmjcv/AppData/Local/Temp/NeuroLoom_target"

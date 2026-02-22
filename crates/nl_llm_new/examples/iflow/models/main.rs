@@ -1,7 +1,7 @@
 //! iFlow 模型列表查询
 
-use nl_llm_new::provider::iflow::config::IflowConfig;
-use nl_llm_new::provider::iflow::provider::IflowProvider;
+use nl_llm_new::provider::iflow::config::IFlowConfig;
+use nl_llm_new::provider::iflow::provider::IFlowProvider;
 use std::path::Path;
 
 fn main() {
@@ -24,7 +24,7 @@ fn main() {
         }
     };
 
-    let provider = IflowProvider::new(IflowConfig::new(cookie, "qwen3-max".to_string()));
+    let provider = IFlowProvider::new(IFlowConfig::new(cookie, "qwen3-max".to_string()));
 
     println!("Getting iFlow API Key and model list...");
     println!();
@@ -34,7 +34,7 @@ fn main() {
         println!("Step 1: Getting API Key...");
         let api_key = match provider.fetch_api_key().await {
             Ok(key) => {
-                println!("  API Key: {}...", &key[..8.min(key.len())]);
+                println!("  API Key: {}...", &key[..8_usize.min(key.len())]);
                 key
             }
             Err(e) => {

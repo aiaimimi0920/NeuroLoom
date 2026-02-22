@@ -13,7 +13,7 @@ if "%PROMPT%"=="" (
 )
 
 set "PROJECT_ROOT=%~dp0..\..\..\.."
-set "EXE=%PROJECT_ROOT%\target\debug\examples\gemini_cli_chat.exe"
+cd /d "%PROJECT_ROOT%"
 
 echo [1/2] Building...
 cargo build --example gemini_cli_chat -p nl_llm_new
@@ -26,14 +26,14 @@ echo.
 
 echo [2/2] Non-streaming request...
 echo.
-"%EXE%" "%PROMPT%"
+cargo run --example gemini_cli_chat -p nl_llm_new -- "%PROMPT%"
 echo.
 
 echo ========================================
 echo   Streaming mode test:
 echo ========================================
 echo.
-"%EXE%" "%PROMPT%" --stream
+cargo run --example gemini_cli_chat -p nl_llm_new -- "%PROMPT%" --stream
 echo.
 
 pause
