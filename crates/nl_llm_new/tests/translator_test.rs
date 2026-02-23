@@ -3,13 +3,16 @@
 //! 测试 PrimitiveRequest 与各种 Provider 编译器的交互
 
 use nl_llm_new::primitive::{PrimitiveRequest, PrimitiveContent, PrimitiveTool};
-use nl_llm_new::provider::gemini::GoogleAIStudioProvider;
 use nl_llm_new::provider::vertex::VertexProvider;
 use nl_llm_new::provider::claude::provider::ClaudeProvider;
 use nl_llm_new::provider::claude::config::ClaudeConfig;
 use nl_llm_new::provider::openai::provider::OpenAIProvider;
 use nl_llm_new::provider::openai::config::OpenAIConfig;
 use nl_llm_new::provider::LlmProvider;
+
+fn create_test_client() -> reqwest::Client {
+    reqwest::Client::new()
+}
 
 /// 测试同一个 PrimitiveRequest 编译到多种格式
 #[test]
@@ -19,10 +22,12 @@ fn test_cross_provider_compile() {
         "Write a Rust hello world",
     ).with_max_tokens(2048);
 
-    // Gemini
+    // Gemini (Vertex)
+    let http = create_test_client();
     let vertex = VertexProvider::from_service_account(
         r#"{"project_id":"test","client_email":"t@t.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----","private_key_id":""}"#.to_string(),
         "gemini-2.5-flash".to_string(), None,
+        http,
     );
     let gemini_body = vertex.compile(&primitive);
     assert!(gemini_body.get("contents").is_some());
@@ -66,9 +71,11 @@ fn test_compile_with_tools() {
         .with_tool(tool);
 
     // Each provider should include tools in their compiled body
+    let http = create_test_client();
     let vertex = VertexProvider::from_service_account(
         r#"{"project_id":"test","client_email":"t@t.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----","private_key_id":""}"#.to_string(),
         "gemini-2.5-flash".to_string(), None,
+        http,
     );
     let gemini_body = vertex.compile(&primitive);
     // Gemini uses "tools" with "functionDeclarations"

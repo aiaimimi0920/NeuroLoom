@@ -5,32 +5,83 @@
 use super::config::GeminiCliConfig;
 use crate::auth::providers::gemini_cli::GeminiCliOAuth;
 use crate::auth::{Auth, OAuthProvider};
-use crate::primitive::PrimitiveRequest;
-use crate::provider::{BoxStream, LlmChunk, LlmProvider, LlmResponse, StopReason, Usage};
+use crate::provider::{GenericClient, Endpoint};
+use crate::provider::gemini::protocol::CloudCodeProtocol;
+use crate::generic_client;
 use async_trait::async_trait;
-use std::time::Duration;
 use tokio::sync::Mutex;
-use uuid::Uuid;
+use std::sync::Arc;
 
-pub struct GeminiCliProvider {
-    config: GeminiCliConfig,
-    auth: Mutex<GeminiCliOAuth>,
-    http: reqwest::Client,
-    auth_enum: Auth,
+pub struct GeminiCliEndpoint {
+    auth: Arc<Mutex<GeminiCliOAuth>>,
 }
 
-impl GeminiCliProvider {
-    pub fn new(config: GeminiCliConfig) -> crate::Result<Self> {
-        Self::with_client(
-            config,
-            reqwest::Client::builder()
-                .timeout(Duration::from_secs(60))
-                .build()
-                .expect("Failed to create HTTP client")
-        )
+#[async_trait]
+impl Endpoint for GeminiCliEndpoint {
+    async fn pre_flight(&self) -> crate::Result<()> {
+        let mut auth_guard = self.auth.lock().await;
+        auth_guard.ensure_authenticated().await.map_err(|e| crate::Error::Auth(e.to_string()))?;
+        Ok(())
     }
 
-    pub fn with_client(config: GeminiCliConfig, http: reqwest::Client) -> crate::Result<Self> {
+    fn url(&self, _model: &str, is_stream: bool) -> crate::Result<String> {
+        if is_stream {
+            Ok("https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse".to_string())
+        } else {
+            Ok("https://cloudcode-pa.googleapis.com/v1internal:generateContent".to_string())
+        }
+    }
+
+    fn decorate_body(&self, mut body: serde_json::Value) -> serde_json::Value {
+        // Here we can inject project id, since it was empty in the protocol compilation
+        if let Ok(guard) = self.auth.try_lock() {
+            if let Some(project) = guard.project_id() {
+                if let Some(obj) = body.as_object_mut() {
+                    obj.insert("project".to_string(), serde_json::Value::String(project.to_string()));
+                }
+            }
+        }
+        body
+    }
+
+    fn inject_auth(&self, req: reqwest::RequestBuilder) -> crate::Result<reqwest::RequestBuilder> {
+        let token = {
+            let guard = self.auth.try_lock().map_err(|_| crate::Error::Auth("Auth Mutex Failed".to_string()))?;
+            guard.access_token().map(|s| s.to_string()).ok_or_else(|| crate::Error::Auth("No access token available".to_string()))?
+        };
+
+        let req = req
+            .header("Authorization", format!("Bearer {}", token))
+            .header("User-Agent", "google-api-nodejs-client/9.15.1")
+            .header("X-Goog-Api-Client", "gl-node/22.17.0")
+            .header("Client-Metadata", "ideType=IDE_UNSPECIFIED,platform=PLATFORM_UNSPECIFIED,pluginType=GEMINI");
+
+        Ok(req)
+    }
+
+    fn needs_refresh(&self) -> bool {
+        if let Ok(guard) = self.auth.try_lock() {
+            guard.needs_refresh()
+        } else {
+            false
+        }
+    }
+
+    async fn refresh_auth(&self) -> crate::Result<()> {
+        let mut auth_guard = self.auth.lock().await;
+        auth_guard.ensure_authenticated().await.map_err(|e| crate::Error::Auth(e.to_string()))?;
+        Ok(())
+    }
+}
+
+pub type GeminiCliProvider = GenericClient<GeminiCliEndpoint, CloudCodeProtocol>;
+
+impl GeminiCliProvider {
+    /// 创建新的 Provider（需要外部传入 HTTP Client）
+    ///
+    /// 注意：根据设计规范，HTTP Client 应由外部统一管理，
+    /// 避免每个 Provider 重复创建连接池。
+    pub fn new(config: GeminiCliConfig, http: reqwest::Client) -> crate::Result<Self> {
         let auth_engine = GeminiCliOAuth::from_file(&config.token_path)
             .map_err(|e| crate::Error::Auth(e.to_string()))?;
 
@@ -39,229 +90,22 @@ impl GeminiCliProvider {
             token_path: config.token_path.clone(),
         };
 
-        Ok(Self {
-            config,
-            auth: Mutex::new(auth_engine),
-            http,
-            auth_enum,
+        let shared_auth = Arc::new(Mutex::new(auth_engine));
+
+        Ok(generic_client! {
+            id: "gemini_cli".to_string(),
+            endpoint: GeminiCliEndpoint { auth: shared_auth },
+            protocol: CloudCodeProtocol { default_model: config.model.clone() },
+            auth: auth_enum,
+            supported_models: vec![
+                "gemini-2.5-flash".to_string(),
+                "gemini-2.5-pro".to_string(),
+                "gemini-2.0-flash".to_string(),
+                "gemini-2.0-pro-exp-02-05".to_string(),
+                "gemini-1.5-pro".to_string(),
+                "gemini-1.5-flash".to_string(),
+            ],
+            http: http
         })
-    }
-
-    async fn get_access_token_and_project(&self) -> crate::Result<(String, String)> {
-        let mut auth_guard = self.auth.lock().await;
-        auth_guard.ensure_authenticated().await.map_err(|e| crate::Error::Auth(e.to_string()))?;
-        
-        let token = auth_guard.access_token().ok_or_else(|| crate::Error::Auth("No access token available".to_string()))?.to_string();
-        let project_id = auth_guard.project_id()
-            .unwrap_or("fallback-project-id")
-            .to_string();
-            
-        Ok((token, project_id))
-    }
-}
-
-#[async_trait]
-impl LlmProvider for GeminiCliProvider {
-    fn id(&self) -> &str {
-        "gemini_cli"
-    }
-
-    fn auth(&self) -> &Auth {
-        &self.auth_enum
-    }
-
-    fn supported_models(&self) -> &[&str] {
-        &[
-            "gemini-2.5-flash",
-            "gemini-2.5-pro",
-            "gemini-2.0-flash",
-            "gemini-2.0-pro-exp-02-05",
-            "gemini-1.5-pro",
-            "gemini-1.5-flash",
-        ]
-    }
-
-    fn compile(&self, primitive: &PrimitiveRequest) -> serde_json::Value {
-        let mut req = primitive.clone();
-        if req.model.is_empty() {
-            req.model = self.config.model.clone();
-        }
-
-        let inner_request = crate::provider::gemini::compile_request(&req);
-        
-        let mut request_payload = serde_json::json!({
-            "sessionId": format!("-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos() & 0x7FFFFFFFFFFFFFFF)
-        });
-        
-        if let Some(contents) = inner_request.get("contents") {
-            request_payload["contents"] = contents.clone();
-        } else {
-            request_payload["contents"] = serde_json::json!([]);
-        }
-        
-        if let Some(sys) = inner_request.get("systemInstruction") {
-            if !sys.is_null() {
-                request_payload["systemInstruction"] = sys.clone();
-            }
-        }
-
-        serde_json::json!({
-            "model": req.model,
-            "userAgent": "gemini-cli",
-            "requestType": "agent",
-            "project": "", // Will be filled dynamically in complete/stream
-            "requestId": format!("agent-{}", Uuid::new_v4()),
-            "request": request_payload
-        })
-    }
-
-    async fn complete(&self, mut body: serde_json::Value) -> crate::Result<LlmResponse> {
-        let (token, project_id) = self.get_access_token_and_project().await?;
-        
-        if let Some(obj) = body.as_object_mut() {
-            obj.insert("project".to_string(), serde_json::Value::String(project_id));
-        }
-
-        let url = "https://cloudcode-pa.googleapis.com/v1internal:generateContent";
-        let resp = self.http.post(url)
-            .header("Authorization", format!("Bearer {}", token))
-            .header("Content-Type", "application/json")
-            .header("User-Agent", "google-api-nodejs-client/9.15.1")
-            .header("X-Goog-Api-Client", "gl-node/22.17.0")
-            .header("Client-Metadata", "ideType=IDE_UNSPECIFIED,platform=PLATFORM_UNSPECIFIED,pluginType=GEMINI")
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| crate::Error::Http(e.to_string()))?;
-
-        if !resp.status().is_success() {
-            let status = resp.status().as_u16();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(crate::Error::Provider(crate::provider::ProviderError::from_http_status(
-                status,
-                format!("gemini-cli generate Content failed: [{}] {}", status, text),
-            )));
-        }
-
-        let text = resp.text().await.unwrap_or_default();
-        let v: serde_json::Value = serde_json::from_str(&text).map_err(|e| crate::Error::Json(e))?;
-        
-        let candidates = v.get("response").and_then(|r| r.get("candidates")).or_else(|| v.get("candidates"));
-        let content = candidates
-            .and_then(|c| c.get(0))
-            .and_then(|c| c.get("content"))
-            .and_then(|c| c.get("parts"))
-            .and_then(|p| p.get(0))
-            .and_then(|p| p.get("text"))
-            .and_then(|t| t.as_str())
-            .unwrap_or("")
-            .to_string();
-
-        Ok(LlmResponse {
-            content,
-            tool_calls: Vec::new(),
-            usage: Usage::default(),
-            stop_reason: StopReason::EndTurn,
-        })
-    }
-
-    async fn stream(
-        &self,
-        mut body: serde_json::Value,
-    ) -> crate::Result<BoxStream<'_, crate::Result<LlmChunk>>> {
-        let (token, project_id) = self.get_access_token_and_project().await?;
-        
-        if let Some(obj) = body.as_object_mut() {
-            obj.insert("project".to_string(), serde_json::Value::String(project_id));
-        }
-
-        let url = "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse";
-        let resp = self.http.post(url)
-            .header("Authorization", format!("Bearer {}", token))
-            .header("Content-Type", "application/json")
-            .header("Accept", "text/event-stream")
-            .header("User-Agent", "google-api-nodejs-client/9.15.1")
-            .header("X-Goog-Api-Client", "gl-node/22.17.0")
-            .header("Client-Metadata", "ideType=IDE_UNSPECIFIED,platform=PLATFORM_UNSPECIFIED,pluginType=GEMINI")
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| crate::Error::Http(e.to_string()))?;
-
-        if !resp.status().is_success() {
-            let status = resp.status().as_u16();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(crate::Error::Provider(crate::provider::ProviderError::from_http_status(
-                status,
-                format!("gemini-cli stream failed: [{}] {}", status, text),
-            )));
-        }
-
-        use futures::StreamExt;
-        let stream = async_stream::stream! {
-            let mut byte_stream = resp.bytes_stream();
-            let mut buffer = String::new();
-
-            while let Some(chunk_res) = byte_stream.next().await {
-                let bytes = match chunk_res {
-                    Ok(b) => b,
-                    Err(e) => {
-                        yield Err(crate::Error::Http(e.to_string()));
-                        continue;
-                    }
-                };
-                
-                buffer.push_str(&String::from_utf8_lossy(&bytes));
-
-                while let Some(pos) = buffer.find("\r\n\r\n").or_else(|| buffer.find("\n\n")) {
-                    let offset = if buffer[pos..].starts_with("\r\n\r\n") { 4 } else { 2 };
-                    let event = buffer[..pos].to_string();
-                    buffer = buffer[pos + offset..].to_string();
-
-                    for line in event.lines() {
-                        if let Some(data) = line.strip_prefix("data: ") {
-                            if data == "[DONE]" {
-                                return;
-                            }
-                            if let Ok(v) = serde_json::from_str::<serde_json::Value>(data) {
-                                let candidates = v.get("response").and_then(|r| r.get("candidates")).or_else(|| v.get("candidates"));
-                                if let Some(content) = candidates
-                                    .and_then(|c| c.get(0).or_else(|| c.as_array().and_then(|a| a.get(0))))
-                                    .and_then(|c| c.get("content"))
-                                    .and_then(|c| c.get("parts"))
-                                    .and_then(|p| p.get(0).or_else(|| p.as_array().and_then(|a| a.get(0))))
-                                    .and_then(|p| p.get("text"))
-                                    .and_then(|t| t.as_str())
-                                {
-                                    if !content.is_empty() {
-                                        yield Ok(LlmChunk {
-                                            delta: crate::provider::ChunkDelta::Text(content.to_string()),
-                                            usage: None,
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        };
-
-        Ok(Box::pin(stream))
-    }
-
-    fn needs_refresh(&self) -> bool {
-        // 调用认证层的 needs_refresh() 方法
-        if let Ok(guard) = self.auth.try_lock() {
-            guard.needs_refresh()
-        } else {
-            false
-        }
-    }
-
-    async fn refresh_auth(&mut self) -> crate::Result<()> {
-        let mut auth_guard = self.auth.lock().await;
-        auth_guard.ensure_authenticated().await.map_err(|e| crate::Error::Auth(e.to_string()))?;
-        Ok(())
     }
 }

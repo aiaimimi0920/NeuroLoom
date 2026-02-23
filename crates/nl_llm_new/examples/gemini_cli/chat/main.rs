@@ -35,7 +35,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     print!("正在初始化并验证身份... ");
-    let mut provider = match GeminiCliProvider::new(config) {
+
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .expect("Failed to create HTTP client");
+
+    let mut provider = match GeminiCliProvider::new(config, http) {
         Ok(p) => p,
         Err(e) => {
             println!("✗");

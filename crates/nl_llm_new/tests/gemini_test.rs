@@ -7,12 +7,21 @@ use nl_llm_new::provider::gemini::GoogleAIStudioProvider;
 use nl_llm_new::provider::vertex::VertexProvider;
 use nl_llm_new::provider::LlmProvider;
 
+fn create_test_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .expect("Failed to create HTTP client")
+}
+
 fn dummy_vertex_provider() -> VertexProvider {
     let sa_json = r#"{"project_id":"test-proj","client_email":"test@test.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----","private_key_id":""}"#;
+    let http = create_test_client();
     VertexProvider::from_service_account(
         sa_json.to_string(),
         "gemini-2.5-flash".to_string(),
         None,
+        http,
     )
 }
 
@@ -66,9 +75,11 @@ fn test_vertex_compile_multi_turn() {
 
 #[test]
 fn test_google_ai_studio_compile_basic() {
+    let http = create_test_client();
     let provider = GoogleAIStudioProvider::from_api_key(
         "AIzaSyTestKey".to_string(),
         "gemini-2.5-flash".to_string(),
+        http,
     );
     let primitive = PrimitiveRequest::single_user_message("Test prompt");
     let body = provider.compile(&primitive);
@@ -85,8 +96,9 @@ fn test_provider_ids() {
     assert_eq!(vertex.id(), "vertex");
 
     // GoogleAIStudioProvider 是 GeminiProvider 的别名，id() 返回 "gemini"
+    let http = create_test_client();
     let studio = GoogleAIStudioProvider::from_api_key(
-        "test".to_string(), "gemini-2.5-flash".to_string(),
+        "test".to_string(), "gemini-2.5-flash".to_string(), http,
     );
     assert_eq!(studio.id(), "gemini");
 }

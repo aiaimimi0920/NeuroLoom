@@ -37,11 +37,16 @@ fn main() {
         .join("neuroloom")
         .join("iflow_token_test.json");
 
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .expect("Failed to create HTTP client");
+
     let provider = IFlowProvider::new(IFlowConfig::new(
         cookie,
         "qwen3-max".to_string(),
         token_path,
-    ));
+    ), http);
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {

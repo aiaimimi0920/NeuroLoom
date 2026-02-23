@@ -72,7 +72,12 @@ fn main() {
         .join("neuroloom")
         .join("iflow_token.json");
 
-    let provider = IFlowProvider::new(IFlowConfig::new(cookie, model, token_path));
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .expect("Failed to create HTTP client");
+
+    let provider = IFlowProvider::new(IFlowConfig::new(cookie, model, token_path), http);
 
     let primitive = PrimitiveRequest::single_user_message(&prompt);
     let body = provider.compile(&primitive);

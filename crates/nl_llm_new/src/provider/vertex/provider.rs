@@ -7,13 +7,16 @@
 
 use super::config::VertexConfig;
 use crate::auth::{Auth, SAProvider};
-use crate::primitive::PrimitiveRequest;
-use crate::provider::gemini::{compile_request, parse_response, parse_sse_stream};
-use crate::provider::{BoxStream, LlmChunk, LlmProvider, LlmResponse};
+// Unused import removed
+use tokio::sync::RwLock;
+use std::sync::Arc;
+use crate::provider::{Endpoint, GenericClient};
+use crate::provider::gemini::provider::GeminiProtocol;
+use crate::generic_client;
 use async_trait::async_trait;
+use std::time::{SystemTime, UNIX_EPOCH};
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 // ── 常量 ────────────────────────────────────────────────────────────────────────
 const VERTEX_API_VERSION: &str = "v1";
@@ -55,77 +58,49 @@ struct GoogleTokenResponse {
     token_type: String,
 }
 
-// ── VertexProvider ───────────────────────────────────────────────────────────────
 
-/// Vertex AI Provider
-///
-/// 通过 Service Account JSON 认证，调用 Vertex AI Gemini API
-pub struct VertexProvider {
-    config: VertexConfig,
-    http: reqwest::Client,
-    auth_enum: Auth,
+// ── 凭证与状态管理 ─────────────────────────────────────────────────────────────
+
+/// SA 认证状态缓存
+#[derive(Debug, Default)]
+struct AuthState {
+    access_token: String,
+    expires_at: u64,
 }
 
-impl VertexProvider {
-    /// 创建新的 Vertex Provider
-    pub fn new(config: VertexConfig) -> Self {
-        Self::with_client(
-            config,
-            reqwest::Client::builder()
-                .timeout(Duration::from_secs(60))
-                .build()
-                .expect("Failed to create HTTP client"),
-        )
+impl AuthState {
+    fn is_valid(&self) -> bool {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        // 提前 5 分钟刷新
+        self.expires_at > now + 300
     }
+}
 
-    /// 使用外部指定的 HTTP Client 创建 Provider
-    pub fn with_client(config: VertexConfig, http: reqwest::Client) -> Self {
-        let auth_enum = Auth::ServiceAccount {
-            provider: SAProvider::VertexAI,
-            credentials_json: config.credentials_json.clone(),
-        };
+pub struct VertexEndpoint {
+    config: VertexConfig,
+    auth_state: Arc<RwLock<AuthState>>,
+    http: reqwest::Client,
+}
 
-        Self {
-            config,
-            http,
-            auth_enum,
-        }
-    }
-
-    /// 以 SA JSON 字符串构建，指定模型和区域
-    pub fn from_service_account(
-        credentials_json: impl Into<String>,
-        model: impl Into<String>,
-        location: Option<String>,
-    ) -> Self {
-        Self::new(VertexConfig {
-            credentials_json: credentials_json.into(),
-            location,
-            model: model.into(),
-            base_url: None,
-        })
-    }
-
-    /// 从 SA JSON 文件加载
-    pub fn from_file(
-        path: &std::path::Path,
-        model: impl Into<String>,
-        location: Option<String>,
-    ) -> crate::Result<Self> {
-        let credentials_json = std::fs::read_to_string(path)?;
-        Ok(Self::from_service_account(credentials_json, model, location))
-    }
-
-    // ── 认证 ─────────────────────────────────────────────────────────────────────
-
-    /// 获取 Bearer access token（通过 SA JSON 签发 JWT 换取）
-    async fn get_access_token(&self) -> crate::Result<String> {
-        self.exchange_jwt_for_token(&self.config.credentials_json)
-            .await
+impl VertexEndpoint {
+    async fn refresh_auth_internal(&self) -> crate::Result<()> {
+        let (token, expires_in) = self.exchange_jwt_for_token(&self.config.credentials_json).await?;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        
+        let mut state = self.auth_state.write().await;
+        state.access_token = token;
+        state.expires_at = now + expires_in;
+        Ok(())
     }
 
     /// 解析 SA JSON，签发 JWT，向 Google token 端点换取 access_token
-    async fn exchange_jwt_for_token(&self, sa_json: &str) -> crate::Result<String> {
+    async fn exchange_jwt_for_token(&self, sa_json: &str) -> crate::Result<(String, u64)> {
         // 1. 解析服务账号 JSON
         let sa: ServiceAccount = serde_json::from_str(sa_json).map_err(|e| {
             crate::Error::Provider(crate::provider::ProviderError::fail(format!(
@@ -196,10 +171,8 @@ impl VertexProvider {
             )))
         })?;
 
-        Ok(token_resp.access_token)
+        Ok((token_resp.access_token, token_resp.expires_in))
     }
-
-    // ── 辅助方法 ─────────────────────────────────────────────────────────────────
 
     /// 从 SA JSON 中提取 project_id
     fn project_id(&self) -> crate::Result<String> {
@@ -220,103 +193,124 @@ impl VertexProvider {
             .as_deref()
             .unwrap_or(VERTEX_DEFAULT_LOCATION)
     }
-
-    /// 构造 API URL
-    fn build_url(&self, project_id: &str, action: &str) -> String {
-        let location = self.location();
-        let default_base = vertex_base_url(location);
-        let base = self.config.base_url.as_deref().unwrap_or(&default_base);
-        format!(
-            "{}/{}/projects/{}/locations/{}/publishers/google/models/{}:{}",
-            base, VERTEX_API_VERSION, project_id, location, self.config.model, action
-        )
-    }
 }
 
 #[async_trait]
-impl LlmProvider for VertexProvider {
-    fn id(&self) -> &str {
-        "vertex"
-    }
-
-    fn auth(&self) -> &Auth {
-        &self.auth_enum
-    }
-
-    fn supported_models(&self) -> &[&str] {
-        &[
-            "gemini-1.5-pro",
-            "gemini-1.5-flash",
-            "gemini-2.0-flash",
-            "gemini-2.5-flash",
-            "gemini-2.5-pro",
-        ]
-    }
-
-    fn compile(&self, primitive: &PrimitiveRequest) -> serde_json::Value {
-        compile_request(primitive)
-    }
-
-    async fn complete(&self, body: serde_json::Value) -> crate::Result<LlmResponse> {
-        let token = self.get_access_token().await?;
-        let project_id = self.project_id()?;
-        let url = self.build_url(&project_id, "generateContent");
-
-        let resp = self
-            .http
-            .post(&url)
-            .header("Content-Type", "application/json")
-            .header("Authorization", format!("Bearer {}", token))
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| crate::Error::Http(e.to_string()))?;
-
-        let status = resp.status();
-        let raw_text = resp.text().await.unwrap_or_default();
-
-        if !status.is_success() {
-            return Err(crate::Error::Provider(
-                crate::provider::ProviderError::from_http_status(
-                    status.as_u16(),
-                    format!("vertex: generateContent failed ({}): {}", status, raw_text.trim()),
-                ),
-            ));
+impl Endpoint for VertexEndpoint {
+    async fn pre_flight(&self) -> crate::Result<()> {
+        let state = self.auth_state.read().await;
+        if !state.is_valid() {
+            drop(state);
+            self.refresh_auth_internal().await?;
         }
-
-        parse_response(&raw_text)
+        Ok(())
     }
 
-    async fn stream(&self, body: serde_json::Value) -> crate::Result<BoxStream<'_, crate::Result<LlmChunk>>> {
-        let token = self.get_access_token().await?;
+    fn url(&self, model: &str, is_stream: bool) -> crate::Result<String> {
+        let action = if is_stream { "streamGenerateContent?alt=sse" } else { "generateContent" };
         let project_id = self.project_id()?;
-        let url = format!("{}?alt=sse", self.build_url(&project_id, "streamGenerateContent"));
+        let location = self.location();
+        let default_base = vertex_base_url(location);
+        let base = self.config.base_url.as_deref().unwrap_or(&default_base);
+        
+        Ok(format!(
+            "{}/{}/projects/{}/locations/{}/publishers/google/models/{}:{}",
+            base, VERTEX_API_VERSION, project_id, location, model, action
+        ))
+    }
 
-        let resp = self
-            .http
-            .post(&url)
-            .header("Content-Type", "application/json")
-            .header("Authorization", format!("Bearer {}", token))
-            .header("Accept", "text/event-stream")
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| crate::Error::Http(e.to_string()))?;
+    fn inject_auth(&self, req: reqwest::RequestBuilder) -> crate::Result<reqwest::RequestBuilder> {
+        // 由于预检过程(pre_flight)已确保 valid，这里安全 block 并提取
+        // 为了避免复杂的 async 嵌套（inject_auth 是同步签名），我们可以用 try_read 或者直接这里假定 pre_flight 做了保证。
+        // 由于 get_access_token() 是 async 的，但我们这里是同步的，所以我们读取当前状态即可
+        let token = {
+            let Ok(state) = self.auth_state.try_read() else {
+                return Err(crate::Error::Provider(crate::provider::ProviderError::fail("vertex: auth state locked")));
+            };
+            if !state.is_valid() {
+                return Err(crate::Error::Provider(crate::provider::ProviderError::fail("vertex: auth state invalid during inject_auth")));
+            }
+            state.access_token.clone()
+        };
 
-        let status = resp.status();
-        if !status.is_success() {
-            let text = resp.text().await.unwrap_or_default();
-            return Err(crate::Error::Provider(
-                crate::provider::ProviderError::from_http_status(
-                    status.as_u16(),
-                    format!("vertex: streamGenerateContent failed ({}): {}", status, text.trim()),
-                ),
-            ));
-        }
+        Ok(req.header("Authorization", format!("Bearer {}", token)))
+    }
 
-        Ok(parse_sse_stream(resp))
+    fn needs_refresh(&self) -> bool {
+        let Ok(state) = self.auth_state.try_read() else {
+            return true;
+        };
+        !state.is_valid()
+    }
+
+    async fn refresh_auth(&self) -> crate::Result<()> {
+        self.refresh_auth_internal().await
     }
 }
+
+pub type VertexProvider = GenericClient<VertexEndpoint, GeminiProtocol>;
+
+impl VertexProvider {
+    /// 创建新的 Vertex Provider（需要外部传入 HTTP Client）
+    ///
+    /// 注意：根据设计规范，HTTP Client 应由外部统一管理，
+    /// 避免每个 Provider 重复创建连接池。
+    pub fn new(config: VertexConfig, http: reqwest::Client) -> Self {
+        let auth_enum = Auth::ServiceAccount {
+            provider: SAProvider::VertexAI,
+            credentials_json: config.credentials_json.clone(),
+        };
+
+        let endpoint = VertexEndpoint {
+            config,
+            auth_state: Arc::new(RwLock::new(AuthState::default())),
+            http: http.clone(),
+        };
+
+        generic_client! {
+            id: "vertex".to_string(),
+            endpoint: endpoint,
+            protocol: GeminiProtocol,
+            auth: auth_enum,
+            supported_models: vec![
+                "gemini-1.5-pro".to_string(),
+                "gemini-1.5-flash".to_string(),
+                "gemini-2.0-flash".to_string(),
+                "gemini-2.0-pro-exp-02-05".to_string(),
+                "gemini-2.5-flash".to_string(),
+                "gemini-2.5-pro".to_string(),
+            ],
+            http: http
+        }
+    }
+
+    /// 以 SA JSON 字符串构建，指定模型和区域
+    pub fn from_service_account(
+        credentials_json: impl Into<String>,
+        model: impl Into<String>,
+        location: Option<String>,
+        http: reqwest::Client,
+    ) -> Self {
+        Self::new(VertexConfig {
+            credentials_json: credentials_json.into(),
+            location,
+            model: model.into(),
+            base_url: None,
+        }, http)
+    }
+
+    /// 从 SA JSON 文件加载
+    pub fn from_file(
+        path: &std::path::Path,
+        model: impl Into<String>,
+        location: Option<String>,
+        http: reqwest::Client,
+    ) -> crate::Result<Self> {
+        let credentials_json = std::fs::read_to_string(path)?;
+        Ok(Self::from_service_account(credentials_json, model, location, http))
+    }
+}
+
 
 // ── 独立辅助函数 ─────────────────────────────────────────────────────────────────
 
@@ -412,13 +406,15 @@ mod tests {
     #[test]
     fn test_from_service_account() {
         let sa_json = r#"{"project_id":"test-proj","client_email":"test@test.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----","private_key_id":""}"#;
+        let http = reqwest::Client::new();
         let provider = VertexProvider::from_service_account(
             sa_json.to_string(),
             "gemini-2.5-flash".to_string(),
             Some("us-west1".to_string()),
+            http,
         );
-        assert_eq!(provider.config.model, "gemini-2.5-flash");
-        assert_eq!(provider.config.location, Some("us-west1".to_string()));
+        assert_eq!(provider.endpoint.config.model, "gemini-2.5-flash");
+        assert_eq!(provider.endpoint.config.location, Some("us-west1".to_string()));
     }
 
     #[test]
@@ -429,8 +425,10 @@ mod tests {
             model: "gemini-2.5-flash".to_string(),
             base_url: None,
         };
-        let provider = VertexProvider::new(config);
-        let url = provider.build_url("my-proj", "generateContent");
+        let http = reqwest::Client::new();
+        let provider = VertexProvider::new(config, http);
+
+        let url = provider.endpoint.url("gemini-2.5-flash", false).unwrap();
         assert_eq!(
             url,
             "https://us-central1-aiplatform.googleapis.com/v1/projects/my-proj/locations/us-central1/publishers/google/models/gemini-2.5-flash:generateContent"
@@ -445,8 +443,10 @@ mod tests {
             model: "gemini-2.5-flash".to_string(),
             base_url: Some("https://custom.vertex.api".to_string()),
         };
-        let provider = VertexProvider::new(config);
-        let url = provider.build_url("my-proj", "generateContent");
+        let http = reqwest::Client::new();
+        let provider = VertexProvider::new(config, http);
+
+        let url = provider.endpoint.url("gemini-2.5-flash", false).unwrap();
         assert_eq!(
             url,
             "https://custom.vertex.api/v1/projects/my-proj/locations/us-central1/publishers/google/models/gemini-2.5-flash:generateContent"

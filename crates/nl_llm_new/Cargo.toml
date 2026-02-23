@@ -112,3 +112,15 @@ path = "examples/gemini/auth/main.rs"
 [[example]]
 name = "gemini_models"
 path = "examples/gemini/models/main.rs"
+
+[[example]]
+name = "vertex_chat"
+path = "examples/vertex/chat/main.rs"
+
+[[example]]
+name = "vertex_auth"
+path = "examples/vertex/auth/main.rs"
+
+[[example]]
+name = "vertex_models"
+path = "examples/vertex/models/main.rs"

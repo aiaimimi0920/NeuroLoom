@@ -4,22 +4,24 @@
 
 本文档定义了 `nl_llm` 模块的完整架构设计，包含代码结构、原语格式、转换层、容错机制和黑魔法代理等所有方面。基于以下核心原则：
 
-1. **认证与协议分离**：认证方式（OAuth/API Key/Service Account）与请求协议（Claude/OpenAI/Gemini）正交
-2. **原语中间层**：引入 Primitive 作为统一中间表示，解耦输入解析和输出生成
-3. **协议优先**：Provider 按协议划分，官方/兼容站由配置参数决定
-4. **配置区分类型**：`base_url` 是否自定义决定官方还是转发站，不是类型差异
-5. **分层容错**：Provider 层处理特有错误，Gateway 层处理通用容错
+1. **认证与协议分离**：认证方式（OAuth/API Key/MultiKey 签名/Service Account）与请求协议（Claude/OpenAI/Gemini）正交
+2. **认证输出多样化**：认证要素可表现为 HTTP Header、URL 参数、请求体字段、WebSocket 握手参数等多种形式
+3. **原语中间层**：引入 Primitive 作为统一中间表示，解耦输入解析和输出生成
+4. **协议优先**：Provider 按协议划分，官方/兼容站由配置参数决定
+5. **配置区分类型**：`base_url` 是否自定义决定官方还是转发站，不是类型差异
+6. **分层容错**：Provider 层处理特有错误，Gateway 层处理通用容错
 
 ---
 
 ## 1. 认证模式分析
 
-### 1.1 三种认证类型
+### 1.1 四种认证类型
 
 | 认证类型 | 特点 | Provider 示例 |
 |----------|------|---------------|
 | **OAuth** | 需浏览器登录、Token 会过期、需定期刷新 | Claude OAuth、Gemini CLI、Antigravity、iFlow |
 | **API Key** | 直接使用、不过期、按量计费 | 所有 Provider 都支持 |
+| **MultiKey 签名** | 多字段凭证、动态签名、每次请求计算 | 讯飞星火、百度文心、腾讯混元 |
 | **Service Account** | JSON 凭据、JWT 认证、GCP 专用 | Vertex AI |
 
 ### 1.2 官方 vs 转发站
@@ -53,12 +55,43 @@
 
 **结论：OAuth 认证必须各 Provider 独立实现，只能共享工具函数。**
 
+### 1.5 MultiKey 签名认证差异
+
+部分国内平台采用多字段凭证 + 动态签名的认证方式，与单一 API Key 模式有本质区别：
+
+| 维度 | 讯飞星火 | 百度文心 | 腾讯混元 |
+|------|---------|---------|---------|
+| 凭证字段 | APPID + APIKey + APISecret | APIKey + SecretKey | SecretId + SecretKey |
+| 签名算法 | HMAC-SHA256 | APIKey+SecretKey → Access Token | TC3-HMAC-SHA256 |
+| 签名时机 | 每次请求 | Token 过期时 | 每次请求 |
+| 签名位置 | URL 参数 | HTTP Header | HTTP Header |
+| APPID 位置 | 请求体 header | - | - |
+
+**讯飞星火签名流程示例**：
+
+```
+1. 拼接签名字符串：host + date + request-line
+2. HMAC-SHA256(api_secret, 签名字符串) → signature
+3. Base64(api_key, algorithm, signature) → authorization
+4. URL编码后附加到 WebSocket URL
+5. APPID 放入请求体 header 字段
+```
+
+**结论：MultiKey 认证需要独立的签名器实现，凭证验证和签名生成逻辑各平台差异巨大。**
+
 ### 1.4 网关协议的正交分解体系 (Orthogonal Decomposition)
 
-随着大模型网关的复杂化，传统的“一个 Provider 包打天下”的设计反模式（Anti-Pattern）已被废弃。新的架构推演明确了客户端网关由三个**完全正交（互不影响）**的积木构成：
+随着大模型网关的复杂化，传统的”一个 Provider 包打天下”的设计反模式（Anti-Pattern）已被废弃。新的架构推演明确了客户端网关由三个**完全正交（互不影响）**的积木构成：
 
-1. **认证维 (Auth / 换 Key)**：唯一的信条是将任意外部凭证（OAuth 网页令牌、iFlow Cookie、GCP JWT）映射转换为最终发送请求时的合法字符串（`Authorization: Bearer` 或 `x-goog-api-key` 头）。在发送前，它们都是等价的合法 Token。
+1. **认证维 (Auth / 换 Key)**：将任意形式的凭证（单一 Key、多字段组合、OAuth Token、JWT）映射转换为请求所需的认证要素。认证要素可能表现为：
+   - HTTP Header（`Authorization: Bearer xxx`）
+   - URL 参数（讯飞的签名参数 `?authorization=...`）
+   - 请求体字段（讯飞的 `app_id` 在 body 中）
+   - WebSocket 握手参数
+   - 动态签名（每次请求时实时计算，如 HMAC-SHA256）
+
 2. **路由维 (Endpoint / 通道)**：请求的目标服务器地址（例如：官方的 `api.anthropic.com` 或是本地代理 `127.0.0.1:8080`）。通道自身是透明的，只负责网络连接和扣费拦截。
+
 3. **协议维 (Protocol / 压包解包)**：数据 Payload 的最终形状（由于模型方言存在差异产生的结构区别：OpenAI 格式、Gemini 结构、Claude 结构）。
 
 #### 1.4.1 协议二维决定论 (Protocol 2D Determinism)
@@ -75,11 +108,26 @@
 高度去耦后的 LlmClient 将不再需要编写数十张功能相似的宏伟 Provider 面条代码，调用将被收缩为极具工业机械感的积木按需拼接调用：
 
 ```rust
-// 伪代码示例：调用 iFlow 代理站背后的 Claude 模型
+// 伪代码示例 1：调用 iFlow 代理站背后的 Claude 模型
 let client = LlmClient::new(
     Endpoint::Custom("https://iflow-proxy.com/v1"),       // (路由维) 去哪个地址
     Auth::IFlowCookie("BXAuth=..."),                      // (认证维) 怎么换门票
     ProtocolPicker::select("iflow", "claude-3.5-sonnet")  // (协议维) 用哪种信封 => 生成 OpenAI Protocol
+);
+
+// 伪代码示例 2：调用讯飞星火（MultiKey 签名）
+let client = LlmClient::new(
+    Endpoint::Official,                                   // 官方端点
+    Auth::MultiKey(MultiKeyConfig {
+        provider: MultiKeyProvider::XunFeiSpark,
+        credentials: hashmap!{
+            "app_id" => "50b077fc",
+            "api_key" => "edc616b0056d1425f7a3ce62c659bf6c",
+            "api_secret" => "MDU0M2RmZTFiZWVkNTQ5MWYyOGFmODh",
+        },
+        base_url: None,
+    }),
+    ProtocolPicker::select("xunfei", "generalv4")         // => 生成讯飞 WebSocket Protocol
 );
 ```
 此理念构筑了项目 `Proxy` 以及 `Translator` 管道组件彻底剥离的哲学基石。
@@ -102,7 +150,10 @@ nl_llm/src/
 │       ├── gemini_cli.rs         # Gemini CLI OAuth
 │       ├── antigravity.rs        # Antigravity OAuth
 │       ├── iflow.rs              # iFlow Cookie→Token
-│       └── vertex_sa.rs          # Vertex Service Account
+│       ├── vertex_sa.rs          # Vertex Service Account
+│       ├── xunfei.rs             # 讯飞星火 MultiKey 签名
+│       ├── baidu.rs              # 百度文心 MultiKey 签名
+│       └── tencent.rs            # 腾讯混元 MultiKey 签名
 │
 ├── primitive/                    # 原语格式（中间表示）
 │   ├── mod.rs
@@ -156,10 +207,15 @@ nl_llm/src/
 │   │
 │   ├── gemini/                   # Gemini 协议
 │   │   ├── mod.rs
-│   │   ├── common.rs             # 共享编译逻辑
+│   │   ├── protocol.rs           # 【规范】包含 Protocol（原语 ↔ 原生 JSON）转换逻辑
 │   │   ├── config.rs             # GeminiConfig（API Key 认证）
-│   │   ├── provider.rs           # API Key 认证（官方/兼容站）
-│   │   ├── vertex.rs             # Service Account 认证
+│   │   └── provider.rs           # 【规范】组装 GenericClient (整合 Protocol 与 Endpoint)
+│   │
+│   ├── vertex/                   # Vertex AI（Gemini 协议，Service Account 认证）
+│   │   ├── mod.rs
+│   │   ├── config.rs             # VertexConfig（Service Account 认证）
+│   │   └── provider.rs           # 复用 GeminiProtocol，独立 Endpoint
+│   │
 │   ├── gemini_cli/               # Gemini CLI 协议（从 gemini 拆分）
 │   │   ├── mod.rs
 │   │   ├── config.rs
@@ -180,6 +236,12 @@ nl_llm/src/
 │       ├── mod.rs
 │       ├── config.rs
 │       └── provider.rs
+│
+│   └── xunfei/                   # 讯飞星火（MultiKey 签名）
+│       ├── mod.rs
+│       ├── config.rs
+│       ├── signer.rs             # URL 签名生成器
+│       └── provider.rs           # WebSocket 协议处理
 │
 ├── black_magic_proxy/            # 黑魔法代理层
 │   ├── mod.rs                    # 模块导出
@@ -211,8 +273,11 @@ use std::path::PathBuf;
 /// 认证类型（顶层枚举）
 #[derive(Debug, Clone)]
 pub enum Auth {
-    /// API Key 认证
+    /// API Key 认证（单一 Key）
     ApiKey(ApiKeyConfig),
+
+    /// 多字段凭证认证（讯飞、百度、腾讯等）
+    MultiKey(MultiKeyConfig),
 
     /// OAuth 认证
     OAuth {
@@ -260,6 +325,36 @@ impl ApiKeyConfig {
             None => Cow::Borrowed(default),
         }
     }
+}
+
+/// 多字段凭证配置
+///
+/// 设计说明：
+/// - 部分平台需要多个凭证字段（如讯飞的 APPID + APIKey + APISecret）
+/// - 凭证字段存储在 HashMap 中，各 Provider 按需提取
+/// - 签名算法由 provider 字段决定
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultiKeyConfig {
+    /// Provider 类型（决定签名算法）
+    pub provider: MultiKeyProvider,
+
+    /// 凭证字段集合
+    /// - XunFei: app_id, api_key, api_secret
+    /// - Baidu: api_key, secret_key
+    /// - Tencent: secret_id, secret_key
+    pub credentials: HashMap<String, String>,
+
+    /// 自定义 Base URL
+    pub base_url: Option<String>,
+}
+
+/// 多字段凭证 Provider 标识
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum MultiKeyProvider {
+    XunFeiSpark,    // 讯飞星火：HMAC-SHA256 URL 签名
+    BaiduWenxin,    // 百度文心：API Key + Secret Key → Access Token
+    TencentHunyuan, // 腾讯混元：TC3-HMAC-SHA256
+    AliDashScope,   // 阿里云：可能需要特殊头
 }
 
 /// API Key Provider 标识
@@ -404,6 +499,132 @@ impl ClaudeOAuth {
             matches!(s.status(300), TokenStatus::Expired | TokenStatus::ExpiringSoon)
         })
     }
+}
+```
+
+#### providers/xunfei.rs - 讯飞星火 MultiKey 签名实现
+
+```rust
+use crate::auth::{MultiKeyConfig, MultiKeyProvider};
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+
+type HmacSha256 = Hmac<Sha256>;
+
+/// 讯飞星火认证器
+///
+/// 使用三元组凭证 (APPID + APIKey + APISecret) 进行动态签名
+pub struct XunFeiAuth {
+    app_id: String,
+    api_key: String,
+    api_secret: String,
+}
+
+impl XunFeiAuth {
+    /// 从 MultiKeyConfig 创建认证器
+    pub fn from_config(config: &MultiKeyConfig) -> crate::Result<Self> {
+        let get_cred = |key: &str| -> crate::Result<String> {
+            config.credentials.get(key)
+                .cloned()
+                .ok_or_else(|| crate::Error::MissingCredential(key.to_string()))
+        };
+
+        Ok(Self {
+            app_id: get_cred("app_id")?,
+            api_key: get_cred("api_key")?,
+            api_secret: get_cred("api_secret")?,
+        })
+    }
+
+    /// 生成带签名的 WebSocket URL
+    ///
+    /// 讯飞星火使用 WebSocket 协议，签名参数附加在 URL 上
+    pub fn build_signed_url(&self, endpoint: &str) -> crate::Result<String> {
+        let date = Self::format_date_rfc1123();
+        let host = "spark-api.xf-yun.com";
+
+        // 1. 拼接签名字符串
+        let signature_origin = format!(
+            "host: {}\ndate: {}\nGET {} HTTP/1.1",
+            host, date, endpoint
+        );
+
+        // 2. HMAC-SHA256 签名
+        let mut mac = HmacSha256::new_from_slice(self.api_secret.as_bytes())
+            .map_err(|e| crate::Error::AuthError(e.to_string()))?;
+        mac.update(signature_origin.as_bytes());
+        let signature = BASE64.encode(mac.finalize().into_bytes());
+
+        // 3. 拼接 authorization_origin
+        let authorization_origin = format!(
+            r#"api_key="{}", algorithm="hmac-sha256", headers="host date request-line", signature="{}""#,
+            self.api_key, signature
+        );
+
+        // 4. Base64 编码
+        let authorization = BASE64.encode(authorization_origin.as_bytes());
+
+        // 5. 构建最终 URL（URL 编码参数）
+        let url = format!(
+            "wss://{}{}?authorization={}&date={}&host={}",
+            host, endpoint,
+            urlencoding::encode(&authorization),
+            urlencoding::encode(&date),
+            host
+        );
+
+        Ok(url)
+    }
+
+    /// 生成 RFC1123 格式的时间戳
+    fn format_date_rfc1123() -> String {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        // RFC1123 格式: "Fri, 05 May 2023 10:43:39 GMT"
+        // 简化实现，实际应使用 chrono 或 time crate
+        let datetime = chrono::DateTime::from_timestamp(secs as i64, 0)
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        datetime.format("%a, %d %b %Y %H:%M:%S GMT").to_string()
+    }
+
+    /// 获取 APPID（请求体中需要）
+    pub fn app_id(&self) -> &str {
+        &self.app_id
+    }
+}
+```
+
+**讯飞星火请求体结构**：
+
+```rust
+/// 讯飞星火请求体
+pub struct XunFeiRequest {
+    pub header: XunFeiHeader,
+    pub parameter: XunFeiParameter,
+    pub payload: XunFeiPayload,
+}
+
+pub struct XunFeiHeader {
+    pub app_id: String,      // 从凭证获取
+    pub uid: Option<String>, // 用户标识
+    pub patch_id: Option<Vec<String>>, // 微调模型时需要
+}
+
+pub struct XunFeiParameter {
+    pub chat: XunFeiChatParam,
+}
+
+pub struct XunFeiChatParam {
+    pub domain: String,      // 模型域：generalv3.5, generalv4 等
+    pub temperature: Option<f32>,
+    pub max_tokens: Option<u32>,
+    pub top_k: Option<u32>,
 }
 ```
 
@@ -785,6 +1006,13 @@ pub enum TranslateError {
 
 ### 3.4 Provider 层 (provider/)
 
+#### 命名与内聚规范 (Naming Conventions)
+**架构红线**：Provider 模块内部**严禁**使用 `common.rs` / `utils.rs` 等语义模糊的命名。
+为了完美贯彻正交分解架构（Orthogonal Decomposition），各 Provider 内部结构必须明确职责边界：
+1. **`protocol.rs`**：收敛所有与协议定义相关的代码逻辑（如结构体序列化、流解析、SSE Fallback、特定 API 方言）。它只负责处理数据“长什么样”。
+2. **`config.rs` / Endpoint 定义**：收敛路由目标（Base URL 控制）和认证 Header 注入相关的逻辑。
+3. **`provider.rs`**：作为装配车间（Factory），利用宏 `generic_client!` 将上述两部分（以及外部注入的 HTTP Client）整合成一个标准的 `GenericClient` 返回。
+
 #### traits.rs
 
 ```rust
@@ -1163,13 +1391,20 @@ pub struct BlackMagicProxySpec {
 - provider: iflow
   cookie: "BXAuth=xxx;"
   model: "qwen3-max"
+
+# ========== 讯飞星火 ==========
+- provider: xunfei
+  app_id: "50b077fc"
+  api_key: "edc616b0056d1425f7a3ce62c659bf6c"
+  api_secret: "MDU0M2RmZTFiZWVkNTQ5MWYyOGFmODh"
+  model: "generalv4"          # 可选: generalv3.5, generalv4, 4.0Ultra
 ```
 
 ---
 
 ## 7. 设计原则总结
 
-本文档定义的八大核心设计原则：
+本文档定义的十大核心设计原则：
 
 | 序号 | 原则 | 说明 |
 |------|------|------|
@@ -1177,10 +1412,12 @@ pub struct BlackMagicProxySpec {
 | 2 | **协议优先** | Provider 按协议划分，不是按官方/转发站划分 |
 | 3 | **配置区分类型** | 官方/转发站由 `base_url` 决定，不是类型差异 |
 | 4 | **OAuth 独立实现** | 各 Provider 的 OAuth 差异太大，必须独立实现 |
-| 5 | **原语中间层** | `PrimitiveRequest` 作为统一中间表示，解耦转换 |
-| 6 | **统一 Trait 接口** | `LlmProvider` trait 提供统一调用接口 |
-| 7 | **分层容错** | Provider 层处理特有容错，Gateway 层处理通用容错 |
-| 8 | **错误信号传递** | `ProviderError` 携带重试/降级信号供 Gateway 决策 |
+| 5 | **MultiKey 独立签名** | 多字段凭证需要独立的签名器，各平台算法差异大 |
+| 6 | **认证输出多样化** | 认证要素可表现为 Header、URL 参数、请求体字段等多种形式 |
+| 7 | **原语中间层** | `PrimitiveRequest` 作为统一中间表示，解耦转换 |
+| 8 | **统一 Trait 接口** | `LlmProvider` trait 提供统一调用接口 |
+| 9 | **分层容错** | Provider 层处理特有容错，Gateway 层处理通用容错 |
+| 10 | **错误信号传递** | `ProviderError` 携带重试/降级信号供 Gateway 决策 |
 
 ---
 

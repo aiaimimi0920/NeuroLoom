@@ -6,10 +6,11 @@ use super::config::IFlowConfig;
 use crate::auth::providers::iflow::IFlowAuth;
 use crate::auth::Auth;
 use crate::primitive::PrimitiveRequest;
-use crate::provider::{BoxStream, LlmChunk, LlmProvider, LlmResponse, StopReason, Usage};
+use crate::provider::{BoxStream, LlmChunk, LlmResponse, StopReason, Usage, GenericClient, Endpoint, Protocol};
+use crate::generic_client;
 use async_trait::async_trait;
-use std::time::Duration;
 use tokio::sync::Mutex;
+use std::sync::Arc;
 
 /// iFlow 支持的模型常量
 pub mod models {
@@ -33,120 +34,34 @@ pub mod models {
     pub const DEFAULT_MODEL: &str = "qwen3-max";
 }
 
-/// IFlow Provider
-///
-/// 使用 Cookie 认证，通过 iFlow 平台获取 API Key 后调用 OpenAI 兼容接口
-pub struct IFlowProvider {
-    config: IFlowConfig,
-    /// 认证实例（使用 tokio::Mutex 支持异步跨 await）
-    auth: Mutex<IFlowAuth>,
-    /// 复用的 HTTP Client（用于 API 调用）
-    http: reqwest::Client,
-    /// Auth enum 用于 trait 方法返回
-    auth_enum: Auth,
+// ── Orthogonal Decomposition: Protocol & Endpoint ─────────────────────────────
+
+pub struct IFlowProtocol {
+    pub default_model: String,
 }
 
-impl IFlowProvider {
-    /// 创建新的 IFlow Provider（使用默认 HTTP 客户端）
-    pub fn new(config: IFlowConfig) -> Self {
-        Self::with_client(
-            config,
-            reqwest::Client::builder()
-                .timeout(Duration::from_secs(60))
-                .build()
-                .expect("Failed to create HTTP client"),
-        )
-    }
-
-    /// 使用外部指定的 HTTP 客户端创建 IFlow Provider
-    pub fn with_client(config: IFlowConfig, http: reqwest::Client) -> Self {
-        // 尝试从文件加载 token，如果失败则创建新实例
-        let mut auth = IFlowAuth::from_file(&config.token_path).unwrap_or_else(|_| IFlowAuth::new());
-
-        // 设置 Cookie（如果文件中没有或需要更新）
-        auth.set_cookie(&config.cookie);
-
-        let auth_enum = Auth::ApiKey(crate::auth::ApiKeyConfig::new(
-            config.cookie.clone(),
-            crate::auth::ApiKeyProvider::IFlow,
-        ));
-
-        Self {
-            config,
-            auth: Mutex::new(auth),
-            http,
-            auth_enum,
-        }
-    }
-
-    /// 获取 API Key（从缓存或新获取）
-    async fn get_api_key(&self) -> crate::Result<String> {
-        let mut auth_guard = self.auth.lock().await;
-        auth_guard.ensure_authenticated().await.map_err(|e| crate::Error::Auth(e.to_string()))?;
-
-        auth_guard.api_key()
-            .map(|s| s.to_string())
-            .ok_or_else(|| crate::Error::Auth("No API key available".to_string()))
-    }
-
-    /// 清除 API Key 缓存
-    pub async fn clear_cache(&self) {
-        let mut auth_guard = self.auth.lock().await;
-        auth_guard.clear_cache();
-    }
-
-    /// 获取 API Key（公开方法，供示例和调试使用）
-    ///
-    /// 强制刷新并返回新的 API Key
-    pub async fn fetch_api_key(&self) -> crate::Result<String> {
-        let mut auth_guard = self.auth.lock().await;
-        auth_guard.fetch_api_key().await.map_err(|e| crate::Error::Auth(e.to_string()))
-    }
-
-    /// 检查模型是否支持 Thinking 模式
-    fn is_thinking_model(model: &str) -> bool {
-        let model_lower = model.to_lowercase();
-        models::THINKING_MODELS
-            .iter()
-            .any(|m| model_lower.starts_with(&m.to_lowercase()))
-            || model_lower.starts_with("glm")
-    }
-
-    /// 检查模型是否需要 reasoning_split
-    fn needs_reasoning_split(model: &str) -> bool {
-        let model_lower = model.to_lowercase();
-        models::REASONING_SPLIT_MODELS
-            .iter()
-            .any(|m| model_lower.starts_with(&m.to_lowercase()))
-    }
-}
-
-#[async_trait]
-impl LlmProvider for IFlowProvider {
-    fn id(&self) -> &str {
-        "iflow"
-    }
-
-    fn auth(&self) -> &Auth {
-        &self.auth_enum
-    }
-
-    fn supported_models(&self) -> &[&str] {
-        &["qwen3-max", "qwen3-max-preview", "deepseek-v3.2", "glm-4-plus"]
-    }
-
+impl Protocol for IFlowProtocol {
     fn compile(&self, primitive: &PrimitiveRequest) -> serde_json::Value {
         let mut req = primitive.clone();
         if req.model.is_empty() {
-            req.model = self.config.model.clone();
+            req.model = self.default_model.clone();
         }
 
         let mut body = crate::translator::wrapper::openai::wrap(&req).unwrap_or_default();
 
         // 注入 Thinking (Reasoning) 参数
-        let model = self.config.model.to_lowercase();
+        let model = req.model.to_lowercase();
 
-        if Self::is_thinking_model(&model) {
+        let is_thinking = models::THINKING_MODELS
+            .iter()
+            .any(|m| model.starts_with(&m.to_lowercase()))
+            || model.starts_with("glm");
+
+        let needs_reasoning_split = models::REASONING_SPLIT_MODELS
+            .iter()
+            .any(|m| model.starts_with(&m.to_lowercase()));
+
+        if is_thinking {
             if let Some(obj) = body.as_object_mut() {
                 let kwargs = obj
                     .entry("chat_template_kwargs")
@@ -159,7 +74,7 @@ impl LlmProvider for IFlowProvider {
                     }
                 }
             }
-        } else if Self::needs_reasoning_split(&model) {
+        } else if needs_reasoning_split {
             if let Some(obj) = body.as_object_mut() {
                 obj.insert("reasoning_split".to_string(), serde_json::Value::Bool(true));
             }
@@ -168,33 +83,7 @@ impl LlmProvider for IFlowProvider {
         body
     }
 
-    async fn complete(&self, body: serde_json::Value) -> crate::Result<LlmResponse> {
-        let api_key = self.get_api_key().await?;
-
-        let resp = self
-            .http
-            .post("https://apis.iflow.cn/v1/chat/completions")
-            .header("Authorization", format!("Bearer {}", api_key))
-            .header("Content-Type", "application/json")
-            .header(
-                "User-Agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            )
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| crate::Error::Http(e.to_string()))?;
-
-        if !resp.status().is_success() {
-            let status = resp.status().as_u16();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(crate::Error::Provider(crate::provider::ProviderError::from_http_status(
-                status,
-                format!("iflow chat failed: [{}] {}", status, text),
-            )));
-        }
-
-        let raw_text = resp.text().await.unwrap_or_default();
+    fn parse_response(&self, raw_text: &str) -> crate::Result<LlmResponse> {
         let json_resp: serde_json::Value =
             serde_json::from_str(&raw_text).map_err(|e| crate::Error::Json(e))?;
 
@@ -211,37 +100,10 @@ impl LlmProvider for IFlowProvider {
         })
     }
 
-    async fn stream(
+    fn parse_stream(
         &self,
-        mut body: serde_json::Value,
-    ) -> crate::Result<BoxStream<'_, crate::Result<LlmChunk>>> {
-        body["stream"] = serde_json::Value::Bool(true);
-        let api_key = self.get_api_key().await?;
-
-        let resp = self
-            .http
-            .post("https://apis.iflow.cn/v1/chat/completions")
-            .header("Authorization", format!("Bearer {}", api_key))
-            .header("Content-Type", "application/json")
-            .header("Accept", "text/event-stream")
-            .header(
-                "User-Agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            )
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| crate::Error::Http(e.to_string()))?;
-
-        if !resp.status().is_success() {
-            let status = resp.status().as_u16();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(crate::Error::Provider(crate::provider::ProviderError::from_http_status(
-                status,
-                format!("iflow chat stream failed: [{}] {}", status, text),
-            )));
-        }
-
+        resp: reqwest::Response,
+    ) -> crate::Result<BoxStream<'static, crate::Result<LlmChunk>>> {
         use futures::StreamExt;
 
         let stream = async_stream::stream! {
@@ -258,6 +120,20 @@ impl LlmProvider for IFlowProvider {
                 };
                 let s = String::from_utf8_lossy(&bytes);
                 buffer.push_str(&s);
+
+                // Check if this might be a pure non-SSE JSON response returned by mistake
+                if buffer.starts_with('{') && buffer.ends_with('}') {
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&buffer) {
+                        if let Some(content) = v["choices"][0]["message"]["content"].as_str() {
+                            yield Ok(LlmChunk {
+                                delta: crate::provider::ChunkDelta::Text(content.to_string()),
+                                usage: None,
+                            });
+                            buffer.clear();
+                            return;
+                        }
+                    }
+                }
 
                 while let Some(pos) = buffer.find("\n\n").or_else(|| buffer.find("\r\n\r\n")) {
                     let offset = if buffer[pos..].starts_with("\r\n\r\n") { 4 } else { 2 };
@@ -290,9 +166,49 @@ impl LlmProvider for IFlowProvider {
 
         Ok(Box::pin(stream))
     }
+}
+
+pub struct IFlowEndpoint {
+    auth: Arc<Mutex<IFlowAuth>>,
+}
+
+#[async_trait]
+impl Endpoint for IFlowEndpoint {
+    async fn pre_flight(&self) -> crate::Result<()> {
+        let mut auth_guard = self.auth.lock().await;
+        auth_guard.ensure_authenticated().await.map_err(|e| crate::Error::Auth(e.to_string()))?;
+        Ok(())
+    }
+
+    fn url(&self, _model: &str, _is_stream: bool) -> crate::Result<String> {
+        Ok("https://apis.iflow.cn/v1/chat/completions".to_string())
+    }
+
+    fn decorate_body(&self, mut body: serde_json::Value) -> serde_json::Value {
+        // Stream 选项需要在此注入，因为泛型在 stream 请求里发的是同一套体
+        if body.get("stream").is_none() {
+            body["stream"] = serde_json::Value::Bool(false);
+        }
+        body
+    }
+
+    fn inject_auth(&self, req: reqwest::RequestBuilder) -> crate::Result<reqwest::RequestBuilder> {
+        // 获取预先解密的 token，一定能在 pre_flight() 后的缓存拿到
+        let api_key = {
+            let guard = self.auth.try_lock().map_err(|_| crate::Error::Auth("Auth Mutex Failed".to_string()))?;
+            guard.api_key().map(|s| s.to_string()).ok_or_else(|| crate::Error::Auth("No API key available".to_string()))?
+        };
+
+        let req = req
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header(
+                "User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            );
+        Ok(req)
+    }
 
     fn needs_refresh(&self) -> bool {
-        // 调用认证层的 needs_refresh() 方法
         if let Ok(guard) = self.auth.try_lock() {
             guard.needs_refresh()
         } else {
@@ -300,9 +216,57 @@ impl LlmProvider for IFlowProvider {
         }
     }
 
-    async fn refresh_auth(&mut self) -> crate::Result<()> {
+    async fn refresh_auth(&self) -> crate::Result<()> {
         let mut auth_guard = self.auth.lock().await;
         auth_guard.ensure_authenticated().await.map_err(|e| crate::Error::Auth(e.to_string()))?;
         Ok(())
+    }
+}
+
+// ── GenericClient alias IFlowProvider ───────────────────────────────────────
+
+pub type IFlowProvider = GenericClient<IFlowEndpoint, IFlowProtocol>;
+
+impl IFlowProvider {
+    /// 创建新的 IFlow Provider（需要外部传入 HTTP Client）
+    ///
+    /// 注意：根据设计规范，HTTP Client 应由外部统一管理，
+    /// 避免每个 Provider 重复创建连接池。
+    pub fn new(config: IFlowConfig, http: reqwest::Client) -> Self {
+        let mut auth = IFlowAuth::from_file(&config.token_path).unwrap_or_else(|_| IFlowAuth::new());
+        auth.set_cookie(&config.cookie);
+
+        let auth_enum = Auth::IFlowCookie {
+            cookie: config.cookie.clone(),
+            token_path: config.token_path.clone(),
+        };
+
+        let shared_auth = Arc::new(Mutex::new(auth));
+
+        generic_client! {
+            id: "iflow".to_string(),
+            endpoint: IFlowEndpoint { auth: shared_auth.clone() },
+            protocol: IFlowProtocol { default_model: config.model.clone() },
+            auth: auth_enum,
+            supported_models: vec![
+                "qwen3-max".to_string(),
+                "qwen3-max-preview".to_string(),
+                "deepseek-v3.2".to_string(),
+                "glm-4-plus".to_string()
+            ],
+            http: http
+        }
+    }
+
+    /// 获取 API Key（公开方法，供示例和调试使用）
+    pub async fn fetch_api_key(&self) -> crate::Result<String> {
+        let mut auth_guard = self.endpoint.auth.lock().await;
+        auth_guard.fetch_api_key().await.map_err(|e| crate::Error::Auth(e.to_string()))
+    }
+
+    /// 清除 API Key 缓存
+    pub async fn clear_cache(&self) {
+        let mut auth_guard = self.endpoint.auth.lock().await;
+        auth_guard.clear_cache();
     }
 }

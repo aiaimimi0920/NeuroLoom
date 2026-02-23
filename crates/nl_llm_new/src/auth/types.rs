@@ -17,6 +17,9 @@ pub enum Auth {
     /// API Key 认证
     ApiKey(ApiKeyConfig),
 
+    /// 多字段凭证认证（讯飞、百度、腾讯等）
+    MultiKey(MultiKeyConfig),
+
     /// OAuth 认证
     OAuth {
         provider: OAuthProvider,
@@ -27,6 +30,16 @@ pub enum Auth {
     ServiceAccount {
         provider: SAProvider,
         credentials_json: String,
+    },
+
+    /// iFlow Cookie 认证
+    ///
+    /// iFlow 使用 Cookie 换取临时 API Key，属于特殊的认证流程
+    IFlowCookie {
+        /// Cookie 字符串
+        cookie: String,
+        /// Token 缓存文件路径
+        token_path: PathBuf,
     },
 }
 
@@ -87,7 +100,6 @@ pub enum ApiKeyProvider {
     OpenAI,
     GeminiAIStudio,
     Codex,
-    IFlow,
 }
 
 impl ApiKeyProvider {
@@ -98,10 +110,37 @@ impl ApiKeyProvider {
             ApiKeyProvider::OpenAI => "https://api.openai.com",
             ApiKeyProvider::GeminiAIStudio => "https://generativelanguage.googleapis.com",
             ApiKeyProvider::Codex => "https://chatgpt.com/backend-api/codex",
-            ApiKeyProvider::IFlow => "https://apis.iflow.cn",
         }
     }
 }
+
+/// 多字段凭证配置
+///
+/// 设计说明：
+/// - 部分平台需要多个凭证字段（如讯飞的 APPID + APIKey + APISecret）
+/// - 凭证字段存储在 HashMap 中，各 Provider 按需提取
+/// - 签名算法由 provider 字段决定
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultiKeyConfig {
+    /// Provider 类型（决定签名算法）
+    pub provider: MultiKeyProvider,
+
+    /// 凭证字段集合
+    pub credentials: HashMap<String, String>,
+
+    /// 自定义 Base URL
+    pub base_url: Option<String>,
+}
+
+/// 多字段凭证 Provider 标识
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MultiKeyProvider {
+    XunFeiSpark,    // 讯飞星火：HMAC-SHA256 URL 签名
+    BaiduWenxin,    // 百度文心：API Key + Secret Key → Access Token
+    TencentHunyuan, // 腾讯混元：TC3-HMAC-SHA256
+    AliDashScope,   // 阿里云：可能需要特殊头
+}
+
 
 /// OAuth Provider 标识
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -48,18 +48,23 @@ fn main() {
     println!("用户: {}", prompt);
     println!();
 
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .expect("Failed to create HTTP client");
+
     let provider = if let Some(base) = base_url {
         let mut auth_config = ApiKeyConfig::new(api_key, ApiKeyProvider::GeminiAIStudio);
         auth_config.base_url = Some(base);
         let mut config = GeminiConfig::new(auth_config, model.clone());
-        
+
         let mut headers = HashMap::new();
         headers.insert("X-Router-Channel".to_string(), "forward-test".to_string());
         config.extra_headers = headers;
-        
-        GeminiProvider::new(config)
+
+        GeminiProvider::new(config, http)
     } else {
-        GeminiProvider::from_api_key(api_key, model.clone())
+        GeminiProvider::from_api_key(api_key, model.clone(), http)
     };
     
     let mut primitive = PrimitiveRequest::single_user_message(&prompt);
