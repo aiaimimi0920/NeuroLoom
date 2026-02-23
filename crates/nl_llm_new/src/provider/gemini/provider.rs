@@ -8,7 +8,7 @@
 //!
 //! 认证方式: `x-goog-api-key` header
 
-use super::common::{compile_gemini_request, parse_gemini_response, parse_gemini_sse_stream};
+use super::common::{compile_request, parse_response, parse_sse_stream};
 use super::config::GeminiConfig;
 use crate::auth::{Auth, ApiKeyConfig, ApiKeyProvider};
 use crate::primitive::PrimitiveRequest;
@@ -111,12 +111,23 @@ impl LlmProvider for GeminiProvider {
     }
 
     fn compile(&self, primitive: &PrimitiveRequest) -> serde_json::Value {
-        compile_gemini_request(primitive)
+        // 确定 model：优先使用 primitive 中的，否则使用 config 中的
+        let model = if primitive.model.is_empty() {
+            &self.config.model
+        } else {
+            &primitive.model
+        };
+
+        let mut body = compile_request(primitive);
+        // 注入 model 用于 URL 构建（会在 complete/stream 中移除）
+        body["model"] = serde_json::json!(model);
+        body
     }
 
     async fn complete(&self, mut body: serde_json::Value) -> crate::Result<LlmResponse> {
+        // 提取并移除 model 字段
         let model = body.as_object_mut()
-            .and_then(|obj| obj.remove("_model"))
+            .and_then(|obj| obj.remove("model"))
             .and_then(|v| v.as_str().map(|s| s.to_string()))
             .unwrap_or_else(|| self.config.model.clone());
 
@@ -154,15 +165,16 @@ impl LlmProvider for GeminiProvider {
             ));
         }
 
-        parse_gemini_response(&raw_text)
+        parse_response(&raw_text)
     }
 
     async fn stream(
         &self,
         mut body: serde_json::Value,
     ) -> crate::Result<BoxStream<'_, crate::Result<LlmChunk>>> {
+        // 提取并移除 model 字段
         let model = body.as_object_mut()
-            .and_then(|obj| obj.remove("_model"))
+            .and_then(|obj| obj.remove("model"))
             .and_then(|v| v.as_str().map(|s| s.to_string()))
             .unwrap_or_else(|| self.config.model.clone());
 
@@ -200,7 +212,7 @@ impl LlmProvider for GeminiProvider {
             ));
         }
 
-        Ok(parse_gemini_sse_stream(resp))
+        Ok(parse_sse_stream(resp))
     }
 }
 
@@ -209,7 +221,7 @@ impl LlmProvider for GeminiProvider {
 
 /// Google AI Studio Provider (GeminiProvider 别名)
 ///
-/// 保留此类型以保持向后兼容
+/// 保留此类型以保��向后兼容
 pub type GoogleAIStudioProvider = GeminiProvider;
 
 // ── 测试 ─────────────────────────────────────────────────────────────────────────

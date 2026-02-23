@@ -1,9 +1,9 @@
 //! Gemini 协议共享代码
 //!
 //! 提供以下共享函数：
-//! - `compile_gemini_request`: 将 PrimitiveRequest 编译为 Gemini JSON 请求体
-//! - `parse_gemini_response`: 解析 Gemini 非流式响应
-//! - `parse_gemini_sse_stream`: 解析 Gemini SSE 流式响应
+//! - `compile_request`: 将 PrimitiveRequest 编译为 Gemini JSON 请求体
+//! - `parse_response`: 解析 Gemini 非流式响应
+//! - `parse_sse_stream`: 解析 Gemini SSE 流式响应
 
 use crate::primitive::{PrimitiveContent, PrimitiveRequest, Role};
 use crate::provider::{LlmChunk, LlmResponse, StopReason, Usage};
@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 /// - role: "user" | "model"（不用 "assistant"）
 /// - parts: [{ "text": "..." }]
 /// - systemInstruction: { "parts": [...] }
-pub fn compile_gemini_request(primitive: &PrimitiveRequest) -> Value {
+pub fn compile_request(primitive: &PrimitiveRequest) -> Value {
     let mut body = json!({});
 
     // System instruction
@@ -96,14 +96,12 @@ pub fn compile_gemini_request(primitive: &PrimitiveRequest) -> Value {
             .collect();
         body["tools"] = json!([{"functionDeclarations": func_decls}]);
     }
-    // Inject model to allow provider dynamic URL generation
-    body["_model"] = json!(primitive.model);
 
     body
 }
 
 /// 解析 Gemini 非流式响应：candidates[0].content.parts[0].text
-pub fn parse_gemini_response(raw: &str) -> crate::Result<LlmResponse> {
+pub fn parse_response(raw: &str) -> crate::Result<LlmResponse> {
     let json: Value = serde_json::from_str(raw).map_err(|e| {
         crate::Error::Provider(crate::provider::ProviderError::fail(format!(
             "gemini: generateContent decode response failed: {}",
@@ -157,7 +155,7 @@ pub fn parse_gemini_response(raw: &str) -> crate::Result<LlmResponse> {
 }
 
 /// 解析 SSE 流，返回 BoxStream
-pub fn parse_gemini_sse_stream(
+pub fn parse_sse_stream(
     resp: reqwest::Response,
 ) -> std::pin::Pin<Box<dyn futures::Stream<Item = crate::Result<LlmChunk>> + Send + 'static>> {
     use futures::StreamExt;
@@ -219,13 +217,13 @@ mod tests {
     use crate::primitive::PrimitiveMessage;
 
     #[test]
-    fn test_compile_gemini_request_user_message() {
+    fn test_compile_request_user_message() {
         let primitive = PrimitiveRequest {
             model: "gemini-2.5-flash".to_string(),
             messages: vec![PrimitiveMessage::user("Hello Gemini!")],
             ..Default::default()
         };
-        let body = compile_gemini_request(&primitive);
+        let body = compile_request(&primitive);
 
         let contents = body["contents"].as_array().unwrap();
         assert_eq!(contents.len(), 1);
@@ -234,14 +232,14 @@ mod tests {
     }
 
     #[test]
-    fn test_compile_gemini_request_system_message() {
+    fn test_compile_request_system_message() {
         let primitive = PrimitiveRequest {
             model: "gemini-2.5-flash".to_string(),
             system: Some("You are a helpful AI.".to_string()),
             messages: vec![PrimitiveMessage::user("Hello!")],
             ..Default::default()
         };
-        let body = compile_gemini_request(&primitive);
+        let body = compile_request(&primitive);
 
         // systemInstruction 应该被提取
         assert!(body.get("systemInstruction").is_some());
@@ -255,7 +253,7 @@ mod tests {
     }
 
     #[test]
-    fn test_compile_gemini_request_assistant_message() {
+    fn test_compile_request_assistant_message() {
         let primitive = PrimitiveRequest {
             model: "gemini-2.5-flash".to_string(),
             messages: vec![
@@ -265,7 +263,7 @@ mod tests {
             ],
             ..Default::default()
         };
-        let body = compile_gemini_request(&primitive);
+        let body = compile_request(&primitive);
 
         let contents = body["contents"].as_array().unwrap();
         assert_eq!(contents.len(), 3);
@@ -275,7 +273,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_gemini_response() {
+    fn test_parse_response() {
         let raw = r#"{
             "candidates": [{
                 "content": {
@@ -290,16 +288,16 @@ mod tests {
                 "totalTokenCount": 15
             }
         }"#;
-        let result = parse_gemini_response(raw).unwrap();
+        let result = parse_response(raw).unwrap();
         assert_eq!(result.content, "Hello, I am Gemini!");
         assert_eq!(result.usage.input_tokens, 10);
         assert_eq!(result.usage.output_tokens, 5);
     }
 
     #[test]
-    fn test_parse_gemini_response_error() {
+    fn test_parse_response_error() {
         let raw = r#"{"error": "something went wrong"}"#;
-        let result = parse_gemini_response(raw);
+        let result = parse_response(raw);
         // 应该返回空内容而不是错误
         assert_eq!(result.unwrap().content, "");
     }

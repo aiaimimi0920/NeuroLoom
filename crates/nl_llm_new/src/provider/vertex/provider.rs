@@ -8,7 +8,7 @@
 use super::config::VertexConfig;
 use crate::auth::{Auth, SAProvider};
 use crate::primitive::PrimitiveRequest;
-use crate::provider::gemini::common::{compile_gemini_request, parse_gemini_response, parse_gemini_sse_stream};
+use crate::provider::gemini::{compile_request, parse_response, parse_sse_stream};
 use crate::provider::{BoxStream, LlmChunk, LlmProvider, LlmResponse};
 use async_trait::async_trait;
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
@@ -254,7 +254,7 @@ impl LlmProvider for VertexProvider {
     }
 
     fn compile(&self, primitive: &PrimitiveRequest) -> serde_json::Value {
-        compile_gemini_request(primitive)
+        compile_request(primitive)
     }
 
     async fn complete(&self, body: serde_json::Value) -> crate::Result<LlmResponse> {
@@ -284,7 +284,7 @@ impl LlmProvider for VertexProvider {
             ));
         }
 
-        parse_gemini_response(&raw_text)
+        parse_response(&raw_text)
     }
 
     async fn stream(&self, body: serde_json::Value) -> crate::Result<BoxStream<'_, crate::Result<LlmChunk>>> {
@@ -314,7 +314,7 @@ impl LlmProvider for VertexProvider {
             ));
         }
 
-        Ok(parse_gemini_sse_stream(resp))
+        Ok(parse_sse_stream(resp))
     }
 }
 

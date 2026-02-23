@@ -87,8 +87,7 @@ impl LlmProvider for GeminiCliProvider {
             req.model = self.config.model.clone();
         }
 
-        let compiler = crate::provider::gemini::compiler::GeminiCompiler;
-        let inner_request = compiler.compile(&req);
+        let inner_request = crate::provider::gemini::compile_request(&req);
         
         let mut request_payload = serde_json::json!({
             "sessionId": format!("-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos() & 0x7FFFFFFFFFFFFFFF)
