@@ -365,8 +365,12 @@ pub enum PipelineInput {
     /// 封包数据
     Packed(serde_json::Value),
 
-    /// 原始字节
+    /// 原始字节（非流式响应）
     Raw(Vec<u8>),
+
+    /// 原始 HTTP 响应（流式响应）
+    /// 用于保存 reqwest::Response 对象供 unpack_stream 使用
+    RawResponse(reqwest::Response),
 }
 
 pub enum PipelineOutput {
@@ -375,6 +379,16 @@ pub enum PipelineOutput {
 
     /// 流式响应
     Stream(crate::provider::BoxStream<'static, crate::Result<crate::provider::LlmChunk>>),
+}
+
+impl PipelineContext {
+    /// 取出 input 并替换为占位符，用于需要 move ownership 的场景（如 RawResponse）
+    pub fn take_input(&mut self) -> PipelineInput {
+        std::mem::replace(&mut self.input, PipelineInput::Raw(vec![]))
+    }
+
+    pub fn take_response(&mut self) -> crate::Result<LlmResponse> { ... }
+    pub fn take_stream(&mut self) -> crate::Result<BoxLlmStream> { ... }
 }
 ```
 
@@ -490,7 +504,8 @@ pub struct SendStage {
     site: Box<dyn Site>,
     authenticator: Arc<tokio::sync::Mutex<Box<dyn Authenticator>>>,
     http: reqwest::Client,
-    protocol: Box<dyn ProtocolFormat>,
+    protocol: Arc<dyn ProtocolFormat>,
+    hooks: Vec<Arc<dyn ProtocolHook>>,
 }
 
 impl Stage for SendStage {
@@ -510,14 +525,19 @@ impl Stage for SendStage {
                 req = req.header(k, v);
             }
 
+            // 调用 before_send 钩子
+            for hook in &self.hooks {
+                hook.before_send(ctx, &mut req);
+            }
+
             // 注入认证
             let auth = self.authenticator.lock().await;
             req = auth.inject(req)?;
 
             // 发送请求
-            let resp = req.send().await?;
+            let mut resp = req.send().await?;
 
-            // 检查状态码
+            // 错误规范化
             if !resp.status().is_success() {
                 let status = resp.status().as_u16();
                 let raw = resp.text().await.unwrap_or_default();
@@ -525,9 +545,19 @@ impl Stage for SendStage {
                 return Err(crate::Error::Standard(error));
             }
 
-            ctx.output = Some(PipelineOutput::Response(
-                self.handle_response(resp).await?
-            ));
+            // 调用 after_receive 钩子
+            for hook in &self.hooks {
+                hook.after_receive(ctx, &mut resp);
+            }
+
+            // 区分流式/非流式响应
+            let is_stream = ctx.url_context.action == Action::Stream;
+            if is_stream {
+                ctx.input = PipelineInput::RawResponse(resp);
+            } else {
+                let bytes = resp.bytes().await?.to_vec();
+                ctx.input = PipelineInput::Raw(bytes);
+            }
         }
         Ok(())
     }

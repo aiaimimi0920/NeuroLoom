@@ -2640,6 +2640,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "nl_llm_v2"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "async-trait",
+ "bitflags 2.11.0",
+ "chrono",
+ "futures",
+ "jsonwebtoken",
+ "once_cell",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tiny_http",
+ "tokio",
+ "tokio-stream",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "nl_memory"
 version = "0.1.0"
 dependencies = [

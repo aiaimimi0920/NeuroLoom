@@ -1,0 +1,119 @@
+[package]
+name = "nl_llm_v2"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+tokio.workspace = true
+reqwest = { version = "0.12", features = ["json", "stream"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+bitflags = "2.6"
+once_cell = "1.19"
+futures.workspace = true
+uuid.workspace = true
+anyhow.workspace = true
+chrono = { version = "0.4", features = ["serde"] }
+jsonwebtoken = "9.2"
+url = "2.5"
+tiny_http = "0.12"
+tokio-stream = "0.1.18"
+async-stream = "0.3"
+
+[[example]]
+name = "openai_chat"
+path = "examples/openai/chat/main.rs"
+
+[[example]]
+name = "gemini_chat"
+path = "examples/gemini/chat/main.rs"
+
+[[example]]
+name = "deepseek_chat"
+path = "examples/deepseek/chat/main.rs"
+
+[[example]]
+name = "anthropic_chat"
+path = "examples/anthropic/chat/main.rs"
+
+[[example]]
+name = "iflow_chat"
+path = "examples/iflow/chat/main.rs"
+
+[[example]]
+name = "vertex_chat"
+path = "examples/vertex/chat/main.rs"
+
+[[example]]
+name = "moonshot_chat"
+path = "examples/moonshot/chat/main.rs"
+
+[[example]]
+name = "zhipu_chat"
+path = "examples/zhipu/chat/main.rs"
+
+[[example]]
+name = "openrouter_chat"
+path = "examples/openrouter/chat/main.rs"
+
+[[example]]
+name = "gemini_cli_chat"
+path = "examples/gemini_cli/chat/main.rs"
+
+[[example]]
+name = "antigravity_chat"
+path = "examples/antigravity/chat/main.rs"
+
+[[example]]
+name = "antigravity_stream"
+path = "examples/antigravity/stream/main.rs"
+
+[[example]]
+name = "antigravity_models"
+path = "examples/antigravity/models/main.rs"
+
+[[example]]
+name = "openai_stream"
+path = "examples/openai/stream/main.rs"
+
+[[example]]
+name = "openai_tools"
+path = "examples/openai/tools/main.rs"
+
+[[example]]
+name = "anthropic_stream"
+path = "examples/anthropic/stream/main.rs"
+
+[[example]]
+name = "gemini_stream"
+path = "examples/gemini/stream/main.rs"
+
+[[example]]
+name = "vertex_auth"
+path = "examples/vertex/auth/main.rs"
+
+[[example]]
+name = "vertex_models"
+path = "examples/vertex/models/main.rs"
+
+[[example]]
+name = "iflow_auth"
+path = "examples/iflow/auth/main.rs"
+
+[[example]]
+name = "iflow_thinking"
+path = "examples/iflow/thinking/main.rs"
+
+[[example]]
+name = "gemini_cli_auth"
+path = "examples/gemini_cli/auth/main.rs"
+
+[[example]]
+name = "antigravity_auth"
+path = "examples/antigravity/auth/main.rs"

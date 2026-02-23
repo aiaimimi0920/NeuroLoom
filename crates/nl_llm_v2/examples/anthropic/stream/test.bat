@@ -1,0 +1,35 @@
+@echo off
+REM anthropic 平台测试 - stream
+REM 用法: test.bat [api_key] [prompt]
+
+cd /d "%~dp0"
+
+if "%ANTHROPIC_API_KEY%"=="" (
+    if "%1"=="" (
+        echo Warning: No ANTHROPIC_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
+) else (
+    set API_KEY=%ANTHROPIC_API_KEY%
+)
+
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
+)
+
+echo ========================================
+echo   anthropic stream Test
+echo ========================================
+echo.
+
+cargo run --example anthropic_stream -- %API_KEY% "%PROMPT%"
+
+echo.
+echo ========================================
+echo   Test Complete
+echo ========================================

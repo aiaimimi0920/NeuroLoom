@@ -730,7 +730,7 @@ struct PlatformPreset {
 | 平台 | 协议 | 认证方式 | 特殊处理 |
 |------|------|---------|---------|
 | OpenAI | OpenAI | API Key | 无 |
-| Anthropic | Claude | API Key / OAuth | 无 |
+| Anthropic | Claude | API Key (x-api-key) | 专用 AnthropicSite + anthropic-version header |
 | Gemini | Gemini | API Key | 无 |
 | Vertex AI | Gemini | Service Account / API Key | URL 结构依赖认证类型 |
 | DeepSeek | OpenAI | API Key | 无 |
@@ -956,6 +956,11 @@ let client = LlmClient::from_preset("vertex")
 let client = LlmClient::from_preset("vertex")
     .with_api_key("AIza...")
     .build();
+
+// Anthropic (使用 x-api-key，非标准 Bearer)
+let client = LlmClient::from_preset("anthropic")
+    .with_anthropic_api_key("sk-ant-xxx")
+    .build();
 ```
 
 ### 10.2 自定义组装
@@ -996,6 +1001,7 @@ let client = LlmClient::from_preset("openai")
 
 // 使用 iFlow 预设，但使用不同的模型
 let client = LlmClient::from_preset("iflow")
+    .with_cookie("BXAuth=xxx")
     .with_model("claude-3-opus")
     .build();
 ```

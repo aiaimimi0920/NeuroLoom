@@ -1,0 +1,12 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.28s
+     Running `C:/Users/vmjcv/AppData/Local/Temp/NeuroLoom_target\debug\examples\antigravity_chat.exe`
+用户: Hello!
+
+AI:
+=== Antigravity OAuth Login ===
+Please open the following URL in your browser:
+https://accounts.google.com/o/oauth2/v2/auth?access_type=offline&client_id=1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com&prompt=consent&redirect_uri=http%3A%2F%2F127.0.0.1%3A51121%2Foauth-callback&response_type=code&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcclog+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fexperimentsandconfigs&state=1771872941658640200
+
+等待 Antigravity 登录回调 (端口: 51121)...
+Error: [ModelUnavailable] Requested entity was not found. (Code: NOT_FOUND)
+error: process didn't exit successfully: `C:/Users/vmjcv/AppData/Local/Temp/NeuroLoom_target\debug\examples\antigravity_chat.exe` (exit code: 1)
