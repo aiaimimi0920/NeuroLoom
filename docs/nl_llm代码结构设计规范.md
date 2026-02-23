@@ -831,6 +831,105 @@ nl_llm/src/
 └── token_bucket.rs          # 令牌桶限流
 ```
 
+### 9.2 预设平台示例目录
+
+每个预设平台需要有对应的 `examples/` 子目录，用于测试验证该平台是否可正常交互：
+
+```
+examples/                    # 平台示例（按平台分组）
+├── openai/
+│   ├── chat/               # 基础对话示例
+│   │   ├── main.rs
+│   │   └── test.bat        # 测试脚本
+│   ├── stream/             # 流式输出示例
+│   │   ├── main.rs
+│   │   └── test.bat
+│   └── tools/              # 工具调用示例
+│       ├── main.rs
+│       └── test.bat
+│
+├── anthropic/
+│   ├── chat/
+│   │   ├── main.rs
+│   │   └── test.bat
+│   └── stream/
+│       ├── main.rs
+│       └── test.bat
+│
+├── gemini/
+│   ├── chat/
+│   └── stream/
+│
+├── vertex/
+│   ├── auth/               # 认证测试（SA / API Key）
+│   │   ├── main.rs
+│   │   └── test.bat
+│   ├── chat/               # 基础对话
+│   └── models/             # 模型列表查询
+│
+├── iflow/
+│   ├── auth/               # Cookie 认证测试
+│   ├── chat/
+│   └── thinking/           # Thinking 模式测试
+│
+├── gemini_cli/
+│   ├── auth/               # OAuth 认证测试
+│   └── chat/
+│
+├── antigravity/
+│   ├── auth/
+│   └── chat/
+│
+├── deepseek/
+│   └── chat/
+│
+├── moonshot/
+│   └── chat/
+│
+├── zhipu/
+│   └── chat/
+│
+└── openrouter/
+    └── chat/
+```
+
+**示例目录命名规范**：
+- `chat/` - 基础对话测试
+- `stream/` - 流式输出测试
+- `tools/` - 工具调用测试
+- `auth/` - 认证流程测试
+- `models/` - 模型列表查询
+- `thinking/` - 思考模式测试（特定平台）
+- `vision/` - 视觉能力测试
+- `embed/` - 向量嵌入测试
+
+**每个示例目录必须包含**：
+- `main.rs` - Rust 示例代码
+- `test.bat` - Windows 批处理测试脚本（便于快速测试单个案例）
+
+### 9.3 自动测试要求
+
+**重要**：每次修改核心模块时，必须运行受影响预设平台的测试脚本：
+
+| 修改模块 | 需测试的平台 |
+|----------|--------------|
+| `protocol/base/openai.rs` | openai, deepseek, moonshot, zhipu, iflow, openrouter |
+| `protocol/base/claude.rs` | anthropic |
+| `protocol/base/gemini.rs` | gemini, vertex, gemini_cli, antigravity |
+| `protocol/hooks/iflow.rs` | iflow |
+| `protocol/hooks/cloudcode.rs` | gemini_cli, antigravity |
+| `auth/providers/api_key.rs` | 所有使用 API Key 的平台 |
+| `auth/providers/oauth/` | anthropic, gemini_cli, antigravity |
+| `auth/providers/service_account.rs` | vertex |
+| `auth/providers/cookie.rs` | iflow |
+| `site/context.rs` | 所有平台 |
+| `pipeline/` | 所有平台 |
+
+**测试原则**：
+1. 修改代码后，识别受影响的平台
+2. 运行对应平台的 `test.bat` 脚本
+3. 确认所有测试通过后再提交
+
 ---
 
 ## 10. 使用示例
@@ -952,6 +1051,8 @@ let response = client.complete(req).await?;
 | 10 | **URL 上下文** | URL 构建支持认证类型和操作类型依赖 |
 | 11 | **扩展参数** | PrimitiveRequest 支持平台特定参数透传 |
 | 12 | **流式双轨** | 流式请求同时支持 URL 层和 JSON Body 层标识 |
+| 13 | **预设示例** | 每个预设平台提供独立 examples 目录，便于测试验证 |
+| 14 | **自动测试** | 修改核心模块时必须测试受影响的预设平台 |
 
 ---
 

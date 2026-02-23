@@ -1063,11 +1063,171 @@ impl GeminiProvider {
 | 2 | 模型解析器 | 0.5 天 |
 | 3 | Pipeline 流水线 | 2 天 |
 | 4 | 协议实现（含错误解包） | 2 天 |
-| 5 | 预设平台 | 1 天 |
+| 5 | 预设平台 + 示例目录 | 2 天 |
 | 6 | 客户端 API | 1 天 |
 | 7 | 迁移和测试 | 2 天 |
 
-**总计：约 10 天**
+**总计：约 11 天**
+
+---
+
+## Phase 8：预设平台示例
+
+每个预设平台需要提供独立的示例目录，用于测试验证：
+
+### 8.1 示例目录结构
+
+```
+examples/
+├── {platform}/              # 平台名称（与 preset id 一致）
+│   ├── chat/               # 基础对话测试
+│   │   ├── main.rs
+│   │   └── test.bat        # 快速测试脚本
+│   ├── stream/             # 流式输出测试
+│   │   ├── main.rs
+│   │   └── test.bat
+│   └── auth/               # 认证测试（如适用）
+│       ├── main.rs
+│       └── test.bat
+```
+
+### 8.2 示例代码模板
+
+**文件**: `examples/{platform}/chat/main.rs`
+
+```rust
+//! {platform} 平台基础对话测试
+//!
+//! 运行方式: cargo run --example {platform}_chat
+//! 或直接运行: test.bat
+
+use nl_llm_new::{LlmClient, PrimitiveRequest};
+use anyhow::Result;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+
+    // 从环境变量或参数获取认证信息
+    let api_key = std::env::var("{PLATFORM}_API_KEY")
+        .or_else(|_| args.get(1).cloned())
+        .expect("需要提供 API Key");
+
+    // 创建客户端
+    let client = LlmClient::from_preset("{platform}")
+        .with_api_key(api_key)
+        .build();
+
+    // 构建请求
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
+
+    let req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("{default_model}");
+
+    // 发送请求
+    println!("用户: {}\n", prompt);
+    println!("AI:");
+
+    let resp = client.complete(req).await?;
+    println!("{}", resp.content);
+
+    Ok(())
+}
+```
+
+### 8.3 测试脚本模板
+
+**文件**: `examples/{platform}/chat/test.bat`
+
+```batch
+@echo off
+REM {platform} 平台基础对话测试
+REM 用法: test.bat [api_key] [prompt]
+
+cd /d "%~dp0"
+
+REM 检查环境变量
+if "%{PLATFORM}_API_KEY%"=="" (
+    if "%1"=="" (
+        echo 错误: 请设置 {PLATFORM}_API_KEY 环境变量或作为第一个参数传入
+        exit /b 1
+    )
+    set API_KEY=%1
+    shift
+) else (
+    set API_KEY=%{PLATFORM}_API_KEY%
+)
+
+REM 默认 prompt
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
+)
+
+echo ========================================
+echo   {platform} Chat Test
+echo ========================================
+echo.
+
+cargo run --example {platform}_chat -- %API_KEY% "%PROMPT%"
+
+echo.
+echo ========================================
+echo   Test Complete
+echo ========================================
+```
+
+### 8.4 示例要求
+
+每个平台示例目录必须包含：
+
+| 示例类型 | 必需 | 说明 |
+|----------|------|------|
+| `chat/` | 是 | 基础对话测试 |
+| `stream/` | 是 | 流式输出测试 |
+| `auth/` | 视平台 | 认证流程测试（OAuth、Cookie 等需要特殊认证的平台） |
+| `tools/` | 可选 | 工具调用测试 |
+| `vision/` | 可选 | 视觉能力测试（支持 Vision 的平台） |
+
+每个示例目录必须包含：
+- `main.rs` - Rust 示例代码
+- `test.bat` - Windows 批处理测试脚本
+
+### 8.5 自动测试要求
+
+**重要**：每次修改以下模块时，必须自动测试受影响的预设平台：
+
+| 修改模块 | 需测试的平台 |
+|----------|--------------|
+| `protocol/base/openai.rs` | openai, deepseek, moonshot, zhipu, iflow, openrouter |
+| `protocol/base/claude.rs` | anthropic |
+| `protocol/base/gemini.rs` | gemini, vertex, gemini_cli, antigravity |
+| `protocol/hooks/iflow.rs` | iflow |
+| `protocol/hooks/cloudcode.rs` | gemini_cli, antigravity |
+| `auth/providers/api_key.rs` | 所有使用 API Key 的平台 |
+| `auth/providers/oauth/` | anthropic, gemini_cli, antigravity |
+| `auth/providers/service_account.rs` | vertex |
+| `auth/providers/cookie.rs` | iflow |
+| `site/context.rs` | 所有平台 |
+| `pipeline/` | 所有平台 |
+
+**测试流程**：
+
+1. 修改代码后，识别受影响的平台
+2. 运行对应平台的 `test.bat` 脚本
+3. 确认所有测试通过后再提交
+
+```batch
+REM 批量测试所有 OpenAI 协议平台
+cd examples
+for %%p in (openai deepseek moonshot zhipu iflow openrouter) do (
+    echo Testing %%p...
+    call %%p\chat\test.bat
+    call %%p\stream\test.bat
+)
+```
 
 ---
 
@@ -1084,6 +1244,16 @@ impl GeminiProvider {
    - `PrimitiveRequest` 新增 `stream: bool` 字段
    - `ProtocolFormat::pack()` 新增 `is_stream` 参数
    - 支持 URL 层（`Action::Stream`）和 JSON Body 层（`"stream": true`）双轨处理
+
+3. **预设平台示例目录**：
+   - 每个预设平台需要提供独立 examples 目录
+   - 包含 chat、stream 等基础测试示例
+   - 提供示例代码模板
+
+4. **测试脚本与自动测试**：
+   - 每个示例目录必须包含 `test.bat` 测试脚本
+   - 修改核心模块时必须测试受影响的预设平台
+   - 提供模块与平台的映射关系表
 
 ### v2.1 新增内容
 
