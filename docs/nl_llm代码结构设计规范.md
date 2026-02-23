@@ -53,6 +53,37 @@
 
 **结论：OAuth 认证必须各 Provider 独立实现，只能共享工具函数。**
 
+### 1.4 网关协议的正交分解体系 (Orthogonal Decomposition)
+
+随着大模型网关的复杂化，传统的“一个 Provider 包打天下”的设计反模式（Anti-Pattern）已被废弃。新的架构推演明确了客户端网关由三个**完全正交（互不影响）**的积木构成：
+
+1. **认证维 (Auth / 换 Key)**：唯一的信条是将任意外部凭证（OAuth 网页令牌、iFlow Cookie、GCP JWT）映射转换为最终发送请求时的合法字符串（`Authorization: Bearer` 或 `x-goog-api-key` 头）。在发送前，它们都是等价的合法 Token。
+2. **路由维 (Endpoint / 通道)**：请求的目标服务器地址（例如：官方的 `api.anthropic.com` 或是本地代理 `127.0.0.1:8080`）。通道自身是透明的，只负责网络连接和扣费拦截。
+3. **协议维 (Protocol / 压包解包)**：数据 Payload 的最终形状（由于模型方言存在差异产生的结构区别：OpenAI 格式、Gemini 结构、Claude 结构）。
+
+#### 1.4.1 协议二维决定论 (Protocol 2D Determinism)
+
+协议（发什么格式的 JSON 包）并不总是跟随网关走的，而是由 `f(平台, 模型)` 两个维度共同决定的：
+
+- **平台霸权型（只认平台）**：例如 iFlow、OpenRouter。此类代理强行包裹了一层翻译中间件。无论你要调用 `gemini-1.5-pro` 还是 `claude-3-opus`，**所有请求必须一律使用标准 OpenAI Protocol 压包**。发往通道后，服务端自行“解包 -> 翻译为对应模型方言请求 -> 收集结果 -> 打包回 OpenAI 格式返回”。
+- **平台透传型（强绑定模型）**：例如 Google Vertex AI，平台仅仅提供一条专属验证光纤。如果通过 Vertex 调 `gemini`，客户端需要压包为 Gemini 原生格式（`contents` 数组）；如果在**同一个网关同一套代码下**调 `claude`，平台拒绝翻译，客户端必须动态切回 Anthropic 官方格式（`messages` 数组）进行压包。
+
+因此，**协议必须彻底脱离认证和请求路由独立存在**，成为可即插即拔的转换层（这由我们 `translator/` 目录中的 Protocol Unwrapper/Wrapper 强力保证）。
+
+#### 1.4.2 极简组装形态 (The Ultimate Architecture)
+
+高度去耦后的 LlmClient 将不再需要编写数十张功能相似的宏伟 Provider 面条代码，调用将被收缩为极具工业机械感的积木按需拼接调用：
+
+```rust
+// 伪代码示例：调用 iFlow 代理站背后的 Claude 模型
+let client = LlmClient::new(
+    Endpoint::Custom("https://iflow-proxy.com/v1"),       // (路由维) 去哪个地址
+    Auth::IFlowCookie("BXAuth=..."),                      // (认证维) 怎么换门票
+    ProtocolPicker::select("iflow", "claude-3.5-sonnet")  // (协议维) 用哪种信封 => 生成 OpenAI Protocol
+);
+```
+此理念构筑了项目 `Proxy` 以及 `Translator` 管道组件彻底剥离的哲学基石。
+
 ---
 
 ## 2. 目录结构
@@ -1150,6 +1181,48 @@ pub struct BlackMagicProxySpec {
 | 6 | **统一 Trait 接口** | `LlmProvider` trait 提供统一调用接口 |
 | 7 | **分层容错** | Provider 层处理特有容错，Gateway 层处理通用容错 |
 | 8 | **错误信号传递** | `ProviderError` 携带重试/降级信号供 Gateway 决策 |
+
+---
+
+## 8. Examples 集成测试与范例规范
+
+为了保证大模型客户端在独立环境下的可用性，以及提供快速试错的沙箱机制，`nl_llm` 采用 `examples/` 目录存放各 Provider 的独立端到端连通性测试。设计规范如下：
+
+### 8.1 目录划分
+每个 Provider 必须在 `examples/` 目录下建立自己专属的作用域，按核心功能分拆为子模块包：
+```text
+examples/
+├── [provider_name]/
+│   ├── auth/              # 身份验证/凭证流获取范例
+│   │   ├── main.rs
+│   │   └── [provider]_auth.bat
+│   ├── chat/              # 标准生成/流式生成范例
+│   │   ├── main.rs
+│   │   ├── [provider]_chat.bat          # 测试全量生成
+│   │   └── [provider]_chat_stream.bat   # 测试 sse 流式回显
+│   └── models/            # 动态网关模型列表抓取范例（平台支持时）
+│       ├── main.rs
+│       └── [provider]_models.bat
+```
+
+### 8.2 main.rs 编写规范
+1. **脱离主应用依赖**：`examples` 必须只依赖当前 `nl_llm` 包以及通用的三方库（如 `tokio`, `serde_json`）。绝对不允许反向依赖外部或上层 Workspace 的任何业务逻辑代码。
+2. **凭据读取优先级**：优先从 `std::env::var` 读取密钥 / 环境变量（如 `GEMINI_API_KEY`、`IFLOW_COOKIE`）。对于复杂的授权模式（如 OAuth），需直接在内部完成 `TokenStorage::from_file()` 的装载机制探测。
+3. **输出清晰**：所有的通信异常必须打印完整的 HTTP 状态码与原始服务端文字 `resp.text().await`，以便快速定位问题来源。
+
+### 8.3 .bat 端到端测试脚本规范
+为了让全部协同开发者或 AI 克隆项目后能获得“开箱即用”的验证体验，每个 `main.rs` 旁必须配有 `.bat` 启动脚本。极简规范如下：
+
+1. **统一的控制台抬头**：脚本运行必须打印明显的分割线和当前测试的模块名，如 `echo === Gemini Chat Test ===`。
+2. **终端乱码与注入防护**：
+   - 必须确保 `.bat` 文件**没有任何 UTF-8 BOM 隐形头**，以防止 `cmd.exe` 在解析第一行路径时将其截断报错（直接抛出 `:\Users...` 这种毁容级的路径错误）。
+   - 设置终端代码页 `chcp 65001 >nul`，确保输出 Emoji 和宽体字符时不出现问号乱码。
+3. **安全的兜底降权密钥**：
+   - 测试脚本必须首选宿主机的全局环境参数中的 KEY。
+   - 如果用户未配置，**允许在脚本内部硬编码提供一张 fallback 的兜底测试 Key**。但是一旦动用兜底 Key，必须打印黄色的 `[WARNING] Using default embedded API_KEY...` 提示用户，严防机密被长久泄漏滥用。
+4. **包装执行接口**：将繁复的 `cargo run --example [模块路径] -- [参数]` 彻底隐藏包装进 `.bat` 内部，仅把最高频最口语的参数（例如提词 `prompt`）留作外传参数 `$1`。
+
+综上所述，`examples/` 已经不再是单纯给新人看的“使用演示 (Demonstration)”，它现在直接充当工程的 **“端到端集成测试” (Integration E2E Tests)** 前沿阵地。每个 Provider 合入主分支前，必须保证其范例结构与其 `.bat` 能够顺畅跑通。
 
 ---
 
