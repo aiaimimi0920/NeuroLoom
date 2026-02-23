@@ -3,8 +3,8 @@
 //! 测试 Vertex 和 GoogleAIStudio Provider 的 compile() 输出
 
 use nl_llm_new::primitive::{PrimitiveRequest, PrimitiveMessage};
-use nl_llm_new::provider::gemini::config::*;
-use nl_llm_new::provider::gemini::provider::*;
+use nl_llm_new::provider::gemini::GoogleAIStudioProvider;
+use nl_llm_new::provider::vertex::VertexProvider;
 use nl_llm_new::provider::LlmProvider;
 
 fn dummy_vertex_provider() -> VertexProvider {
@@ -84,8 +84,9 @@ fn test_provider_ids() {
     let vertex = dummy_vertex_provider();
     assert_eq!(vertex.id(), "vertex");
 
+    // GoogleAIStudioProvider 是 GeminiProvider 的别名，id() 返回 "gemini"
     let studio = GoogleAIStudioProvider::from_api_key(
         "test".to_string(), "gemini-2.5-flash".to_string(),
     );
-    assert_eq!(studio.id(), "google_ai_studio");
+    assert_eq!(studio.id(), "gemini");
 }

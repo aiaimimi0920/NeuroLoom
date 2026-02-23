@@ -1,0 +1,24 @@
+@echo off
+chcp 65001 >nul
+cd /d "%~dp0..\..\.."
+
+echo.
+echo ========================================
+echo Gemini Auth Test (nl_llm_new)
+echo ========================================
+echo.
+
+set "API_KEY=AIzaSyAnI9Z_nCB2j4g0wt7DB2rB7kaXY47FIRc"
+
+if "%GEMINI_API_KEY%" NEQ "" (
+    set "API_KEY=%GEMINI_API_KEY%"
+)
+
+if "%API_KEY%"=="AIzaSyAnI9Z_nCB2j4g0wt7DB2rB7kaXY47FIRc" (
+    echo [WARNING] Using default embedded API_KEY. Consider setting GEMINI_API_KEY environment variable.
+)
+
+cargo run --example gemini_auth -p nl_llm_new -- --key "%API_KEY%"
+
+echo.
+pause

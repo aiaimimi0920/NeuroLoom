@@ -1,7 +1,7 @@
 //! Google AI Studio 对话测试
 
 use nl_llm_new::primitive::PrimitiveRequest;
-use nl_llm_new::provider::gemini::provider::GoogleAIStudioProvider;
+use nl_llm_new::provider::gemini::GeminiProvider;
 use nl_llm_new::provider::LlmProvider;
 use futures::StreamExt;
 
@@ -29,7 +29,7 @@ fn main() {
     println!("========================================");
     println!();
 
-    let provider = GoogleAIStudioProvider::from_api_key(api_key, model);
+    let provider = GeminiProvider::from_api_key(api_key, model);
 
     let primitive = PrimitiveRequest::single_user_message(&prompt);
     let body = provider.compile(&primitive);

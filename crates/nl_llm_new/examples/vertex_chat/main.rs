@@ -1,7 +1,7 @@
 //! Vertex AI (SA JSON) 对话测试
 
 use nl_llm_new::primitive::PrimitiveRequest;
-use nl_llm_new::provider::gemini::provider::VertexProvider;
+use nl_llm_new::provider::vertex::VertexProvider;
 use nl_llm_new::provider::LlmProvider;
 use futures::StreamExt;
 use std::path::Path;

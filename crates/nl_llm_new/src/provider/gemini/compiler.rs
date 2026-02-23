@@ -1,77 +1,62 @@
-use crate::primitive::{PrimitiveRequest, PrimitiveContent, Role};
-use serde_json::{json, Value};
+//! Gemini 请求编译器
+//!
+//! 提供 `GeminiCompiler` 结构体，用于将 PrimitiveRequest 编译为 Gemini JSON 请求体
+//!
+//! 注意：此模块是对 `common::compile_gemini_request` 的薄封装，保持向后兼容
 
+use crate::primitive::PrimitiveRequest;
+use serde_json::Value;
+
+/// Gemini 请求编译器
+///
+/// 将 PrimitiveRequest 编译为 Gemini/Vertex JSON 请求体
 pub struct GeminiCompiler;
 
 impl GeminiCompiler {
+    /// 编译 PrimitiveRequest 为 Gemini JSON 请求体
     pub fn compile(&self, primitive: &PrimitiveRequest) -> Value {
-        let mut body = json!({});
+        super::common::compile_gemini_request(primitive)
+    }
+}
 
-        // System instruction
-        if let Some(system) = &primitive.system {
-            body["systemInstruction"] = json!({
-                "parts": [{"text": system}]
-            });
-        }
+// ── 测试 ─────────────────────────────────────────────────────────────────────────
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::primitive::PrimitiveMessage;
 
-        // Contents (messages)
-        let contents: Vec<Value> = primitive.messages.iter().map(|msg| {
-            let role = match msg.role {
-                Role::User => "user",
-                Role::Assistant => "model", // Gemini uses "model" not "assistant"
-                Role::System => "user",
-            };
+    #[test]
+    fn test_compile_user_message() {
+        let primitive = PrimitiveRequest {
+            model: "gemini-2.5-flash".to_string(),
+            messages: vec![PrimitiveMessage::user("Hello Gemini!")],
+            ..Default::default()
+        };
+        let compiler = GeminiCompiler;
+        let body = compiler.compile(&primitive);
 
-            let parts: Vec<Value> = msg.content.iter().map(|c| {
-                match c {
-                    PrimitiveContent::Text { text } => json!({"text": text}),
-                    PrimitiveContent::Image { mime_type, data } => json!({
-                        "inlineData": { "mimeType": mime_type, "data": data }
-                    }),
-                    PrimitiveContent::ToolCall { name, arguments, .. } => json!({
-                        "functionCall": { "name": name, "args": arguments }
-                    }),
-                    PrimitiveContent::ToolResult { tool_call_id, content, .. } => json!({
-                        "functionResponse": { "name": tool_call_id, "response": {"result": content} }
-                    }),
-                    PrimitiveContent::Thinking { text } => json!({"text": text}),
-                }
-            }).collect();
+        let contents = body["contents"].as_array().unwrap();
+        assert_eq!(contents.len(), 1);
+        assert_eq!(contents[0]["role"], "user");
+        assert_eq!(contents[0]["parts"][0]["text"], "Hello Gemini!");
+    }
 
-            json!({"role": role, "parts": parts})
-        }).collect();
-        body["contents"] = json!(contents);
+    #[test]
+    fn test_compile_assistant_message() {
+        let primitive = PrimitiveRequest {
+            model: "gemini-2.5-flash".to_string(),
+            messages: vec![
+                PrimitiveMessage::user("Hi"),
+                PrimitiveMessage::assistant("Hello!"),
+            ],
+            ..Default::default()
+        };
+        let compiler = GeminiCompiler;
+        let body = compiler.compile(&primitive);
 
-        // Generation config
-        let mut gen_config = json!({});
-        if let Some(max_tokens) = primitive.parameters.max_tokens {
-            gen_config["maxOutputTokens"] = json!(max_tokens);
-        }
-        if let Some(temperature) = primitive.parameters.temperature {
-            gen_config["temperature"] = json!(temperature);
-        }
-        if let Some(top_p) = primitive.parameters.top_p {
-            gen_config["topP"] = json!(top_p);
-        }
-        if let Some(stop) = &primitive.parameters.stop_sequences {
-            gen_config["stopSequences"] = json!(stop);
-        }
-        if gen_config != json!({}) {
-            body["generationConfig"] = gen_config;
-        }
-
-        // Tools
-        if !primitive.tools.is_empty() {
-            let func_decls: Vec<Value> = primitive.tools.iter().map(|t| {
-                json!({
-                    "name": t.name,
-                    "description": t.description,
-                    "parameters": t.input_schema,
-                })
-            }).collect();
-            body["tools"] = json!([{"functionDeclarations": func_decls}]);
-        }
-
-        body
+        let contents = body["contents"].as_array().unwrap();
+        assert_eq!(contents.len(), 2);
+        assert_eq!(contents[0]["role"], "user");
+        assert_eq!(contents[1]["role"], "model"); // assistant -> model
     }
 }

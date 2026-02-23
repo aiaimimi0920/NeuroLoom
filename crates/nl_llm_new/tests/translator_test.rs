@@ -3,7 +3,8 @@
 //! 测试 PrimitiveRequest 与各种 Provider 编译器的交互
 
 use nl_llm_new::primitive::{PrimitiveRequest, PrimitiveContent, PrimitiveTool};
-use nl_llm_new::provider::gemini::provider::*;
+use nl_llm_new::provider::gemini::GoogleAIStudioProvider;
+use nl_llm_new::provider::vertex::VertexProvider;
 use nl_llm_new::provider::claude::provider::ClaudeProvider;
 use nl_llm_new::provider::claude::config::ClaudeConfig;
 use nl_llm_new::provider::openai::provider::OpenAIProvider;

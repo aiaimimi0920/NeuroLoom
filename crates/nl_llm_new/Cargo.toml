@@ -100,3 +100,15 @@ path = "examples/gemini_cli/chat/main.rs"
 [[example]]
 name = "gemini_cli_auth"
 path = "examples/gemini_cli/auth/main.rs"
+
+[[example]]
+name = "gemini_chat"
+path = "examples/gemini/chat/main.rs"
+
+[[example]]
+name = "gemini_auth"
+path = "examples/gemini/auth/main.rs"
+
+[[example]]
+name = "gemini_models"
+path = "examples/gemini/models/main.rs"
