@@ -1,748 +1,676 @@
-# nl_llm 代码结构设计规范
+# nl_llm 代码结构设计规范 v2.2
 
 ## 概述
 
-本文档定义了 `nl_llm` 模块的完整架构设计，包含代码结构、原语格式、转换层、容错机制和黑魔法代理等所有方面。基于以下核心原则：
+本文档定义了 `nl_llm` 模块的完整架构设计。采用**四维正交分解**架构，实现站点、协议、认证、模型的自由组合。
 
-1. **认证与协议分离**：认证方式（OAuth/API Key/MultiKey 签名/Service Account）与请求协议（Claude/OpenAI/Gemini）正交
-2. **认证输出多样化**：认证要素可表现为 HTTP Header、URL 参数、请求体字段、WebSocket 握手参数等多种形式
-3. **原语中间层**：引入 Primitive 作为统一中间表示，解耦输入解析和输出生成
-4. **协议优先**：Provider 按协议划分，官方/兼容站由配置参数决定
-5. **配置区分类型**：`base_url` 是否自定义决定官方还是转发站，不是类型差异
-6. **分层容错**：Provider 层处理特有错误，Gateway 层处理通用容错
+### 核心原则
+
+1. **四维正交分解**：Site（站点）、Protocol（协议）、Auth（认证）、Model（模型）四个维度完全独立
+2. **预设 + 组装双层 API**：提供开箱即用的预设平台，同时支持灵活自定义组装
+3. **原语中间层**：Primitive 作为统一中间表示，解耦输入解析和输出生成
+4. **流水线处理**：数据原语化 → 封包 → 认证 → 发送 → 解包
+5. **错误规范化**：平台错误统一转换为标准错误，携带重试/降级信号
 
 ---
 
-## 1. 认证模式分析
+## 1. 架构总览
 
-### 1.1 四种认证类型
-
-| 认证类型 | 特点 | Provider 示例 |
-|----------|------|---------------|
-| **OAuth** | 需浏览器登录、Token 会过期、需定期刷新 | Claude OAuth、Gemini CLI、Antigravity、iFlow |
-| **API Key** | 直接使用、不过期、按量计费 | 所有 Provider 都支持 |
-| **MultiKey 签名** | 多字段凭证、动态签名、每次请求计算 | 讯飞星火、百度文心、腾讯混元 |
-| **Service Account** | JSON 凭据、JWT 认证、GCP 专用 | Vertex AI |
-
-### 1.2 官方 vs 转发站
-
-**区分关键：`base_url` 配置**
-
-```yaml
-# 官方端点（不设置 base_url）
-- provider: claude
-  api_key: "sk-ant-xxx"
-
-# 转发站（设置 base_url）
-- provider: claude
-  api_key: "sk-xxx"
-  base_url: "https://openrouter.ai/api/v1"
-```
-
-**结论：官方/转发站只是配置差异，不是类型差异。**
-
-### 1.3 OAuth 实现差异
-
-各 Provider 的 OAuth 实现差异巨大，无法共用核心逻辑：
-
-| 维度 | Claude OAuth | Gemini CLI OAuth | Antigravity OAuth | iFlow |
-|------|-------------|------------------|-------------------|-------|
-| PKCE | ✅ 需要 | ❌ 不需要 | ❌ 不需要 | N/A |
-| 回调端口 | 54545 | 8085 | 51121 | N/A |
-| Token 端点 | Anthropic | Google | Google | N/A |
-| Scopes | 3 个 | 3 个 | 5 个 | N/A |
-| Client Metadata | 无 | 逗号分隔 | JSON 格式 | N/A |
-
-**结论：OAuth 认证必须各 Provider 独立实现，只能共享工具函数。**
-
-### 1.5 MultiKey 签名认证差异
-
-部分国内平台采用多字段凭证 + 动态签名的认证方式，与单一 API Key 模式有本质区别：
-
-| 维度 | 讯飞星火 | 百度文心 | 腾讯混元 |
-|------|---------|---------|---------|
-| 凭证字段 | APPID + APIKey + APISecret | APIKey + SecretKey | SecretId + SecretKey |
-| 签名算法 | HMAC-SHA256 | APIKey+SecretKey → Access Token | TC3-HMAC-SHA256 |
-| 签名时机 | 每次请求 | Token 过期时 | 每次请求 |
-| 签名位置 | URL 参数 | HTTP Header | HTTP Header |
-| APPID 位置 | 请求体 header | - | - |
-
-**讯飞星火签名流程示例**：
+### 1.1 四维正交分解
 
 ```
-1. 拼接签名字符串：host + date + request-line
-2. HMAC-SHA256(api_secret, 签名字符串) → signature
-3. Base64(api_key, algorithm, signature) → authorization
-4. URL编码后附加到 WebSocket URL
-5. APPID 放入请求体 header 字段
+┌─────────────────────────────────────────────────────────────────┐
+│                        LlmClient                                 │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │                    Pipeline（流水线）                        ││
+│  │  ┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐     ││
+│  │  │ 原语化  │ → │  封包   │ → │  认证   │ → │  发送   │     ││
+│  │  └─────────┘   └─────────┘   └─────────┘   └─────────┘     ││
+│  │       ↓             ↓             ↓             ↓          ││
+│  │  [Primitive]   [Protocol]     [Auth]       [Site]          ││
+│  └─────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**结论：MultiKey 认证需要独立的签名器实现，凭证验证和签名生成逻辑各平台差异巨大。**
+### 1.2 维度定义
 
-### 1.4 网关协议的正交分解体系 (Orthogonal Decomposition)
+| 维度 | 职责 | 示例 |
+|------|------|------|
+| **Site** | 站点：Base URL、HTTP 配置、超时设置 | OpenAI 官方、iFlow、自定义代理 |
+| **Auth** | 认证：如何获取和注入凭证 | API Key、OAuth、Service Account、Cookie |
+| **Protocol** | 协议：如何封包/解包数据 | OpenAI 格式、Claude 格式、Gemini 格式 |
+| **Model** | 模型：模型标识和能力 | gpt-4o、claude-3-opus、gemini-2.5-pro |
 
-随着大模型网关的复杂化，传统的”一个 Provider 包打天下”的设计反模式（Anti-Pattern）已被废弃。新的架构推演明确了客户端网关由三个**完全正交（互不影响）**的积木构成：
-
-1. **认证维 (Auth / 换 Key)**：将任意形式的凭证（单一 Key、多字段组合、OAuth Token、JWT）映射转换为请求所需的认证要素。认证要素可能表现为：
-   - HTTP Header（`Authorization: Bearer xxx`）
-   - URL 参数（讯飞的签名参数 `?authorization=...`）
-   - 请求体字段（讯飞的 `app_id` 在 body 中）
-   - WebSocket 握手参数
-   - 动态签名（每次请求时实时计算，如 HMAC-SHA256）
-
-2. **路由维 (Endpoint / 通道)**：请求的目标服务器地址（例如：官方的 `api.anthropic.com` 或是本地代理 `127.0.0.1:8080`）。通道自身是透明的，只负责网络连接和扣费拦截。
-
-3. **协议维 (Protocol / 压包解包)**：数据 Payload 的最终形状（由于模型方言存在差异产生的结构区别：OpenAI 格式、Gemini 结构、Claude 结构）。
-
-#### 1.4.1 协议二维决定论 (Protocol 2D Determinism)
-
-协议（发什么格式的 JSON 包）并不总是跟随网关走的，而是由 `f(平台, 模型)` 两个维度共同决定的：
-
-- **平台霸权型（只认平台）**：例如 iFlow、OpenRouter。此类代理强行包裹了一层翻译中间件。无论你要调用 `gemini-1.5-pro` 还是 `claude-3-opus`，**所有请求必须一律使用标准 OpenAI Protocol 压包**。发往通道后，服务端自行“解包 -> 翻译为对应模型方言请求 -> 收集结果 -> 打包回 OpenAI 格式返回”。
-- **平台透传型（强绑定模型）**：例如 Google Vertex AI，平台仅仅提供一条专属验证光纤。如果通过 Vertex 调 `gemini`，客户端需要压包为 Gemini 原生格式（`contents` 数组）；如果在**同一个网关同一套代码下**调 `claude`，平台拒绝翻译，客户端必须动态切回 Anthropic 官方格式（`messages` 数组）进行压包。
-
-因此，**协议必须彻底脱离认证和请求路由独立存在**，成为可即插即拔的转换层（这由我们 `translator/` 目录中的 Protocol Unwrapper/Wrapper 强力保证）。
-
-#### 1.4.2 极简组装形态 (The Ultimate Architecture)
-
-高度去耦后的 LlmClient 将不再需要编写数十张功能相似的宏伟 Provider 面条代码，调用将被收缩为极具工业机械感的积木按需拼接调用：
+### 1.3 组装示例
 
 ```rust
-// 伪代码示例 1：调用 iFlow 代理站背后的 Claude 模型
-let client = LlmClient::new(
-    Endpoint::Custom("https://iflow-proxy.com/v1"),       // (路由维) 去哪个地址
-    Auth::IFlowCookie("BXAuth=..."),                      // (认证维) 怎么换门票
-    ProtocolPicker::select("iflow", "claude-3.5-sonnet")  // (协议维) 用哪种信封 => 生成 OpenAI Protocol
-);
+// 方式1：使用预设（简单）
+let client = LlmClient::from_preset("iflow")
+    .with_auth("BXAuth=xxx")
+    .build();
 
-// 伪代码示例 2：调用讯飞星火（MultiKey 签名）
-let client = LlmClient::new(
-    Endpoint::Official,                                   // 官方端点
-    Auth::MultiKey(MultiKeyConfig {
-        provider: MultiKeyProvider::XunFeiSpark,
-        credentials: hashmap!{
-            "app_id" => "50b077fc",
-            "api_key" => "edc616b0056d1425f7a3ce62c659bf6c",
-            "api_secret" => "MDU0M2RmZTFiZWVkNTQ5MWYyOGFmODh",
-        },
-        base_url: None,
-    }),
-    ProtocolPicker::select("xunfei", "generalv4")         // => 生成讯飞 WebSocket Protocol
-);
-```
-此理念构筑了项目 `Proxy` 以及 `Translator` 管道组件彻底剥离的哲学基石。
+// 方式2：自定义组装（灵活）
+let client = LlmClient::builder()
+    .site("https://api.example.com/v1")
+    .auth(Auth::api_key("sk-xxx"))
+    .protocol(Protocol::openai())
+    .model("gpt-4o")
+    .build();
 
----
-
-## 2. 目录结构
-
-```
-nl_llm/src/
-├── lib.rs                        # 模块入口
-│
-├── auth/                         # 认证层
-│   ├── mod.rs                    # 模块导出
-│   ├── types.rs                  # 共享类型定义
-│   ├── storage.rs                # Token 持久化工具
-│   └── providers/                # 各 Provider 独立 OAuth 实现
-│       ├── mod.rs
-│       ├── claude.rs             # Claude OAuth (PKCE)
-│       ├── gemini_cli.rs         # Gemini CLI OAuth
-│       ├── antigravity.rs        # Antigravity OAuth
-│       ├── iflow.rs              # iFlow Cookie→Token
-│       ├── vertex_sa.rs          # Vertex Service Account
-│       ├── xunfei.rs             # 讯飞星火 MultiKey 签名
-│       ├── baidu.rs              # 百度文心 MultiKey 签名
-│       └── tencent.rs            # 腾讯混元 MultiKey 签名
-│
-├── primitive/                    # 原语格式（中间表示）
-│   ├── mod.rs
-│   ├── request.rs                # PrimitiveRequest
-│   ├── message.rs                # PrimitiveMessage, PrimitiveContent
-│   ├── tool.rs                   # PrimitiveTool
-│   ├── parameters.rs             # PrimitiveParameters
-│   └── metadata.rs               # PrimitiveMetadata
-│
-├── translator/                   # 转换层
-│   ├── mod.rs
-│   ├── format.rs                 # Format 枚举
-│   ├── wrapper.rs                # WrapperKind 枚举
-│   ├── pipeline.rs               # TranslatorPipeline
-│   ├── detector.rs               # 格式和包裹检测
-│   ├── error.rs                  # TranslateError
-│   ├── unwrapper/                # 解包器
-│   │   ├── mod.rs
-│   │   ├── trait.rs              # Unwrapper trait
-│   │   ├── claude.rs
-│   │   ├── openai.rs
-│   │   ├── gemini.rs
-│   │   ├── gemini_cli.rs
-│   │   ├── codex.rs
-│   │   └── antigravity.rs
-│   └── wrapper/                  # 封装器
-│       ├── mod.rs
-│       ├── trait.rs              # Wrapper trait
-│       ├── claude.rs
-│       ├── openai.rs
-│       ├── gemini.rs
-│       ├── gemini_cli.rs
-│       ├── codex.rs
-│       └── antigravity.rs
-│
-├── provider/                     # Provider 层（按协议划分）
-│   ├── mod.rs
-│   ├── traits.rs                 # LlmProvider trait
-│   │
-│   ├── claude/                   # Claude 协议
-│   │   ├── mod.rs
-│   │   ├── config.rs             # ClaudeConfig, ClaudeAuth
-│   │   ├── compiler.rs           # 原语 → Claude JSON
-│   │   └── provider.rs           # 统一处理官方/兼容站
-│   │
-│   ├── openai/                   # OpenAI 协议
-│   │   ├── mod.rs
-│   │   ├── config.rs             # OpenAIConfig
-│   │   ├── compiler.rs           # 原语 → OpenAI JSON
-│   │   └── provider.rs           # 统一处理官方/兼容站
-│   │
-│   ├── gemini/                   # Gemini 协议
-│   │   ├── mod.rs
-│   │   ├── protocol.rs           # 【规范】包含 Protocol（原语 ↔ 原生 JSON）转换逻辑
-│   │   ├── config.rs             # GeminiConfig（API Key 认证）
-│   │   └── provider.rs           # 【规范】组装 GenericClient (整合 Protocol 与 Endpoint)
-│   │
-│   ├── vertex/                   # Vertex AI（Gemini 协议，Service Account 认证）
-│   │   ├── mod.rs
-│   │   ├── config.rs             # VertexConfig（Service Account 认证）
-│   │   └── provider.rs           # 复用 GeminiProtocol，独立 Endpoint
-│   │
-│   ├── gemini_cli/               # Gemini CLI 协议（从 gemini 拆分）
-│   │   ├── mod.rs
-│   │   ├── config.rs
-│   │   └── provider.rs
-│   │
-│   ├── antigravity/              # Antigravity 协议（独立于 gemini）
-│   │   ├── mod.rs
-│   │   ├── config.rs
-│   │   └── provider.rs
-│   │
-│   ├── codex/                    # Codex 协议
-│   │   ├── mod.rs
-│   │   ├── config.rs
-│   │   ├── compiler.rs
-│   │   └── provider.rs
-│   │
-│   └── iflow/                    # iFlow（Cookie 认证）
-│       ├── mod.rs
-│       ├── config.rs
-│       └── provider.rs
-│
-│   └── xunfei/                   # 讯飞星火（MultiKey 签名）
-│       ├── mod.rs
-│       ├── config.rs
-│       ├── signer.rs             # URL 签名生成器
-│       └── provider.rs           # WebSocket 协议处理
-│
-├── black_magic_proxy/            # 黑魔法代理层
-│   ├── mod.rs                    # 模块导出
-│   ├── catalog.rs                # 项目 profile 目录
-│   ├── client.rs                 # 统一调用准备器
-│   └── types.rs                  # ProxyExposureKind 等类型
-│
-├── gateway.rs                    # Gateway 编排层
-├── fallback.rs                   # 降级路由
-├── token_bucket.rs               # 令牌桶限流
-├── prompt_ast.rs                 # Prompt AST
-└── prompt.rs                     # Prompt 构建器
+// 方式3：基于预设修改
+let client = LlmClient::from_preset("openai")
+    .with_base_url("https://proxy.example.com/v1")
+    .build();
 ```
 
 ---
 
-## 3. 核心类型定义
+## 2. 数据处理流水线
 
-### 3.1 认证层 (auth/)
+### 2.1 流水线阶段
 
-#### types.rs - 共享类型
+```
+输入数据
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 阶段 1: 数据原语化 (Primitivize)                             │
+│   - 如果输入已是 PrimitiveRequest → 跳过                     │
+│   - 如果输入是封包数据 → 解包为 PrimitiveRequest              │
+│   - 如果格式与目标相同 → 可直通                              │
+└─────────────────────────────────────────────────────────────┘
+    │
+    ▼
+PrimitiveRequest（原语）
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 阶段 2: 数据封包 (Pack)                                      │
+│   - 根据 Protocol 格式封包                                   │
+│   - 应用协议变体钩子（如 iFlow Thinking 字段）               │
+│   - 如果格式与输入相同 → 可直通                              │
+└─────────────────────────────────────────────────────────────┘
+    │
+    ▼
+封包数据（JSON）
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 阶段 3: 认证注入 (Authenticate)                              │
+│   - 如果需要 Token 刷新 → 执行刷新                           │
+│   - 注入认证 Header / URL 参数                               │
+│   - 如果是代理站 API Key → 直接使用                          │
+└─────────────────────────────────────────────────────────────┘
+    │
+    ▼
+认证后的请求
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 阶段 4: 数据发送 (Send)                                      │
+│   - 发送到 Site 指定的端点                                   │
+│   - 处理网络错误、重试                                       │
+│   - 错误解包与规范化                                         │
+└─────────────────────────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 阶段 5: 数据解包 (Unpack)                                    │
+│   - 根据 Protocol 格式解包响应                               │
+│   - 解析为 LlmResponse / LlmChunk                           │
+└─────────────────────────────────────────────────────────────┘
+    │
+    ▼
+输出数据
+```
+
+### 2.2 直通优化
+
+当输入格式与目标格式相同时，跳过解包和封包步骤：
+
+```
+输入: OpenAI 格式
+目标: OpenAI 格式
+结果: 直通（不解包不封包）
+```
+
+### 2.3 流式请求处理
+
+流式请求的处理涉及两个层面：
+
+| 处理层 | 方式 | 示例平台 |
+|--------|------|----------|
+| **URL 层** | `Site::build_url` 根据 `Action::Stream` 添加参数 | Vertex AI: `?alt=sse` |
+| **JSON Body 层** | `Protocol::pack(primitive, true)` 添加 `stream` 字段 | OpenAI/Claude: `"stream": true` |
+
+两种方式可以同时生效，例如某平台既在 URL 区分端点，又需要在 body 中声明流式。
+
+**数据流**：
+```
+PrimitiveRequest { stream: true }
+    │
+    ├─→ Site::build_url(ctx) where ctx.action = Action::Stream
+    │       → URL: .../streamGenerateContent?alt=sse
+    │
+    └─→ Protocol::pack(primitive, is_stream=true)
+            → JSON: { ..., "stream": true }
+```
+
+---
+
+## 3. 协议格式
+
+### 3.1 核心协议（3种）
+
+| 协议 | 特征 | JSON 结构概要 |
+|------|------|--------------|
+| **OpenAI** | `messages` 数组、`tools`、`function` | `{"messages": [...], "model": "..."}` |
+| **Claude** | `system` 数组、`content` 数组、`tool_use` | `{"messages": [...], "system": [...]}` |
+| **Gemini** | `contents` 数组、`role: "model"`、`parts` | `{"contents": [...], "systemInstruction": {...}}` |
+
+### 3.2 协议变体
+
+部分平台对基础协议有特殊扩展：
+
+| 变体 | 基于协议 | 扩展内容 |
+|------|----------|----------|
+| **CloudCode** | Gemini | 添加 `requestType: "agent"`、`project`、`sessionId` |
+| **iFlow OpenAI** | OpenAI | 添加 `chat_template_kwargs.enable_thinking` |
+| **OpenRouter** | OpenAI | 添加 `provider` 字段 |
+
+### 3.3 协议变体处理方式
+
+采用**后处理钩子**模式，钩子可以访问和修改 PipelineContext：
 
 ```rust
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::PathBuf;
+use crate::pipeline::PipelineContext;
 
-/// 认证类型（顶层枚举）
-#[derive(Debug, Clone)]
-pub enum Auth {
-    /// API Key 认证（单一 Key）
-    ApiKey(ApiKeyConfig),
-
-    /// 多字段凭证认证（讯飞、百度、腾讯等）
-    MultiKey(MultiKeyConfig),
-
-    /// OAuth 认证
-    OAuth {
-        provider: OAuthProvider,
-        token_path: PathBuf,
-    },
-
-    /// Service Account 认证
-    ServiceAccount {
-        provider: SAProvider,
-        credentials_json: String,
-    },
-}
-
-/// API Key 配置（统一结构）
-///
-/// 设计说明：
-/// - API Key 本质上只是一个字符串，不区分官方/转发站
-/// - 区分的关键是 `base_url`，这只是配置参数
-/// - 真正决定请求格式的是 `provider` 字段
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ApiKeyConfig {
-    /// API Key 字符串
-    pub key: String,
-
-    /// 自定义 Base URL
-    /// - None: 使用官方端点
-    /// - Some(url): 使用转发站/代理
-    pub base_url: Option<String>,
-
-    /// Provider 标识（用于选择请求格式）
-    pub provider: ApiKeyProvider,
-}
-
-impl ApiKeyConfig {
-    /// 是否为官方端点
-    pub fn is_official(&self) -> bool {
-        self.base_url.is_none()
+/// 协议钩子（扩展签名）
+pub trait ProtocolHook: Send + Sync {
+    /// 封包后处理
+    fn after_pack(&self, ctx: &mut PipelineContext, packed: &mut Value) {
+        // 默认空实现
     }
 
-    /// 获取 Base URL（官方或自定义）
-    pub fn base_url_or<'a>(&self, default: &'a str) -> Cow<'a, str> {
-        match &self.base_url {
-            Some(url) => Cow::Owned(url.clone()),
-            None => Cow::Borrowed(default),
+    /// 解包前处理
+    fn before_unpack(&self, ctx: &mut PipelineContext, data: &mut Value) {
+        // 默认空实现
+    }
+
+    /// 发送前处理（可修改 headers）
+    fn before_send(&self, ctx: &mut PipelineContext, req: &mut reqwest::RequestBuilder) {
+        // 默认空实现
+    }
+
+    /// 接收后处理（流式响应预处理）
+    fn after_receive(&self, ctx: &mut PipelineContext, resp: &mut reqwest::Response) {
+        // 默认空实现
+    }
+}
+
+// 示例：iFlow Thinking 钩子
+struct IFlowThinkingHook;
+impl ProtocolHook for IFlowThinkingHook {
+    fn after_pack(&self, ctx: &mut PipelineContext, packed: &mut Value) {
+        if let PipelineInput::Primitive(primitive) = &ctx.input {
+            if is_thinking_model(&primitive.model) {
+                packed["chat_template_kwargs"] = json!({"enable_thinking": true});
+                packed["reasoning_split"] = json!(true);
+            }
         }
     }
 }
 
-/// 多字段凭证配置
-///
-/// 设计说明：
-/// - 部分平台需要多个凭证字段（如讯飞的 APPID + APIKey + APISecret）
-/// - 凭证字段存储在 HashMap 中，各 Provider 按需提取
-/// - 签名算法由 provider 字段决定
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MultiKeyConfig {
-    /// Provider 类型（决定签名算法）
-    pub provider: MultiKeyProvider,
+// 示例：需要添加额外 Headers 的钩子
+struct CustomHeaderHook;
+impl ProtocolHook for CustomHeaderHook {
+    fn before_send(&self, _ctx: &mut PipelineContext, req: &mut reqwest::RequestBuilder) {
+        *req = req.header("X-Custom-Header", "value");
+    }
+}
+```
 
-    /// 凭证字段集合
-    /// - XunFei: app_id, api_key, api_secret
-    /// - Baidu: api_key, secret_key
-    /// - Tencent: secret_id, secret_key
-    pub credentials: HashMap<String, String>,
+### 3.4 协议格式 Trait（完整定义）
 
-    /// 自定义 Base URL
-    pub base_url: Option<String>,
+```rust
+use crate::primitive::PrimitiveRequest;
+use crate::provider::{LlmResponse, LlmChunk};
+
+/// 协议格式定义
+pub trait ProtocolFormat: Send + Sync {
+    /// 协议标识
+    fn id(&self) -> &str;
+
+    /// 封包：PrimitiveRequest → JSON
+    /// is_stream 参数用于在 JSON body 中添加 stream 标识（如 OpenAI 的 "stream": true）
+    fn pack(&self, primitive: &PrimitiveRequest, is_stream: bool) -> serde_json::Value;
+
+    /// 解包响应：JSON → LlmResponse
+    fn unpack_response(&self, raw: &str) -> crate::Result<LlmResponse>;
+
+    /// 解包流式响应
+    fn unpack_stream(
+        &self,
+        response: reqwest::Response,
+    ) -> crate::Result<BoxStream<'static, crate::Result<LlmChunk>>>;
+
+    /// 检测格式是否匹配（用于直通优化）
+    fn matches_format(&self, data: &serde_json::Value) -> bool;
+
+    /// 解包错误：将平台错误转换为标准错误
+    /// 此方法在 HTTP 响应非 2xx 时调用
+    fn unpack_error(&self, status: u16, raw: &str) -> crate::Result<StandardError>;
+}
+```
+
+**说明**：`pack()` 方法接收 `is_stream` 参数，因为：
+- Vertex AI: 通过 URL 区分（`?alt=sse`），由 `Site::build_url` 处理
+- OpenAI/Claude: 通过 JSON body 区分（`"stream": true`），由 `Protocol::pack` 处理
+- 两种方式不冲突，可以同时使用
+
+### 3.5 错误规范化
+
+将各平台特有的错误格式统一转换为 `StandardError`：
+
+```rust
+/// 标准错误类型
+pub struct StandardError {
+    /// 错误类型
+    pub kind: ErrorKind,
+    /// 错误消息
+    pub message: String,
+    /// 原始错误码（如有）
+    pub code: Option<String>,
+    /// 是否可重试
+    pub retryable: bool,
+    /// 建议的降级动作
+    pub fallback_hint: Option<FallbackHint>,
 }
 
-/// 多字段凭证 Provider 标识
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum MultiKeyProvider {
-    XunFeiSpark,    // 讯飞星火：HMAC-SHA256 URL 签名
-    BaiduWenxin,    // 百度文心：API Key + Secret Key → Access Token
-    TencentHunyuan, // 腾讯混元：TC3-HMAC-SHA256
-    AliDashScope,   // 阿里云：可能需要特殊头
+pub enum ErrorKind {
+    /// 认证错误（401/403）
+    Authentication,
+    /// 配额超限（429）
+    RateLimit,
+    /// 模型不可用
+    ModelUnavailable,
+    /// 上下文超长
+    ContextLengthExceeded,
+    /// 内容过滤
+    ContentFilter,
+    /// 服务端错误（500+）
+    ServerError,
+    /// 其他错误
+    Other,
 }
 
-/// API Key Provider 标识
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum ApiKeyProvider {
-    Anthropic,
-    OpenAI,
-    GeminiAIStudio,
-    Codex,
+pub enum FallbackHint {
+    /// 重试当前平台
+    Retry,
+    /// 降级到其他平台
+    FallbackTo(String),
+    /// 降低模型规格
+    DowngradeModel,
+    /// 无建议
+    None,
 }
 
-/// OAuth Provider 标识
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum OAuthProvider {
-    Claude,
-    GeminiCli,
-    Antigravity,
-}
+// 示例：OpenAI 错误解包
+impl ProtocolFormat for OpenAIProtocol {
+    fn unpack_error(&self, status: u16, raw: &str) -> crate::Result<StandardError> {
+        let json: Value = serde_json::from_str(raw)?;
+        let error = &json["error"];
 
-/// Service Account Provider 标识
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum SAProvider {
-    VertexAI,
-}
-
-/// Token 状态
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TokenStatus {
-    Valid,
-    ExpiringSoon,
-    Expired,
-    RefreshFailed,
-}
-
-/// 通用 Token 存储格式
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TokenStorage {
-    pub access_token: String,
-    pub refresh_token: Option<String>,
-    pub expires_at: Option<DateTime<Utc>>,
-    pub email: Option<String>,
-    pub provider: String,
-    #[serde(flatten)]
-    pub extra: HashMap<String, serde_json::Value>,
-}
-
-impl TokenStorage {
-    /// 检查 Token 状态
-    pub fn status(&self, lead_seconds: i64) -> TokenStatus {
-        let Some(expires_at) = self.expires_at else {
-            return TokenStatus::Valid;
+        let kind = match status {
+            401 | 403 => ErrorKind::Authentication,
+            429 => ErrorKind::RateLimit,
+            _ => match error["type"].as_str() {
+                Some("context_length_exceeded") => ErrorKind::ContextLengthExceeded,
+                Some("content_filter") => ErrorKind::ContentFilter,
+                _ => ErrorKind::Other,
+            }
         };
 
-        let now = Utc::now();
-        let threshold = expires_at - chrono::Duration::seconds(lead_seconds);
-
-        if now >= expires_at {
-            TokenStatus::Expired
-        } else if now >= threshold {
-            TokenStatus::ExpiringSoon
-        } else {
-            TokenStatus::Valid
-        }
+        Ok(StandardError {
+            kind,
+            message: error["message"].as_str().unwrap_or("Unknown error").to_string(),
+            code: error["code"].as_str().map(|s| s.to_string()),
+            retryable: matches!(kind, ErrorKind::RateLimit | ErrorKind::ServerError),
+            fallback_hint: match kind {
+                ErrorKind::RateLimit => Some(FallbackHint::Retry),
+                ErrorKind::ModelUnavailable => Some(FallbackHint::FallbackTo("backup".into())),
+                _ => Some(FallbackHint::None),
+            },
+        })
     }
 }
 ```
 
-#### TokenStorage 向后兼容解析机制
-由于 `TokenStorage` 的演化（如引入了必需的 `provider` 字段取代了专有 Struct），各个 Provider（GeminiCLI / Antigravity / IFlow）的 `from_file()` 加载逻辑中包含**容灾解析机制**：如果遭遇 JSON Payload 结构不匹配或缺失字段的旧缓存文件，解析系统会优雅地捕获 `serde_json::Error`，丢弃损坏的内存实例，并强制触发一次平滑的重新认证或 Cookie 重新注入流程，而不能引发运行时崩溃。
+---
 
-#### providers/claude.rs - Claude OAuth 独立实现
+## 4. 认证方式
+
+### 4.1 认证类型
+
+| 类型 | 特点 | 使用场景 |
+|------|------|---------|
+| **API Key** | 直接使用、无过期 | 大多数平台 |
+| **OAuth** | 需登录、Token 过期需刷新 | Claude OAuth、Gemini CLI |
+| **Service Account** | JWT 签名、GCP 专用 | Vertex AI |
+| **Cookie** | 网页 Cookie 换取 Token | iFlow |
+| **MultiKey** | 多字段动态签名 | 讯飞星火、百度文心 |
+
+### 4.2 认证接口
 
 ```rust
-use crate::auth::{TokenStorage, TokenStatus};
-
-/// Claude OAuth 配置（Claude 特有常量）
-pub const CLAUDE_OAUTH_CONFIG: ClaudeOAuthConfig = ClaudeOAuthConfig {
-    client_id: "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
-    redirect_port: 54545,
-    auth_url: "https://claude.ai/oauth/authorize",
-    token_url: "https://console.anthropic.com/v1/oauth/token",
-    scopes: &[
-        "org:create_api_key",
-        "user:profile",
-        "user:inference",
-    ],
-};
-
-/// Claude OAuth 配置
-#[derive(Debug, Clone)]
-pub struct ClaudeOAuthConfig {
-    pub client_id: &'static str,
-    pub redirect_port: u16,
-    pub auth_url: &'static str,
-    pub token_url: &'static str,
-    pub scopes: &'static [&'static str],
-}
-
-/// Claude PKCE 挑战码（Claude 特有）
-#[derive(Debug, Clone)]
-pub struct ClaudePkceCodes {
-    pub code_verifier: String,
-    pub code_challenge: String,
-}
-
-/// Claude OAuth 客户端
-pub struct ClaudeOAuth {
-    config: ClaudeOAuthConfig,
-    storage: Option<TokenStorage>,
-    http: reqwest::Client,
-}
-
-impl ClaudeOAuth {
-    pub fn new() -> Self { ... }
-
-    pub fn from_file(path: &Path) -> crate::Result<Self> { ... }
-
-    /// 生成 PKCE 挑战码（Claude 特有）
-    pub fn generate_pkce(&self) -> ClaudePkceCodes { ... }
-
-    /// 生成授权 URL
-    pub fn build_auth_url(&self, state: &str, pkce: &ClaudePkceCodes) -> String { ... }
-
-    /// 用授权码换取 Token
-    pub async fn exchange_code(
-        &mut self,
-        code: &str,
-        pkce: &ClaudePkceCodes
-    ) -> crate::Result<()> { ... }
-
-    /// 刷新 Token
-    pub async fn refresh_token(&mut self) -> crate::Result<()> { ... }
-
-    /// 获取 Access Token
-    pub fn access_token(&self) -> Option<&str> {
-        self.storage.as_ref().map(|s| s.access_token.as_str())
-    }
+trait Authenticator: Send + Sync {
+    /// 是否已认证
+    fn is_authenticated(&self) -> bool;
 
     /// 是否需要刷新
-    pub fn needs_refresh(&self) -> bool {
-        self.storage.as_ref().map_or(true, |s| {
-            matches!(s.status(300), TokenStatus::Expired | TokenStatus::ExpiringSoon)
-        })
-    }
+    fn needs_refresh(&self) -> bool;
+
+    /// 刷新认证
+    async fn refresh(&mut self) -> Result<()>;
+
+    /// 注入认证信息到请求
+    fn inject(&self, req: RequestBuilder) -> Result<RequestBuilder>;
 }
 ```
 
-#### providers/xunfei.rs - 讯飞星火 MultiKey 签名实现
+---
+
+## 5. 站点定义
+
+### 5.1 站点属性
 
 ```rust
-use crate::auth::{MultiKeyConfig, MultiKeyProvider};
-use hmac::{Hmac, Mac};
-use sha2::Sha256;
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+struct Site {
+    /// 站点标识
+    id: String,
+    /// Base URL
+    base_url: String,
+    /// 额外 Headers
+    extra_headers: HashMap<String, String>,
+    /// 超时设置
+    timeout: Duration,
+}
+```
 
-type HmacSha256 = Hmac<Sha256>;
+### 5.2 站点类型
 
-/// 讯飞星火认证器
-///
-/// 使用三元组凭证 (APPID + APIKey + APISecret) 进行动态签名
-pub struct XunFeiAuth {
-    app_id: String,
-    api_key: String,
-    api_secret: String,
+站点只是配置，不区分类型：
+- 可以是官方端点
+- 可以是代理站
+- 可以是本地服务
+
+### 5.3 URL 构建上下文（新增）
+
+部分平台的 URL 结构依赖认证类型和操作类型，因此 `build_url` 方法需要接收上下文：
+
+```rust
+/// URL 构建上下文
+pub struct UrlContext<'a> {
+    /// 模型名称
+    pub model: &'a str,
+    /// 认证类型
+    pub auth_type: AuthType,
+    /// 操作类型
+    pub action: Action,
+    /// 租户信息（多租户场景）
+    pub tenant: Option<TenantInfo>,
 }
 
-impl XunFeiAuth {
-    /// 从 MultiKeyConfig 创建认证器
-    pub fn from_config(config: &MultiKeyConfig) -> crate::Result<Self> {
-        let get_cred = |key: &str| -> crate::Result<String> {
-            config.credentials.get(key)
-                .cloned()
-                .ok_or_else(|| crate::Error::MissingCredential(key.to_string()))
+/// 操作类型枚举
+pub enum Action {
+    /// 普通生成
+    Generate,
+    /// 流式生成
+    Stream,
+    /// 向量嵌入
+    Embed,
+    /// 图像生成
+    ImageGenerate,
+}
+
+/// 认证类型枚举（用于 URL 构建）
+pub enum AuthType {
+    ApiKey,
+    OAuth,
+    ServiceAccount,
+    Cookie,
+    MultiKey,
+}
+
+/// Site Trait（完整定义）
+pub trait Site: Send + Sync {
+    /// 站点标识
+    fn id(&self) -> &str;
+
+    /// 获取 Base URL
+    fn base_url(&self) -> &str;
+
+    /// 构建完整请求 URL
+    /// ctx 包含模型、认证类型、操作类型等信息
+    fn build_url(&self, ctx: &UrlContext) -> String;
+
+    /// 获取额外 Headers
+    fn extra_headers(&self) -> HashMap<&str, &str>;
+
+    /// 获取超时设置
+    fn timeout(&self) -> Duration;
+}
+
+// 示例：Vertex AI 的 URL 构建
+impl Site for VertexSite {
+    fn build_url(&self, ctx: &UrlContext) -> String {
+        let action_suffix = match ctx.action {
+            Action::Generate => "generateContent",
+            Action::Stream => "streamGenerateContent?alt=sse",
+            _ => "generateContent",
         };
 
-        Ok(Self {
-            app_id: get_cred("app_id")?,
-            api_key: get_cred("api_key")?,
-            api_secret: get_cred("api_secret")?,
-        })
-    }
+        // 根据 auth_type 选择不同的 URL 结构
+        let base = match ctx.auth_type {
+            AuthType::ServiceAccount => {
+                // SA 认证：使用标准 Vertex AI 端点
+                format!(
+                    "https://{}-aiplatform.googleapis.com/v1/projects/{}/locations/{}/publishers/google/models/{}:{}",
+                    self.location, self.project_id, self.location, ctx.model, action_suffix
+                )
+            }
+            AuthType::ApiKey => {
+                // API Key 认证：使用简化端点
+                format!(
+                    "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/{}/locations/us-central1/publishers/google/models/{}:{}",
+                    self.project_id, ctx.model, action_suffix
+                )
+            }
+            _ => self.base_url.clone(),
+        };
 
-    /// 生成带签名的 WebSocket URL
-    ///
-    /// 讯飞星火使用 WebSocket 协议，签名参数附加在 URL 上
-    pub fn build_signed_url(&self, endpoint: &str) -> crate::Result<String> {
-        let date = Self::format_date_rfc1123();
-        let host = "spark-api.xf-yun.com";
-
-        // 1. 拼接签名字符串
-        let signature_origin = format!(
-            "host: {}\ndate: {}\nGET {} HTTP/1.1",
-            host, date, endpoint
-        );
-
-        // 2. HMAC-SHA256 签名
-        let mut mac = HmacSha256::new_from_slice(self.api_secret.as_bytes())
-            .map_err(|e| crate::Error::AuthError(e.to_string()))?;
-        mac.update(signature_origin.as_bytes());
-        let signature = BASE64.encode(mac.finalize().into_bytes());
-
-        // 3. 拼接 authorization_origin
-        let authorization_origin = format!(
-            r#"api_key="{}", algorithm="hmac-sha256", headers="host date request-line", signature="{}""#,
-            self.api_key, signature
-        );
-
-        // 4. Base64 编码
-        let authorization = BASE64.encode(authorization_origin.as_bytes());
-
-        // 5. 构建最终 URL（URL 编码参数）
-        let url = format!(
-            "wss://{}{}?authorization={}&date={}&host={}",
-            host, endpoint,
-            urlencoding::encode(&authorization),
-            urlencoding::encode(&date),
-            host
-        );
-
-        Ok(url)
-    }
-
-    /// 生成 RFC1123 格式的时间戳
-    fn format_date_rfc1123() -> String {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let secs = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-
-        // RFC1123 格式: "Fri, 05 May 2023 10:43:39 GMT"
-        // 简化实现，实际应使用 chrono 或 time crate
-        let datetime = chrono::DateTime::from_timestamp(secs as i64, 0)
-            .unwrap()
-            .with_timezone(&chrono::Utc);
-        datetime.format("%a, %d %b %Y %H:%M:%S GMT").to_string()
-    }
-
-    /// 获取 APPID（请求体中需要）
-    pub fn app_id(&self) -> &str {
-        &self.app_id
+        base
     }
 }
 ```
 
-**讯飞星火请求体结构**：
+---
+
+## 6. 模型解析（新增）
+
+### 6.1 模型解析器 Trait
+
+用于处理模型别名和能力检测：
 
 ```rust
-/// 讯飞星火请求体
-pub struct XunFeiRequest {
-    pub header: XunFeiHeader,
-    pub parameter: XunFeiParameter,
-    pub payload: XunFeiPayload,
+/// 模型能力标志
+bitflags::bitflags! {
+    pub struct Capability: u32 {
+        const CHAT = 0b0001;
+        const VISION = 0b0010;
+        const TOOLS = 0b0100;
+        const STREAMING = 0b1000;
+        const THINKING = 0b10000;
+        const CODE_EXECUTION = 0b100000;
+    }
 }
 
-pub struct XunFeiHeader {
-    pub app_id: String,      // 从凭证获取
-    pub uid: Option<String>, // 用户标识
-    pub patch_id: Option<Vec<String>>, // 微调模型时需要
-}
+/// 模型解析器
+pub trait ModelResolver: Send + Sync {
+    /// 解析模型别名到实际模型名
+    /// 例如: "gpt4" → "gpt-4o", "claude" → "claude-sonnet-4-20250514"
+    fn resolve(&self, model: &str) -> String;
 
-pub struct XunFeiParameter {
-    pub chat: XunFeiChatParam,
-}
+    /// 检查模型是否支持指定能力
+    fn has_capability(&self, model: &str, cap: Capability) -> bool;
 
-pub struct XunFeiChatParam {
-    pub domain: String,      // 模型域：generalv3.5, generalv4 等
-    pub temperature: Option<f32>,
-    pub max_tokens: Option<u32>,
-    pub top_k: Option<u32>,
+    /// 获取模型的最大上下文长度
+    fn max_context(&self, model: &str) -> usize;
+
+    /// 获取模型的上下文窗口建议（输入/输出分配）
+    fn context_window_hint(&self, model: &str) -> (usize, usize);
 }
 ```
 
-### 3.2 原语格式 (primitive/)
-
-#### 设计哲学
-
-采用**编译器式中间表示（IR）架构**，避免 N×(N-1) 组合爆炸：
-
-```
-输入端                    中间层                    输出端
-
-┌──────────┐         ┌──────────┐         ┌──────────┐
-│ Claude   │──┐      │          │      ┌──│ Claude   │
-│ Code     │  │      │          │      │  │          │
-└──────────┘  │      │          │      │  └──────────┘
-              │      │          │      │
-┌──────────┐  │      │          │      │  ┌──────────┐
-│ OpenAI   │──┼─→ 解包 →│  原语    │→ 封装 ─┼→│ OpenAI   │
-│ Client   │  │ (Unwrap)│   (IR)   │ (Wrap) │  │ Compat   │
-└──────────┘  │      │          │      │  └──────────┘
-              │      │          │      │
-┌──────────┐  │      │          │      │  ┌──────────┐
-│ Gemini   │──┘      │          │      └──│ Gemini   │
-│ Client   │         └──────────┘         │          │
-└──────────┘                              └──────────┘
-
-快速路径: 输入格式 === 输出格式 ────────────────────→ 直通
-```
-
-与现有 Prompt AST 的关系（双轨体系）：
-
-| 组件 | 用途 | 层次 |
-|------|------|------|
-| **Prompt AST** | 系统内部认知层的提示词抽象 | 认知层 → 模型 |
-| **Primitive (IR)** | 外部客户端请求的协议转换 | 客户端 → 网关 |
-
-#### request.rs
+### 6.2 默认模型解析器实现
 
 ```rust
-use serde::{Deserialize, Serialize};
+/// 默认模型解析器
+pub struct DefaultModelResolver {
+    /// 模型别名映射
+    aliases: HashMap<String, String>,
+    /// 模型能力表
+    capabilities: HashMap<String, Capability>,
+    /// 模型上下文长度表
+    context_lengths: HashMap<String, usize>,
+}
 
-/// 中间原语格式 - 与任何特定 API 无关的抽象表示
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+impl DefaultModelResolver {
+    pub fn new() -> Self {
+        let mut aliases = HashMap::new();
+        // OpenAI 别名
+        aliases.insert("gpt4".into(), "gpt-4o".into());
+        aliases.insert("gpt4-turbo".into(), "gpt-4-turbo".into());
+        aliases.insert("gpt3".into(), "gpt-3.5-turbo".into());
+        // Claude 别名
+        aliases.insert("claude".into(), "claude-sonnet-4-20250514".into());
+        aliases.insert("claude-opus".into(), "claude-opus-4-20250514".into());
+        aliases.insert("claude-sonnet".into(), "claude-sonnet-4-20250514".into());
+        // Gemini 别名
+        aliases.insert("gemini".into(), "gemini-2.5-flash".into());
+        aliases.insert("gemini-pro".into(), "gemini-2.5-pro".into());
+        aliases.insert("gemini-flash".into(), "gemini-2.5-flash".into());
+
+        let mut capabilities = HashMap::new();
+        // OpenAI
+        capabilities.insert("gpt-4o".into(), Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING);
+        capabilities.insert("gpt-4-turbo".into(), Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING);
+        // Claude
+        capabilities.insert("claude-sonnet-4-20250514".into(), Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING);
+        capabilities.insert("claude-opus-4-20250514".into(), Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING);
+        // Gemini
+        capabilities.insert("gemini-2.5-flash".into(), Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING);
+        capabilities.insert("gemini-2.5-pro".into(), Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING | Capability::CODE_EXECUTION);
+
+        let mut context_lengths = HashMap::new();
+        context_lengths.insert("gpt-4o".into(), 128_000);
+        context_lengths.insert("gpt-4-turbo".into(), 128_000);
+        context_lengths.insert("claude-sonnet-4-20250514".into(), 200_000);
+        context_lengths.insert("claude-opus-4-20250514".into(), 200_000);
+        context_lengths.insert("gemini-2.5-flash".into(), 1_000_000);
+        context_lengths.insert("gemini-2.5-pro".into(), 1_000_000);
+
+        Self { aliases, capabilities, context_lengths }
+    }
+}
+
+impl ModelResolver for DefaultModelResolver {
+    fn resolve(&self, model: &str) -> String {
+        self.aliases.get(model).cloned().unwrap_or_else(|| model.to_string())
+    }
+
+    fn has_capability(&self, model: &str, cap: Capability) -> bool {
+        let resolved = self.resolve(model);
+        self.capabilities.get(&resolved)
+            .map(|c| c.contains(cap))
+            .unwrap_or(false)
+    }
+
+    fn max_context(&self, model: &str) -> usize {
+        let resolved = self.resolve(model);
+        self.context_lengths.get(&resolved).copied().unwrap_or(4096)
+    }
+
+    fn context_window_hint(&self, model: &str) -> (usize, usize) {
+        let max = self.max_context(model);
+        // 默认保留 1/4 作为输出
+        (max * 3 / 4, max / 4)
+    }
+}
+```
+
+---
+
+## 7. 原语格式（完整定义）
+
+### 7.1 PrimitiveRequest
+
+```rust
+/// 原语请求：统一中间表示
 pub struct PrimitiveRequest {
-    /// 模型标识（不含 provider 前缀）
+    /// 模型名称（可使用别名，由 ModelResolver 解析）
     pub model: String,
 
-    /// 系统提示词（已解包，纯用户意图）
+    /// 系统提示
     pub system: Option<String>,
 
-    /// 消息历史（已标准化）
+    /// 消息列表
     pub messages: Vec<PrimitiveMessage>,
 
-    /// 工具定义（已标准化，已过滤内置工具）
+    /// 工具定义
     pub tools: Vec<PrimitiveTool>,
 
     /// 生成参数
-    #[serde(flatten)]
     pub parameters: PrimitiveParameters,
 
-    /// 元数据（用于追踪和调试）
-    #[serde(skip_serializing_if = "PrimitiveMetadata::is_empty")]
+    /// 元数据
     pub metadata: PrimitiveMetadata,
+
+    /// 是否流式请求
+    /// 用于：
+    /// 1. Site::build_url 根据 Action::Stream 构建 URL（如 Vertex AI 的 ?alt=sse）
+    /// 2. Protocol::pack 在 JSON body 中添加 stream 标识（如 OpenAI 的 "stream": true）
+    pub stream: bool,
+
+    /// 平台特定参数
+    /// 用于传递平台特有的配置，如 OpenRouter 的 provider 字段
+    /// 这些参数会在封包时合并到请求体中
+    pub extra: HashMap<String, serde_json::Value>,
 }
-```
 
-#### message.rs
-
-```rust
-/// 标准化消息
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// 原语消息
 pub struct PrimitiveMessage {
     pub role: Role,
     pub content: Vec<PrimitiveContent>,
 }
 
-/// 角色
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum Role {
-    User,
-    Assistant,
-    System,
-}
-
-/// 标准化内容块
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
+/// 原语内容块
 pub enum PrimitiveContent {
-    #[serde(rename = "text")]
     Text { text: String },
-
-    #[serde(rename = "image")]
-    Image {
-        mime_type: String,
-        data: String,  // Base64
-    },
-
-    #[serde(rename = "tool_use")]
-    ToolCall {
-        id: String,
-        name: String,
-        arguments: serde_json::Value,
-    },
-
-    #[serde(rename = "tool_result")]
-    ToolResult {
-        tool_call_id: String,
-        content: String,
-        is_error: bool,
-    },
+    Image { url: String, mime_type: Option<String> },
+    ToolUse { id: String, name: String, input: serde_json::Value },
+    ToolResult { tool_use_id: String, content: String },
 }
-```
 
-#### tool.rs
+/// 生成参数
+pub struct PrimitiveParameters {
+    pub max_tokens: Option<u32>,
+    pub temperature: Option<f32>,
+    pub top_p: Option<f32>,
+    pub stop_sequences: Vec<String>,
+}
 
-```rust
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// 原语工具定义
 pub struct PrimitiveTool {
     pub name: String,
     pub description: Option<String>,
@@ -750,717 +678,352 @@ pub struct PrimitiveTool {
 }
 ```
 
-#### parameters.rs
+### 7.2 平台特定参数使用示例
 
 ```rust
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct PrimitiveParameters {
-    pub max_tokens: Option<u64>,
-    pub temperature: Option<f32>,
-    pub top_p: Option<f32>,
-    pub stop_sequences: Option<Vec<String>>,
-    pub thinking: Option<ThinkingConfig>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ThinkingConfig {
-    pub enabled: bool,
-    pub budget_tokens: Option<u64>,
-}
-```
-
-#### metadata.rs
-
-```rust
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct PrimitiveMetadata {
-    /// 原始格式
-    pub source_format: Format,
-    /// 检测到的包裹类型
-    pub wrapper_kind: WrapperKind,
-    /// 是否被解包
-    pub was_unwrapped: bool,
-    /// 原始请求中的客户端特有字段（保留用于回填）
-    pub client_specific: HashMap<String, serde_json::Value>,
-}
-```
-
-### 3.3 转换层 (translator/)
-
-#### format.rs
-
-```rust
-/// 支持的格式
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Format {
-    OpenAI,
-    OpenAIResponse,
-    Claude,
-    Gemini,
-    GeminiCLI,
-    Codex,
-    Antigravity,
-}
-```
-
-#### wrapper.rs - 包裹类型与检测
-
-```rust
-/// 包裹类型
-///
-/// 某些客户端会在请求中"包裹"额外的身份信息和工具定义
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WrapperKind {
-    None,
-    ClaudeCode,
-    GeminiCLI,
-    Codex,
-    Antigravity,
-}
-
-/// 检测输入是否带有包裹
-pub fn detect_wrapper(request: &serde_json::Value) -> WrapperKind {
-    // Claude Code 特征：system 以特定身份开头
-    if let Some(system) = request.get("system").and_then(|s| s.as_array()) {
-        if system.first()
-            .and_then(|s| s.get("text"))
-            .and_then(|t| t.as_str())
-            .map(|t| t.contains("Claude Code"))
-            .unwrap_or(false)
-        {
-            return WrapperKind::ClaudeCode;
-        }
-    }
-
-    // Gemini CLI 特征：工具名前缀
-    if let Some(tools) = request.get("tools").and_then(|t| t.as_array()) {
-        if tools.iter().any(|t| {
-            t.get("name")
-                .and_then(|n| n.as_str())
-                .map(|n| n.starts_with("proxy_") || is_gemini_cli_builtin_tool(n))
-                .unwrap_or(false)
-        }) {
-            return WrapperKind::GeminiCLI;
-        }
-    }
-
-    // Codex 特征
-    if request.get("instructions").is_some()
-        && request.get("previous_response_id").is_some()
-    {
-        return WrapperKind::Codex;
-    }
-
-    // Antigravity 特征
-    if let Some(system) = request.get("systemInstruction") {
-        if contains_antigravity_signature(system) {
-            return WrapperKind::Antigravity;
-        }
-    }
-
-    WrapperKind::None
-}
-```
-
-#### builtin_tools.rs - 内置工具过滤规则
-
-解包时需要过滤各客户端自带的内置工具，只保留用户自定义工具：
-
-```rust
-/// Claude Code 内置工具
-const CLAUDE_CODE_BUILTIN_TOOLS: &[&str] = &[
-    "Read", "Write", "Edit", "MultiEdit",
-    "Glob", "Grep", "NotebookRead", "NotebookEdit",
-    "Bash", "Task", "TodoWrite",
-    "WebFetch", "WebSearch",
-    "KillShell", "LocalShell", "Stop",
-];
-
-/// Gemini CLI 内置工具
-const GEMINI_CLI_BUILTIN_TOOLS: &[&str] = &[
-    "proxy_read_file", "proxy_write_file", "proxy_edit_file",
-    "proxy_list_directory", "proxy_search_files",
-    "proxy_execute_command", "proxy_create_directory",
-    "proxy_delete_file", "proxy_move_file", "proxy_copy_file",
-    "code_execution", "web_search",
-];
-```
-
-#### unwrapper/trait.rs 和 wrapper/trait.rs - 解包器与封装器
-
-##### Unwrapper trait
-
-```rust
-/// 解包器 trait：将特定格式转换为原语
-pub trait Unwrapper: Send + Sync {
-    fn source_format(&self) -> Format;
-    fn unwrap(&self, request: &serde_json::Value) -> Result<PrimitiveRequest>;
-    fn filter_builtin_tools(&self, tools: &[serde_json::Value]) -> Vec<PrimitiveTool>;
-    fn extract_user_system(&self, request: &serde_json::Value) -> Option<String>;
-}
-```
-
-##### Wrapper trait
-
-```rust
-/// 封装器 trait：将原语转换为特定格式
-pub trait Wrapper: Send + Sync {
-    fn target_format(&self) -> Format;
-    fn wrap(&self, primitive: &PrimitiveRequest) -> Result<serde_json::Value>;
-    fn inject_identity(&self, system: &mut Option<String>);
-    fn add_builtin_tools(&self, tools: &mut Vec<PrimitiveTool>);
-}
-```
-
-#### pipeline.rs - 转换管道
-
-```rust
-pub struct TranslatorPipeline {
-    source_format: Format,
-    target_format: Format,
-    unwrapper: Box<dyn Unwrapper>,
-    wrapper: Box<dyn Wrapper>,
-}
-
-impl TranslatorPipeline {
-    pub fn translate(&self, request: &[u8]) -> Result<Vec<u8>> {
-        let parsed: serde_json::Value = serde_json::from_slice(request)?;
-
-        // 快速路径：相同格式直通
-        if self.source_format == self.target_format {
-            return Ok(request.to_vec());
-        }
-
-        let wrapper = detect_wrapper(&parsed);
-        if self.can_passthrough(wrapper) {
-            return Ok(request.to_vec());
-        }
-
-        // 完整转换流程：解包 → 原语 → 封装
-        let primitive = self.unwrapper.unwrap(&parsed)?;
-        let output = self.wrapper.wrap(&primitive)?;
-        Ok(serde_json::to_vec(&output)?)
-    }
-
-    fn can_passthrough(&self, wrapper: WrapperKind) -> bool {
-        matches!(
-            (wrapper, self.source_format, self.target_format),
-            (WrapperKind::ClaudeCode, Format::Claude, Format::Claude) |
-            (WrapperKind::GeminiCLI, Format::GeminiCLI, Format::GeminiCLI) |
-            (WrapperKind::None, Format::OpenAI, Format::OpenAI)
-        )
-    }
-}
-```
-
-#### 转换矩阵
-
-```
-                ┌─────────────────────────────────────────────────────────────────────┐
-                │                        输入格式 (Source)                             │
-                ├──────────┬──────────┬────────┬────────┬───────────┬───────┬──────────┤
-                │  openai  │ openai-  │ claude │ gemini │ gemini-cli│ codex │antigrav- │
-                │          │ response │        │        │           │       │   ity    │
-    ┌───────────┼──────────┼──────────┼────────┼────────┼───────────┼───────┼──────────┤
-    │ claude    │    ✅    │    ✅    │   ⚡   │   ✅   │     ✅    │  ✅   │    ✅    │
-    ├───────────┼──────────┼──────────┼────────┼────────┼───────────┼───────┼──────────┤
-    │ gemini    │    ✅    │    ✅    │   ✅   │   ⚡   │     ✅    │  ✅   │    ✅    │
-    ├───────────┼──────────┼──────────┼────────┼────────┼───────────┼───────┼──────────┤
-输  │ gemini-cli│    ✅    │    ✅    │   ✅   │   ✅   │     ⚡    │  ✅   │    ✅    │
-出  ├───────────┼──────────┼──────────┼────────┼────────┼───────────┼───────┼──────────┤
-格  │ openai    │    ⚡    │    ✅    │   ✅   │   ✅   │     ✅    │  ✅   │    ✅    │
-式  ├───────────┼──────────┼──────────┼────────┼────────┼───────────┼───────┼──────────┤
-    │ codex     │    ✅    │    ⚡    │   ✅   │   ✅   │     ✅    │  ⚡   │    ✅    │
-    ├───────────┼──────────┼──────────┼────────┼────────┼───────────┼───────┼──────────┤
-    │antigravity│    ✅    │    ✅    │   ✅   │   ✅   │     ✅    │  ✅   │    ⚡    │
-    └───────────┴──────────┴──────────┴────────┴────────┴───────────┴───────┴──────────┘
-
-    ✅ = 需要转换（通过原语）
-    ⚡ = 可直通（相同格式）
-```
-
-#### error.rs - 转换层错误
-
-```rust
-#[derive(Debug, thiserror::Error)]
-pub enum TranslateError {
-    #[error("JSON 解析失败: {0}")]
-    JsonParse(#[from] serde_json::Error),
-
-    #[error("不支持的格式: {0}")]
-    UnsupportedFormat(String),
-
-    #[error("缺少必要字段: {0}")]
-    MissingField(String),
-
-    #[error("无效的角色类型: {0}")]
-    InvalidRole(String),
-
-    #[error("工具转换失败: {0}")]
-    ToolConversion(String),
-
-    #[error("内容块转换失败: {0}")]
-    ContentConversion(String),
-}
-```
-
-### 3.4 Provider 层 (provider/)
-
-#### 命名与内聚规范 (Naming Conventions)
-**架构红线**：Provider 模块内部**严禁**使用 `common.rs` / `utils.rs` 等语义模糊的命名。
-为了完美贯彻正交分解架构（Orthogonal Decomposition），各 Provider 内部结构必须明确职责边界：
-1. **`protocol.rs`**：收敛所有与协议定义相关的代码逻辑（如结构体序列化、流解析、SSE Fallback、特定 API 方言）。它只负责处理数据“长什么样”。
-2. **`config.rs` / Endpoint 定义**：收敛路由目标（Base URL 控制）和认证 Header 注入相关的逻辑。
-3. **`provider.rs`**：作为装配车间（Factory），利用宏 `generic_client!` 将上述两部分（以及外部注入的 HTTP Client）整合成一个标准的 `GenericClient` 返回。
-
-#### traits.rs
-
-```rust
-use async_trait::async_trait;
-use futures::Stream;
-
-use crate::auth::Auth;
-use crate::primitive::PrimitiveRequest;
-
-/// LLM Provider 统一 Trait
-#[async_trait]
-pub trait LlmProvider: Send + Sync {
-    /// Provider 唯一标识
-    fn id(&self) -> &str;
-
-    /// 认证类型
-    fn auth(&self) -> &Auth;
-
-    /// 支持的模型列表
-    fn supported_models(&self) -> &[&str];
-
-    /// 将原语编译为请求体
-    fn compile(&self, primitive: &PrimitiveRequest) -> serde_json::Value;
-
-    /// 执行请求
-    async fn complete(&self, body: serde_json::Value) -> crate::Result<LlmResponse>;
-
-    /// 流式执行
-    async fn stream(
-        &self,
-        body: serde_json::Value
-    ) -> crate::Result<BoxStream<'_, crate::Result<LlmChunk>>>;
-
-    /// 是否需要刷新认证
-    fn needs_refresh(&self) -> bool {
-        false
-    }
-
-    /// 刷新认证
-    async fn refresh_auth(&mut self) -> crate::Result<()> {
-        Ok(())
-    }
-}
-
-/// LLM 响应
-#[derive(Debug, Clone)]
-pub struct LlmResponse {
-    pub content: String,
-    pub tool_calls: Vec<ToolCall>,
-    pub usage: Usage,
-    pub stop_reason: StopReason,
-}
-
-/// LLM 流式块
-#[derive(Debug, Clone)]
-pub struct LlmChunk {
-    pub delta: ChunkDelta,
-    pub usage: Option<Usage>,
-}
-
-#[derive(Debug, Clone)]
-pub enum ChunkDelta {
-    Text(String),
-    ToolCall { id: String, name: String, delta: String },
-    Thinking(String),
-}
-
-#[derive(Debug, Clone)]
-pub enum StopReason {
-    EndTurn,
-    ToolUse,
-    MaxTokens,
-    StopSequence,
-}
-```
-
-#### claude/config.rs
-
-```rust
-/// Claude Provider 配置
-#[derive(Debug, Clone)]
-pub struct ClaudeConfig {
-    pub auth: ClaudeAuth,
-    pub model: String,
-    pub extra_headers: HashMap<String, String>,
-}
-
-/// Claude 认证方式
-#[derive(Debug, Clone)]
-pub enum ClaudeAuth {
-    /// API Key 认证（官方或转发站）
-    ApiKey(ApiKeyConfig),
-    /// OAuth 认证
-    OAuth { token_path: PathBuf },
-}
-
-impl ClaudeConfig {
-    /// 从 API Key 创建（官方或转发站）
-    pub fn with_api_key(key: String, base_url: Option<String>, model: String) -> Self {
-        Self {
-            auth: ClaudeAuth::ApiKey(ApiKeyConfig {
-                key,
-                base_url,
-                provider: ApiKeyProvider::Anthropic,
-            }),
-            model,
-            extra_headers: HashMap::new(),
-        }
-    }
-
-    /// 从 OAuth Token 文件创建
-    pub fn with_oauth(token_path: PathBuf, model: String) -> Self {
-        Self {
-            auth: ClaudeAuth::OAuth { token_path },
-            model,
-            extra_headers: HashMap::new(),
-        }
-    }
-}
-```
-
-#### claude/provider.rs
-
-```rust
-pub struct ClaudeProvider {
-    config: ClaudeConfig,
-    compiler: ClaudeCompiler,
-    oauth: Option<ClaudeOAuth>,
-    http: reqwest::Client,
-}
-
-impl ClaudeProvider {
-    pub fn new(config: ClaudeConfig) -> Self { ... }
-
-    fn base_url(&self) -> &str {
-        match &self.config.auth {
-            ClaudeAuth::ApiKey(cfg) => {
-                cfg.base_url.as_deref()
-                    .unwrap_or("https://api.anthropic.com")
-            }
-            ClaudeAuth::OAuth { .. } => "https://api.anthropic.com",
-        }
-    }
-
-    pub fn is_official(&self) -> bool {
-        match &self.config.auth {
-            ClaudeAuth::ApiKey(cfg) => cfg.base_url.is_none(),
-            ClaudeAuth::OAuth { .. } => true,
-        }
-    }
-}
-
-#[async_trait]
-impl LlmProvider for ClaudeProvider {
-    fn id(&self) -> &str { "claude" }
-    fn supported_models(&self) -> &[&str] {
-        &["claude-sonnet-4-5-20250929", "claude-opus-4-5-20251101", "claude-3-5-haiku-20241022"]
-    }
-    fn compile(&self, primitive: &PrimitiveRequest) -> serde_json::Value {
-        self.compiler.compile(primitive)
-    }
-    async fn complete(&self, body: serde_json::Value) -> crate::Result<LlmResponse> { ... }
-    fn needs_refresh(&self) -> bool {
-        self.oauth.as_ref().map_or(false, |o| o.needs_refresh())
-    }
-    async fn refresh_auth(&mut self) -> crate::Result<()> {
-        if let Some(oauth) = &mut self.oauth {
-            oauth.refresh_token().await?;
-        }
-        Ok(())
-    }
-}
+// OpenRouter: 指定 provider 偏好
+let mut req = PrimitiveRequest::single_user_message("Hello");
+req.extra.insert("provider".into(), json!({
+    "google": { "only": ["gemini-2.5-pro"] }
+}));
+
+// iFlow: 启用思考模式
+let mut req = PrimitiveRequest::single_user_message("Solve this problem");
+req.extra.insert("chat_template_kwargs".into(), json!({
+    "enable_thinking": true
+}));
+
+// Vertex AI: 指定区域
+let mut req = PrimitiveRequest::single_user_message("Hello");
+req.extra.insert("location".into(), json!("asia-northeast1"));
 ```
 
 ---
 
-## 4. 分层容错机制
+## 8. 预设平台
 
-### 4.1 架构图
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        调用方（认知层）                           │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     Gateway 层 (gateway.rs)                      │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
-│  │   Token Bucket  │  │  通用重试策略   │  │ Fallback Router │  │
-│  │   (全局限流)    │  │ (429/5xx 重试)  │  │ (跨 Provider)   │  │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                   Provider 层 (provider/*.rs)                    │
-│  ┌─────────────────────────────────────────────────────────────┐│
-│  │  多端点 fallback │ Provider 特定错误检测 │ Token 自动刷新   ││
-│  └─────────────────────────────────────────────────────────────┘│
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### 4.2 容错职责划分
-
-| 层 | 容错类型 | 说明 |
-|---|---------|------|
-| **Provider** | 多端点 fallback | Antigravity: daily → sandbox |
-| **Provider** | 特定错误检测 | Antigravity: "no capacity" |
-| **Provider** | 认证状态维护 | IFlow: Cookie 保活 |
-| **Provider** | Token 自动刷新 | OAuth providers |
-| **Gateway** | 全局令牌桶限流 | 防止 API 雪崩 |
-| **Gateway** | 通用错误重试 | 429/5xx 自动重试 |
-| **Gateway** | 跨 Provider 降级 | Anthropic → OpenAI → Ollama |
-| **Gateway** | 请求超时控制 | 统一超时配置 |
-
-### 4.3 错误信号传递
-
-Provider 层的错误需要携带足够的信息供 Gateway 层决策：
+### 8.1 预设定义
 
 ```rust
-/// Provider 执行错误，带有重试信号
-pub struct ProviderError {
-    pub message: String,
-    /// 是否应该在同一 Provider 重试 (例如 500, 429)
-    pub retryable: bool,
-    /// 是否应该触发跨 Provider 降级
-    pub should_fallback: bool,
-    /// 建议的重试延迟（毫秒）
-    pub retry_after_ms: Option<u64>,
+struct PlatformPreset {
+    /// 平台标识
+    id: String,
+    /// 平台名称
+    name: String,
+    /// 站点配置
+    site: Site,
+    /// 默认认证方式
+    default_auth: AuthMethod,
+    /// 协议格式
+    protocol: ProtocolFormat,
+    /// 协议钩子
+    protocol_hooks: Vec<Box<dyn ProtocolHook>>,
+    /// 模型解析器
+    model_resolver: Box<dyn ModelResolver>,
+    /// 默认模型列表
+    default_models: Vec<String>,
 }
 ```
 
-#### HTTP Client 连接池与资源控制
-**架构红线**：Provider 层 (`auth/providers/*` 和 `provider/*`) **严禁**自行在内部调用 `reqwest::Client::builder().build()` 去重复创建 HTTP 连接池。
-1. `reqwest::Client` 内部自带连接池 (Connection Pooling) 机制。如果在每次 `Provider::new()` 或者验证 Auth 时重新初始化 Client，会导致严重的文件描述符（SOCKET/TCP/TLS 握手）泄漏并拖垮网关。
-2. 所有的 `Provider` 实例化时，都必须接受由 `Gateway` 或外部上下文注入的同一个 `reqwest::Client` 引用/克隆传递。
-3. `Gateway` 负责持有全局唯一的 `Client`，统一定义 DNS 解析策略、Proxy 设置、超时阈值等。
+### 8.2 已支持的平台
 
-### 4.4 错误处理流程
+| 平台 | 协议 | 认证方式 | 特殊处理 |
+|------|------|---------|---------|
+| OpenAI | OpenAI | API Key | 无 |
+| Anthropic | Claude | API Key / OAuth | 无 |
+| Gemini | Gemini | API Key | 无 |
+| Vertex AI | Gemini | Service Account / API Key | URL 结构依赖认证类型 |
+| DeepSeek | OpenAI | API Key | 无 |
+| Moonshot (Kimi) | OpenAI | API Key | 无 |
+| 智谱 (GLM) | OpenAI | API Key | 无 |
+| iFlow | OpenAI | Cookie | Thinking 钩子 |
+| OpenRouter | OpenAI | API Key | Provider 字段 |
+| Gemini CLI | CloudCode | OAuth | CloudCode 包装 |
+| Antigravity | CloudCode | OAuth | CloudCode 包装 |
+
+---
+
+## 9. 目录结构
 
 ```
-请求失败
-    │
-    ├─→ Provider 内部处理
-    │       │
-    │       ├─→ 多端点 fallback ─→ 成功 ─→ 返回结果
-    │       │
-    │       └─→ 内部重试耗尽 ─→ 返回带信号的错误
-    │
-    └─→ Gateway 层处理
-            │
-            ├─→ 通用重试 ─→ 成功 ─→ 返回结果
-            │
-            └─→ 触发降级 ─→ 切换 Provider ─→ 重试
+nl_llm/src/
+├── lib.rs                    # 模块入口
+│
+├── client.rs                 # LlmClient 入口
+│
+├── presets/                  # 预设平台（平铺，不分类）
+│   ├── mod.rs
+│   ├── registry.rs          # 平台注册表
+│   ├── openai.rs
+│   ├── anthropic.rs
+│   ├── gemini.rs
+│   ├── vertex.rs
+│   ├── deepseek.rs
+│   ├── moonshot.rs
+│   ├── zhipu.rs
+│   ├── iflow.rs
+│   ├── openrouter.rs
+│   ├── gemini_cli.rs
+│   ├── antigravity.rs
+│   └── ...
+│
+├── protocol/                 # 协议格式
+│   ├── mod.rs
+│   ├── traits.rs            # ProtocolFormat trait
+│   ├── error.rs             # 【新增】StandardError 定义
+│   ├── base/                # 基础协议
+│   │   ├── mod.rs
+│   │   ├── openai.rs
+│   │   ├── claude.rs
+│   │   └── gemini.rs
+│   └── hooks/               # 协议钩子
+│       ├── mod.rs
+│       ├── traits.rs
+│       ├── iflow.rs
+│       └── cloudcode.rs
+│
+├── site/                     # 站点定义
+│   ├── mod.rs
+│   ├── traits.rs            # Site trait
+│   ├── context.rs           # 【新增】UrlContext, Action 定义
+│   └── builder.rs           # Site 构建器
+│
+├── auth/                     # 认证方式
+│   ├── mod.rs
+│   ├── types.rs             # 认证类型定义
+│   ├── traits.rs            # Authenticator trait
+│   └── providers/           # 各平台认证实现
+│       ├── mod.rs
+│       ├── api_key.rs
+│       ├── oauth/
+│       ├── service_account.rs
+│       ├── cookie.rs
+│       └── multikey/
+│
+├── primitive/                # 原语格式
+│   ├── mod.rs
+│   ├── request.rs
+│   ├── message.rs
+│   ├── tool.rs
+│   ├── parameters.rs
+│   └── metadata.rs
+│
+├── model/                    # 【新增】模型解析
+│   ├── mod.rs
+│   ├── resolver.rs          # ModelResolver trait
+│   ├── capabilities.rs      # Capability flags
+│   └── default.rs           # DefaultModelResolver
+│
+├── pipeline/                 # 流水线
+│   ├── mod.rs
+│   ├── traits.rs            # Stage trait
+│   ├── stages/
+│   │   ├── mod.rs
+│   │   ├── primitivize.rs   # 原语化阶段
+│   │   ├── pack.rs          # 封包阶段
+│   │   ├── authenticate.rs  # 认证阶段
+│   │   ├── send.rs          # 发送阶段
+│   │   └── unpack.rs        # 解包阶段
+│   └── pipeline.rs          # 流水线组装
+│
+├── gateway.rs               # Gateway 编排层
+├── fallback.rs              # 降级路由
+└── token_bucket.rs          # 令牌桶限流
 ```
 
 ---
 
-## 5. 黑魔法代理层
+## 10. 使用示例
 
-### 5.1 多形态反代模型
-
-围绕四个上游项目（CLIProxyAPI / newapi / ccswitch / Claude Code Router），统一整理多形态反代输出：
-
-| 上游项目 | 在社区中常见角色 | 在本项目抽象的形态 |
-|---|---|---|
-| CLIProxyAPI | 本地 CLI 能力 API 化 | `Api` + `Cli` |
-| newapi | 多渠道网关/聚合中转 | `Api` + `Auth` |
-| ccswitch | Claude Code 请求切换层 | `Api` + `WebSocket` |
-| Claude Code Router | Claude Code 路由分流 | `Api` + `WebSocket` |
-
-### 5.2 核心类型
+### 10.1 使用预设平台
 
 ```rust
-/// 反代接口形态
-pub enum ProxyExposureKind {
-    Api,        // HTTP JSON
-    Auth,       // 鉴权代理
-    WebSocket,  // 实时双工
-    Cli,        // 本地进程桥接
-}
+// OpenAI
+let client = LlmClient::from_preset("openai")
+    .with_api_key("sk-xxx")
+    .build();
 
-/// 反代端点描述
-pub struct ProxyExposure {
-    pub kind: ProxyExposureKind,
-    pub path: String,
-    pub method: String,
-    pub auth_header: Option<String>,
-    pub auth_prefix: Option<String>,
-    pub cli_command: Option<String>,
-    pub cli_args: Vec<String>,
-    pub notes: String,
-}
+// iFlow
+let client = LlmClient::from_preset("iflow")
+    .with_cookie("BXAuth=xxx")
+    .build();
 
-/// 反代项目规格
-pub struct BlackMagicProxySpec {
-    pub target: BlackMagicProxyTarget,
-    pub default_base_url: String,
-    pub exposures: Vec<ProxyExposure>,
-    pub notes: String,
-}
+// Vertex AI (Service Account)
+let client = LlmClient::from_preset("vertex")
+    .with_service_account_json(json_str)
+    .build();
+
+// Vertex AI (API Key)
+let client = LlmClient::from_preset("vertex")
+    .with_api_key("AIza...")
+    .build();
 ```
 
-### 5.3 统一调用准备器
+### 10.2 自定义组装
 
-`BlackMagicProxyClient::prepare_call(kind, request)` 根据形态生成标准化调用参数：
+```rust
+// 代理站 + OpenAI 格式
+let client = LlmClient::builder()
+    .site("https://proxy.example.com/v1")
+    .auth(Auth::api_key("sk-xxx"))
+    .protocol(Protocol::openai())
+    .model("gpt-4o")
+    .build();
 
-- `ProxyPreparedCall::Http(ProxyPreparedHttpCall)` — HTTP method/url/headers/body
-- `ProxyPreparedCall::WebSocket(ProxyPreparedWsCall)` — ws url + 握手 header + init payload
-- `ProxyPreparedCall::Cli(ProxyPreparedCliCall)` — command/args/env/stdin payload
+// 代理站 + Claude 格式
+let client = LlmClient::builder()
+    .site("https://proxy.example.com/v1")
+    .auth(Auth::api_key("sk-xxx"))
+    .protocol(Protocol::claude())
+    .model("claude-3-opus")
+    .build();
 
----
+// 自定义协议钩子
+let client = LlmClient::builder()
+    .site("https://custom.com/v1")
+    .auth(Auth::api_key("sk-xxx"))
+    .protocol(Protocol::openai())
+    .protocol_hook(CustomThinkingHook)
+    .build();
+```
 
-## 6. 配置示例
+### 10.3 基于预设修改
 
-```yaml
-# ========== Claude ==========
-# 官方 Claude
-- provider: claude
-  api_key: "sk-ant-xxx"
-  model: "claude-sonnet-4-5"
+```rust
+// 使用 OpenAI 预设，但修改端点
+let client = LlmClient::from_preset("openai")
+    .with_base_url("https://api.custom-proxy.com/v1")
+    .build();
 
-# Claude 转发站（OpenRouter）
-- provider: claude
-  api_key: "sk-or-xxx"
-  base_url: "https://openrouter.ai/api/v1"
-  model: "anthropic/claude-sonnet-4.5"
+// 使用 iFlow 预设，但使用不同的模型
+let client = LlmClient::from_preset("iflow")
+    .with_model("claude-3-opus")
+    .build();
+```
 
-# Claude OAuth
-- provider: claude
-  oauth_token: "~/.claude/user@example.com.json"
-  model: "claude-sonnet-4-5"
+### 10.4 使用模型别名和能力检测
 
-# ========== OpenAI ==========
-# 官方 OpenAI
-- provider: openai
-  api_key: "sk-xxx"
-  model: "gpt-4o"
+```rust
+let client = LlmClient::from_preset("openai")
+    .with_api_key("sk-xxx")
+    .build();
 
-# OpenAI 转发站（Kimi）
-- provider: openai
-  api_key: "sk-xxx"
-  base_url: "https://api.moonshot.cn/v1"
-  model: "moonshot-v1-8k"
+// 使用别名
+let req = PrimitiveRequest::single_user_message("Hello")
+    .with_model("gpt4");  // 会解析为 "gpt-4o"
 
-# ========== Gemini ==========
-# 官方 Gemini AI Studio
-- provider: gemini
-  api_key: "AIzaSyxxx"
-  model: "gemini-2.5-flash"
+// 检查能力
+if client.has_capability("gpt4", Capability::VISION) {
+    // 支持 Vision
+}
 
-# Gemini 转发站
-- provider: gemini
-  api_key: "vk-xxx"
-  base_url: "https://zenmux.ai/api"
-  model: "gemini-2.5-pro"
+// 获取上下文窗口建议
+let (input_limit, output_limit) = client.context_window_hint("gpt4");
+```
 
-# Vertex AI (Service Account)
-- provider: gemini
-  service_account: "/path/to/sa.json"
-  model: "gemini-2.5-flash"
-  location: "us-central1"
+### 10.5 使用平台特定参数
 
-# Gemini CLI (OAuth)
-- provider: gemini
-  oauth_token: "~/.gemini-cli/user@gmail.com-project.json"
-  model: "gemini-2.5-pro"
+```rust
+// OpenRouter: 指定 provider
+let mut req = PrimitiveRequest::single_user_message("Hello")
+    .with_model("gemini-2.5-pro");
+req.extra.insert("provider".into(), json!({
+    "google": { "only": ["gemini-2.5-pro"] }
+}));
 
-# ========== Codex ==========
-- provider: codex
-  api_key: "sk-xxx"
-  model: "gpt-5-codex"
-
-# ========== iFlow ==========
-- provider: iflow
-  cookie: "BXAuth=xxx;"
-  model: "qwen3-max"
-
-# ========== 讯飞星火 ==========
-- provider: xunfei
-  app_id: "50b077fc"
-  api_key: "edc616b0056d1425f7a3ce62c659bf6c"
-  api_secret: "MDU0M2RmZTFiZWVkNTQ5MWYyOGFmODh"
-  model: "generalv4"          # 可选: generalv3.5, generalv4, 4.0Ultra
+let response = client.complete(req).await?;
 ```
 
 ---
 
-## 7. 设计原则总结
-
-本文档定义的十大核心设计原则：
+## 11. 设计原则总结
 
 | 序号 | 原则 | 说明 |
 |------|------|------|
-| 1 | **认证与协议正交** | 认证方式和请求协议是两个独立的维度 |
-| 2 | **协议优先** | Provider 按协议划分，不是按官方/转发站划分 |
-| 3 | **配置区分类型** | 官方/转发站由 `base_url` 决定，不是类型差异 |
-| 4 | **OAuth 独立实现** | 各 Provider 的 OAuth 差异太大，必须独立实现 |
-| 5 | **MultiKey 独立签名** | 多字段凭证需要独立的签名器，各平台算法差异大 |
-| 6 | **认证输出多样化** | 认证要素可表现为 Header、URL 参数、请求体字段等多种形式 |
-| 7 | **原语中间层** | `PrimitiveRequest` 作为统一中间表示，解耦转换 |
-| 8 | **统一 Trait 接口** | `LlmProvider` trait 提供统一调用接口 |
-| 9 | **分层容错** | Provider 层处理特有容错，Gateway 层处理通用容错 |
-| 10 | **错误信号传递** | `ProviderError` 携带重试/降级信号供 Gateway 决策 |
+| 1 | **四维正交** | Site、Protocol、Auth、Model 四个维度完全独立 |
+| 2 | **预设优先** | 提供开箱即用的预设平台，降低使用门槛 |
+| 3 | **组装灵活** | 支持自定义组装，满足定制需求 |
+| 4 | **协议复用** | 协议格式与平台无关，可在不同平台复用 |
+| 5 | **钩子扩展** | 协议变体通过钩子处理，钩子可访问 PipelineContext |
+| 6 | **流水线处理** | 数据处理阶段清晰，便于调试和扩展 |
+| 7 | **直通优化** | 格式相同时跳过解包封包，提升性能 |
+| 8 | **错误规范化** | 平台错误统一转换，携带重试/降级信号 |
+| 9 | **模型解析** | 支持别名解析和能力检测 |
+| 10 | **URL 上下文** | URL 构建支持认证类型和操作类型依赖 |
+| 11 | **扩展参数** | PrimitiveRequest 支持平台特定参数透传 |
+| 12 | **流式双轨** | 流式请求同时支持 URL 层和 JSON Body 层标识 |
 
 ---
 
-## 8. Examples 集成测试与范例规范
+## 12. 迁移计划
 
-为了保证大模型客户端在独立环境下的可用性，以及提供快速试错的沙箱机制，`nl_llm` 采用 `examples/` 目录存放各 Provider 的独立端到端连通性测试。设计规范如下：
+### 12.1 Phase 1：基础架构
 
-### 8.1 目录划分
-每个 Provider 必须在 `examples/` 目录下建立自己专属的作用域，按核心功能分拆为子模块包：
-```text
-examples/
-├── [provider_name]/
-│   ├── auth/              # 身份验证/凭证流获取范例
-│   │   ├── main.rs
-│   │   └── [provider]_auth.bat
-│   ├── chat/              # 标准生成/流式生成范例
-│   │   ├── main.rs
-│   │   ├── [provider]_chat.bat          # 测试全量生成
-│   │   └── [provider]_chat_stream.bat   # 测试 sse 流式回显
-│   └── models/            # 动态网关模型列表抓取范例（平台支持时）
-│       ├── main.rs
-│       └── [provider]_models.bat
-```
+1. 定义核心 traits（Site, Protocol, Authenticator）
+2. 实现 Pipeline 框架
+3. 实现 Primitive 原语
+4. 实现 StandardError 和错误规范化
 
-### 8.2 main.rs 编写规范
-1. **脱离主应用依赖**：`examples` 必须只依赖当前 `nl_llm` 包以及通用的三方库（如 `tokio`, `serde_json`）。绝对不允许反向依赖外部或上层 Workspace 的任何业务逻辑代码。
-2. **凭据读取优先级**：优先从 `std::env::var` 读取密钥 / 环境变量（如 `GEMINI_API_KEY`、`IFLOW_COOKIE`）。对于复杂的授权模式（如 OAuth），需直接在内部完成 `TokenStorage::from_file()` 的装载机制探测。
-3. **输出清晰**：所有的通信异常必须打印完整的 HTTP 状态码与原始服务端文字 `resp.text().await`，以便快速定位问题来源。
+### 12.2 Phase 2：协议实现
 
-### 8.3 .bat 端到端测试脚本规范
-为了让全部协同开发者或 AI 克隆项目后能获得“开箱即用”的验证体验，每个 `main.rs` 旁必须配有 `.bat` 启动脚本。极简规范如下：
+1. 实现三种基础协议（OpenAI, Claude, Gemini）
+2. 实现协议钩子机制
+3. 实现错误解包方法
+4. 编写协议单元测试
 
-1. **统一的控制台抬头**：脚本运行必须打印明显的分割线和当前测试的模块名，如 `echo === Gemini Chat Test ===`。
-2. **终端乱码与注入防护**：
-   - 必须确保 `.bat` 文件**没有任何 UTF-8 BOM 隐形头**，以防止 `cmd.exe` 在解析第一行路径时将其截断报错（直接抛出 `:\Users...` 这种毁容级的路径错误）。
-   - 设置终端代码页 `chcp 65001 >nul`，确保输出 Emoji 和宽体字符时不出现问号乱码。
-3. **安全的兜底降权密钥**：
-   - 测试脚本必须首选宿主机的全局环境参数中的 KEY。
-   - 如果用户未配置，**允许在脚本内部硬编码提供一张 fallback 的兜底测试 Key**。但是一旦动用兜底 Key，必须打印黄色的 `[WARNING] Using default embedded API_KEY...` 提示用户，严防机密被长久泄漏滥用。
-4. **包装执行接口**：将繁复的 `cargo run --example [模块路径] -- [参数]` 彻底隐藏包装进 `.bat` 内部，仅把最高频最口语的参数（例如提词 `prompt`）留作外传参数 `$1`。
+### 12.3 Phase 3：认证实现
 
-综上所述，`examples/` 已经不再是单纯给新人看的“使用演示 (Demonstration)”，它现在直接充当工程的 **“端到端集成测试” (Integration E2E Tests)** 前沿阵地。每个 Provider 合入主分支前，必须保证其范例结构与其 `.bat` 能够顺畅跑通。
+1. 迁移现有认证代码
+2. 实现 Authenticator trait
+3. 测试各平台认证流程
+
+### 12.4 Phase 4：预设平台
+
+1. 迁移现有 Provider 为预设
+2. 实现注册表
+3. 实现 ModelResolver
+4. 编写集成测试
+
+### 12.5 Phase 5：客户端 API
+
+1. 实现 LlmClient builder
+2. 实现 from_preset 便捷方法
+3. 编写使用文档
 
 ---
 
-*本文档作为 `nl_llm` 模块的完整设计规范，指导后续实现开发。*
+## 13. 架构评审要点总结
+
+### 13.1 Site/Auth 耦合问题
+
+**问题**：部分平台（如 Vertex AI）的 URL 结构依赖认证类型（SA vs API Key 有不同端点）。
+
+**解决方案**：`build_url` 方法接收 `UrlContext`，包含 `auth_type` 和 `action` 信息，Site 实现根据上下文动态构建 URL。
+
+### 13.2 流式/非流式端点异构问题
+
+**问题**：部分平台的流式和非流式使用不同端点路径。
+
+**解决方案**：在 `UrlContext` 中添加 `Action` 枚举，`build_url` 根据 action 返回对应端点。
+
+### 13.3 错误规范化问题
+
+**问题**：各平台错误格式不一，上层难以统一处理。
+
+**解决方案**：在 `ProtocolFormat` trait 中添加 `unpack_error` 方法，将平台错误转换为 `StandardError`，携带 `retryable` 和 `fallback_hint` 信息。
+
+### 13.4 模型别名和能力检测问题
+
+**问题**：用户可能使用别名（如 "gpt4"），且需要知道模型能力（如是否支持 Vision）。
+
+**解决方案**：引入 `ModelResolver` trait，负责别名解析和能力检测。
+
+### 13.5 平台特定参数问题
+
+**问题**：部分平台有特殊参数（如 OpenRouter 的 provider 字段）。
+
+**解决方案**：在 `PrimitiveRequest` 中添加 `extra: HashMap<String, Value>` 字段，封包时合并到请求体中。
+
+---
+
+*本文档作为 `nl_llm` 模块的完整设计规范 v2.1，指导后续实现开发。*
