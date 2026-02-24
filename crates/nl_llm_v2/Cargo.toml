@@ -111,6 +111,18 @@ name = "vertex_stream"
 path = "examples/vertex/stream/main.rs"
 
 [[example]]
+name = "vertex_api_chat"
+path = "examples/vertex_api/chat/main.rs"
+
+[[example]]
+name = "vertex_api_stream"
+path = "examples/vertex_api/stream/main.rs"
+
+[[example]]
+name = "vertex_api_models"
+path = "examples/vertex_api/models/main.rs"
+
+[[example]]
 name = "iflow_auth"
 path = "examples/iflow/auth/main.rs"
 

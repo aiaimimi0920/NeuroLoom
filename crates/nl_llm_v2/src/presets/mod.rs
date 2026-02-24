@@ -11,6 +11,7 @@ pub mod zhipu;
 pub mod iflow;
 pub mod openrouter;
 pub mod gemini_cli;
+pub mod vertex_api;
 pub mod antigravity;
 
 pub use registry::{PresetRegistry, REGISTRY};

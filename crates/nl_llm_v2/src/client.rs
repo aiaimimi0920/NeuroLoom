@@ -230,6 +230,33 @@ impl ClientBuilder {
         self.auth(ServiceAccountAuth::new(json_str))
     }
 
+    /// Vertex AI (API Key 模式) 专用
+    ///
+    /// API Key 通过 URL `?key=xxx` 注入。
+    /// 注意：API Key 模式的 URL 不含 project_id（直接走 publishers/google/models/）。
+    /// ```
+    /// let client = LlmClient::from_preset("vertex_api")
+    ///     .with_vertex_api_key("AIza...")
+    ///     .build();
+    /// ```
+    pub fn with_vertex_api_key(mut self, key: impl Into<String>) -> Self {
+        let key = key.into();
+
+        // VertexApiSite: API Key 模式不需要 project_id
+        self.site = Some(Arc::new(
+            crate::site::base::vertex_api::VertexApiSite::new(&key)
+        ));
+
+        // API Key 模式使用 GeminiExtension（走 generativelanguage.googleapis.com，支持 API Key）
+        // 而非 VertexExtension（走 aiplatform.googleapis.com，需要 Bearer Token）
+        self.extension = Some(Arc::new(
+            crate::provider::gemini::GeminiExtension::new().with_api_key(&key)
+        ));
+
+        // GeminiApiKeyAuth: 不注入 Header（key 已在 URL 中）
+        self.auth(crate::auth::providers::GeminiApiKeyAuth::new(key))
+    }
+
     /// Gemini CLI 专用：使用本地 OAuth 缓存文件或自动执行浏览器授权
     pub fn with_gemini_cli_oauth(self, cache_path: impl AsRef<std::path::Path>) -> Self {
         self.auth(crate::auth::providers::gemini_cli::GeminiCliOAuth::new().with_cache(cache_path))

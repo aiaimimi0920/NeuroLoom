@@ -29,6 +29,7 @@ impl PresetRegistry {
         self.builders.insert("iflow", super::iflow::builder);
         self.builders.insert("openrouter", super::openrouter::builder);
         self.builders.insert("gemini_cli", super::gemini_cli::builder);
+        self.builders.insert("vertex_api", super::vertex_api::builder);
         self.builders.insert("antigravity", super::antigravity::builder);
     }
 
