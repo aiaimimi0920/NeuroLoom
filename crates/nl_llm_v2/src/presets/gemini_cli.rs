@@ -7,6 +7,6 @@ pub fn builder() -> ClientBuilder {
     ClientBuilder::new()
         .site(CloudCodeSite::new())
         .protocol(GeminiProtocol {})
-        .protocol_hook(CloudCodeHook {})
+        .with_protocol_hook(std::sync::Arc::new(CloudCodeHook {}))
         .default_model("gemini-2.5-flash")
 }

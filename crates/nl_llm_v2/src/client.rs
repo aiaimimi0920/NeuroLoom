@@ -11,6 +11,7 @@ use crate::pipeline::{Pipeline, PipelineContext};
 use crate::pipeline::stages::{PrimitivizeStage, PackStage, AuthenticateStage, SendStage, UnpackStage};
 use crate::primitive::PrimitiveRequest;
 use crate::provider::{LlmResponse, BoxLlmStream};
+use crate::provider::extension::{ProviderExtension, ModelInfo};
 use crate::site::context::{UrlContext, Action};
 
 /// LLM 客户端门面类
@@ -22,6 +23,7 @@ pub struct LlmClient {
     model_resolver: Box<dyn ModelResolver>,
     default_model: String,
     http: Client,
+    extension: Option<Arc<dyn ProviderExtension>>,
 }
 
 impl LlmClient {
@@ -132,6 +134,21 @@ impl LlmClient {
         pipeline.execute(&mut ctx).await?;
         ctx.take_stream()
     }
+
+    /// 获取底层 Authenticator
+    pub fn authenticator(&self) -> Arc<Mutex<Box<dyn Authenticator>>> {
+        self.authenticator.clone()
+    }
+
+    /// 获取可用模型列表（如果平台支持该扩展）
+    pub async fn list_models(&self) -> anyhow::Result<Vec<ModelInfo>> {
+        if let Some(ext) = &self.extension {
+            let mut auth = self.authenticator.lock().await;
+            ext.list_models(&self.http, &mut **auth).await
+        } else {
+            Err(anyhow::anyhow!("Extension API not supported for this provider"))
+        }
+    }
 }
 
 /// 客户端构建器
@@ -143,6 +160,7 @@ pub struct ClientBuilder {
     model_resolver: Option<Box<dyn ModelResolver>>,
     default_model: Option<String>,
     http: Option<Client>,
+    extension: Option<Arc<dyn ProviderExtension>>,
 }
 
 impl ClientBuilder {
@@ -155,6 +173,7 @@ impl ClientBuilder {
             model_resolver: None,
             default_model: None,
             http: None,
+            extension: None,
         }
     }
 
@@ -234,8 +253,14 @@ impl ClientBuilder {
         self
     }
 
-    pub fn protocol_hook(mut self, hook: impl ProtocolHook + 'static) -> Self {
-        self.protocol_hooks.push(Arc::new(hook));
+    pub fn with_protocol_hook(mut self, hook: Arc<dyn ProtocolHook>) -> Self {
+        self.protocol_hooks.push(hook);
+        self
+    }
+
+    /// 设置供应商扩展接口
+    pub fn with_extension(mut self, ext: Arc<dyn ProviderExtension>) -> Self {
+        self.extension = Some(ext);
         self
     }
 
@@ -261,6 +286,7 @@ impl ClientBuilder {
                 .unwrap_or_else(|| Box::new(DefaultModelResolver::new())),
             default_model: self.default_model.unwrap_or_default(),
             http: self.http.unwrap_or_else(Client::new),
+            extension: self.extension,
         }
     }
 }

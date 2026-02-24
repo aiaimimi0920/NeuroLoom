@@ -25,6 +25,9 @@ url = "2.5"
 tiny_http = "0.12"
 tokio-stream = "0.1.18"
 async-stream = "0.3"
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
 
 [[example]]
 name = "openai_chat"
@@ -109,6 +112,14 @@ path = "examples/iflow/auth/main.rs"
 [[example]]
 name = "iflow_thinking"
 path = "examples/iflow/thinking/main.rs"
+
+[[example]]
+name = "iflow_stream"
+path = "examples/iflow/stream/main.rs"
+
+[[example]]
+name = "iflow_models"
+path = "examples/iflow/models/main.rs"
 
 [[example]]
 name = "gemini_cli_auth"

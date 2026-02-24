@@ -101,7 +101,11 @@ impl ProtocolFormat for OpenAiProtocol {
                     let line = buffer[..pos].trim().to_string();
                     buffer = buffer[pos + 1..].to_string();
 
-                    if let Some(data) = line.strip_prefix("data: ") {
+                    // 兼容 "data: {...}" 和 "data:{...}" 两种 SSE 格式
+                    // 标准 SSE 使用 "data: " (带空格), 但部分服务（如 iFlow）省略空格
+                    let data_str = line.strip_prefix("data: ")
+                        .or_else(|| line.strip_prefix("data:"));
+                    if let Some(data) = data_str {
                         let data = data.trim();
                         if data == "[DONE]" || data.is_empty() {
                             continue;

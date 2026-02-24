@@ -28,7 +28,6 @@ impl IFlowModelResolver {
         // GLM 系列
         inner.extend_aliases(vec![
             ("glm", "glm-4-flash"),
-            ("glm-4", "glm-4"),
             ("glm-4-air", "glm-4-air"),
             ("glm-4-flash", "glm-4-flash"),
         ]);
@@ -98,9 +97,9 @@ impl IFlowModelResolver {
 
         // DeepSeek 系列
         inner.extend_context_lengths(vec![
-            ("deepseek-v3", 64_000),
-            ("deepseek-v3.1", 64_000),
-            ("deepseek-v3.2", 64_000),
+            ("deepseek-v3", 128_000),
+            ("deepseek-v3.1", 128_000),
+            ("deepseek-v3.2", 128_000),
             ("deepseek-r1", 64_000),
         ]);
 

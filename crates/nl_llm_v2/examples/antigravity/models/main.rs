@@ -140,102 +140,59 @@ async fn main() -> Result<()> {
         }
     }
 
-    // ── Part 2: 通过 fetchAvailableModels 获取所有可用模型 ──
+    // ── Part 2: 通过 Extension API 获取所有可用模型 ──
     println!("\n=== [2/2] CloudCode PA 可用模型列表 ===");
-    println!("(via /v1internal:fetchAvailableModels)\n");
+    println!("(via Extension API)\n");
 
-    let base_url = "https://cloudcode-pa.googleapis.com/v1internal";
-    let fetch_url = format!("{}:fetchAvailableModels", base_url);
+    let client = nl_llm_v2::LlmClient::from_preset("antigravity")
+        .expect("antigravity preset should exist")
+        .with_antigravity_oauth(&cache_path)
+        .build();
 
-    let res = http.post(&fetch_url)
-        .header("Authorization", format!("Bearer {}", access_token))
-        .header("Content-Type", "application/json")
-        .header("User-Agent", "antigravity/1.104.0 darwin/arm64")
-        .json(&serde_json::json!({}))
-        .send()
-        .await?;
+    let models_list = client.list_models().await?;
 
-    let status = res.status();
-    let text = res.text().await?;
+    let mut gemini_models = Vec::new();
+    let mut claude_models = Vec::new();
+    let mut other_models = Vec::new();
 
-    if !status.is_success() {
-        eprintln!("fetchAvailableModels 失败 ({}): {}", status, text);
-        return Ok(());
+    for m in models_list {
+        if m.id.starts_with("claude") {
+            claude_models.push(m);
+        } else if m.id.starts_with("gemini") {
+            gemini_models.push(m);
+        } else {
+            other_models.push(m);
+        }
     }
 
-    let json: serde_json::Value = serde_json::from_str(&text)?;
-
-    // 已知模型的描述 (用于注释)
-    let known_descriptions: std::collections::HashMap<&str, &str> = CANDIDATE_MODELS.iter()
-        .map(|(name, desc)| (*name, *desc))
-        .collect();
-
-    // 内部模型过滤 (参照 FetchAntigravityModels 中的过滤)
-    let skip_models = ["chat_20706", "chat_23310", "gemini-2.5-flash-thinking", "gemini-3-pro-low"];
-
-    if let Some(models) = json.get("models").and_then(|v| v.as_object()) {
-        let mut gemini_models: Vec<(&str, &serde_json::Value)> = Vec::new();
-        let mut claude_models: Vec<(&str, &serde_json::Value)> = Vec::new();
-        let mut other_models: Vec<(&str, &serde_json::Value)> = Vec::new();
-
-        for (name, data) in models {
-            let name_str = name.as_str();
-            if skip_models.contains(&name_str) {
-                continue;
-            }
-            if name_str.starts_with("claude") {
-                claude_models.push((name_str, data));
-            } else if name_str.starts_with("gemini") {
-                gemini_models.push((name_str, data));
-            } else {
-                other_models.push((name_str, data));
-            }
+    let print_model = |m: &nl_llm_v2::provider::extension::ModelInfo| {
+        if !m.description.is_empty() {
+            println!("  ✅ {:<32} {}", m.id, m.description);
+        } else {
+            println!("  ✅ {}", m.id);
         }
+    };
 
-        gemini_models.sort_by_key(|&(name, _)| name);
-        claude_models.sort_by_key(|&(name, _)| name);
-        other_models.sort_by_key(|&(name, _)| name);
-
-        let print_model = |name: &str, _data: &serde_json::Value| {
-            if let Some(desc) = known_descriptions.get(name) {
-                println!("  ✅ {:<32} {}", name, desc);
-            } else {
-                println!("  ✅ {}", name);
-            }
-        };
-
-        if !gemini_models.is_empty() {
-            println!("── Gemini ({} 个) ──", gemini_models.len());
-            for (name, data) in &gemini_models {
-                print_model(name, data);
-            }
-            println!();
-        }
-
-        if !claude_models.is_empty() {
-            println!("── Claude ({} 个) ──", claude_models.len());
-            for (name, data) in &claude_models {
-                print_model(name, data);
-            }
-            println!();
-        }
-
-        if !other_models.is_empty() {
-            println!("── 其他 ({} 个) ──", other_models.len());
-            for (name, data) in &other_models {
-                print_model(name, data);
-            }
-            println!();
-        }
-
-        let total = gemini_models.len() + claude_models.len() + other_models.len();
-        println!("共计 {} 个可用模型", total);
-    } else {
-        eprintln!("fetchAvailableModels 返回数据中无 models 字段");
-        eprintln!("原始响应: {}", &text[..text.len().min(500)]);
+    if !gemini_models.is_empty() {
+        println!("── Gemini ({} 个) ──", gemini_models.len());
+        for m in &gemini_models { print_model(m); }
+        println!();
     }
 
-    println!();
+    if !claude_models.is_empty() {
+        println!("── Claude ({} 个) ──", claude_models.len());
+        for m in &claude_models { print_model(m); }
+        println!();
+    }
+
+    if !other_models.is_empty() {
+        println!("── 其他 ({} 个) ──", other_models.len());
+        for m in &other_models { print_model(m); }
+        println!();
+    }
+
+    let total = gemini_models.len() + claude_models.len() + other_models.len();
+    println!("共计 {} 个可用模型\n", total);
     Ok(())
 }
 

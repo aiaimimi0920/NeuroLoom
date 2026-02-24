@@ -4,6 +4,9 @@ use crate::site::traits::Site;
 use crate::site::context::UrlContext;
 
 /// iFlow 网关平台实现
+///
+/// iFlow 是一个 OpenAI 兼容的 Chat Completions 网关，
+/// 不按 Action 区分端点（所有请求都发送到 /v1/chat/completions）
 pub struct IFlowSite {
     base_url: String,
     timeout: Duration,
@@ -20,6 +23,17 @@ impl IFlowSite {
     pub fn with_base_url(mut self, url: impl Into<String>) -> Self {
         self.base_url = url.into();
         self
+    }
+
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+}
+
+impl Default for IFlowSite {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -39,7 +53,8 @@ impl Site for IFlowSite {
 
     fn extra_headers(&self) -> HashMap<&str, &str> {
         let mut headers = HashMap::new();
-        headers.insert("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+        headers.insert("Content-Type", "application/json");
+        headers.insert("User-Agent", "iFlow-Cli");
         headers
     }
 

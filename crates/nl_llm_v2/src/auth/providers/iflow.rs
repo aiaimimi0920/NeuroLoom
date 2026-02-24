@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use async_trait::async_trait;
-use reqwest::{Client, RequestBuilder, header::{HeaderMap, HeaderValue}};
+use reqwest::{Client, RequestBuilder, header::HeaderValue};
 use serde::Deserialize;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
@@ -79,17 +79,22 @@ impl IFlowAuth {
         }
     }
 
-    fn build_headers(&self, is_post: bool) -> HeaderMap {
-        let mut headers = HeaderMap::new();
+    fn build_headers(&self, is_json: bool) -> reqwest::header::HeaderMap {
+        let mut headers = reqwest::header::HeaderMap::new();
+        let cookie_val = if self.cookie_str.starts_with("BXAuth=") {
+            self.cookie_str.clone()
+        } else {
+            format!("BXAuth={}", self.cookie_str)
+        };
         headers.insert(
-            "Cookie",
-            HeaderValue::from_str(&self.cookie_str).unwrap_or_else(|_| HeaderValue::from_static("")),
+            reqwest::header::COOKIE,
+            reqwest::header::HeaderValue::from_str(&cookie_val).unwrap(),
         );
         headers.insert(
-            "User-Agent",
-            HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"),
+            reqwest::header::USER_AGENT,
+            reqwest::header::HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
         );
-        if is_post {
+        if is_json {
             headers.insert("Content-Type", HeaderValue::from_static("application/json"));
             headers.insert("Origin", HeaderValue::from_static("https://platform.iflow.cn"));
             headers.insert("Referer", HeaderValue::from_static("https://platform.iflow.cn/"));
@@ -142,9 +147,13 @@ impl Authenticator for IFlowAuth {
             return Err(anyhow::anyhow!("GET apikey failed ({}): {}", get_resp.status(), get_resp.text().await.unwrap_or_default()));
         }
 
-        let get_data: IFlowApiKeyResponse = get_resp.json().await?;
+        let text = get_resp.text().await?;
+        let get_data: IFlowApiKeyResponse = match serde_json::from_str(&text) {
+            Ok(j) => j,
+            Err(e) => return Err(anyhow::anyhow!("Failed to parse GET apikey JSON: {}\nRaw: {}", e, text)),
+        };
         if !get_data.success {
-            return Err(anyhow::anyhow!("GET apikey returned success=false"));
+            return Err(anyhow::anyhow!("GET apikey returned success=false\nRaw: {}", text));
         }
         let data = get_data.data.ok_or_else(|| anyhow::anyhow!("Missing GET response payload"))?;
 

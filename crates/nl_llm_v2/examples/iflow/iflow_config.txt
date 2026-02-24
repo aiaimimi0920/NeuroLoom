@@ -1,9 +1,0 @@
-# iFlow Test Configuration
-# ================================
-# Edit the values below for your tests
-
-BXAuth=YOUR_BXAUTH_COOKIE_HERE
-
-MODEL=qwen3-max
-
-PROMPT=Hello

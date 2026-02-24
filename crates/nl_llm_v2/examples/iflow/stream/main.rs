@@ -1,11 +1,10 @@
-//! iFlow 平台测试 - Thinking 模式
+//! iFlow 平台测试 - 流式输出
 //!
-//! IflowThinkingHook 会根据模型自动注入 enable_thinking 参数
-//!
-//! 运行方式: cargo run -p nl_llm_v2 --example iflow_thinking
+//! 运行方式: cargo run -p nl_llm_v2 --example iflow_stream
 
 use nl_llm_v2::{LlmClient, PrimitiveRequest};
 use anyhow::Result;
+use futures::StreamExt;
 use std::path::Path;
 
 #[tokio::main]
@@ -18,7 +17,7 @@ async fn main() -> Result<()> {
         .expect("请提供 iFlow Cookie");
 
     let prompt = args.get(2).cloned()
-        .unwrap_or_else(|| "1+1等于几？请一步一步推理".to_string());
+        .unwrap_or_else(|| "用三句话介绍一下Rust语言".to_string());
 
     let model = args.get(3).cloned()
         .unwrap_or_else(|| "qwen3-max".to_string());
@@ -32,10 +31,19 @@ async fn main() -> Result<()> {
         .with_model(&model);
 
     println!("用户: {}\n", prompt);
-    println!("AI ({}, thinking mode):", model);
+    println!("AI ({}，流式):", model);
 
-    let resp = client.complete(&req).await?;
-    println!("{}", resp.content);
+    let mut stream = client.stream(&req).await?;
+    while let Some(chunk) = stream.next().await {
+        match chunk {
+            Ok(c) => print!("{}", c.content),
+            Err(e) => {
+                eprintln!("\n流式错误: {}", e);
+                break;
+            }
+        }
+    }
+    println!();
 
     Ok(())
 }

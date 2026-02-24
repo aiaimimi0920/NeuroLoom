@@ -1,6 +1,10 @@
 // 用于兼容文档中的 crate::provider::LlmResponse 引用
 use futures::stream::BoxStream;
 
+pub mod extension;
+pub mod iflow;
+pub mod antigravity;
+
 #[derive(Debug, Clone)]
 pub struct LlmResponse {
     pub content: String,

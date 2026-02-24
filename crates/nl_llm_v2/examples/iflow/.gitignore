@@ -1,0 +1,5 @@
+# 本地配置文件（包含凭证，不提交）
+iflow_config.txt
+
+# OAuth 缓存
+.cache/

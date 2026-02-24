@@ -1,41 +1,42 @@
-//! iFlow 平台测试 - Thinking 模式
+//! iFlow 平台测试 - models
 //!
-//! IflowThinkingHook 会根据模型自动注入 enable_thinking 参数
+//! 查询当前账户在 iFlow 平台上可用的模型列表
 //!
-//! 运行方式: cargo run -p nl_llm_v2 --example iflow_thinking
+//! 运行方式: cargo run -p nl_llm_v2 --example iflow_models
 
-use nl_llm_v2::{LlmClient, PrimitiveRequest};
 use anyhow::Result;
 use std::path::Path;
+
+use nl_llm_v2::LlmClient;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
 
+    // 1. 获取 Cookie
     let cookie = args.get(1).cloned()
         .or_else(|| std::env::var("IFLOW_COOKIE").ok())
         .or_else(|| read_cookie_from_config())
-        .expect("请提供 iFlow Cookie");
+        .expect("请提供 iFlow Cookie: 命令行参数 / IFLOW_COOKIE 环境变量 / examples/iflow/iflow_config.txt");
 
-    let prompt = args.get(2).cloned()
-        .unwrap_or_else(|| "1+1等于几？请一步一步推理".to_string());
+    println!("=== iFlow 模型列表查询 ===\n");
 
-    let model = args.get(3).cloned()
-        .unwrap_or_else(|| "qwen3-max".to_string());
-
+    // 2. 初始化客户端以获取 Authenticator 及其挂载的 ExtensionApi
     let client = LlmClient::from_preset("iflow")
         .expect("iflow preset should exist")
         .with_cookie(&cookie)
         .build();
 
-    let req = PrimitiveRequest::single_user_message(&prompt)
-        .with_model(&model);
+    println!("正在获取可用模型列表...");
+    let models = client.list_models().await?;
 
-    println!("用户: {}\n", prompt);
-    println!("AI ({}, thinking mode):", model);
-
-    let resp = client.complete(&req).await?;
-    println!("{}", resp.content);
+    println!("\n可用模型列表:");
+    println!("----------------------------------------");
+    for model in &models {
+        println!("  - {}", model.id);
+    }
+    println!("----------------------------------------");
+    println!("共计 {} 个模型", models.len());
 
     Ok(())
 }

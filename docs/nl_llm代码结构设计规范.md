@@ -751,7 +751,13 @@ impl IFlowModelResolver {
             ("deepseek-r1", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
         ]);
 
-        // 配置上下文长度...
+        // 配置上下文长度
+        inner.extend_context_lengths(vec![
+            ("qwen3-max", 128_000),
+            ("glm-4", 128_000),
+            ("deepseek-r1", 64_000),
+        ]);
+
         Self { inner }
     }
 }
@@ -901,7 +907,40 @@ struct PlatformPreset {
 
 ---
 
-## 9. 目录结构
+## 9. 扩展能力 (Extension API)
+
+针对每个平台特有的 API 功能（例如获取账户额度与可用的模型列表），通过 `ProviderExtension` 特征作为扩展点提供支持。能够在底层直接发起经过良好封装的平台管理 HTTP 请求。
+
+```rust
+use async_trait::async_trait;
+use crate::auth::traits::Authenticator;
+
+pub struct ModelInfo {
+    pub id: String,
+    pub description: String,
+}
+
+#[async_trait]
+pub trait ProviderExtension: Send + Sync {
+    fn id(&self) -> &str;
+    async fn list_models(&self, http: &reqwest::Client, auth: &mut dyn Authenticator) -> anyhow::Result<Vec<ModelInfo>>;
+    async fn get_balance(&self, http: &reqwest::Client, auth: &mut dyn Authenticator) -> anyhow::Result<Option<String>> {
+        Ok(None)
+    }
+}
+```
+
+- **挂载方式**：
+  在 `ClientBuilder` 阶段可通过 `with_extension(Arc::new(IFlowExtension {}))` 注入。
+- **调用方式**：
+  在 `LlmClient` 构建完毕后直接使用：
+  ```rust
+  let models = client.list_models().await?;
+  ```
+
+---
+
+## 10. 目录结构
 
 ```
 nl_llm/src/
@@ -966,6 +1005,12 @@ nl_llm/src/
 │   ├── parameters.rs
 │   └── metadata.rs
 │
+├── provider/                 # 【新增】供应商扩展能力
+│   ├── mod.rs
+│   ├── extension.rs         # ProviderExtension trait
+│   ├── iflow.rs             # iFlow 扩展实现
+│   └── antigravity.rs       # Antigravity 扩展实现
+│
 ├── model/                    # 【新增】模型解析
 │   ├── mod.rs
 │   ├── resolver.rs          # ModelResolver trait
@@ -989,7 +1034,7 @@ nl_llm/src/
 └── token_bucket.rs          # 令牌桶限流
 ```
 
-### 9.2 预设平台示例目录
+### 10.2 预设平台示例目录
 
 每个预设平台需要有对应的 `examples/` 子目录，用于测试验证该平台是否可正常交互：
 
@@ -1067,7 +1112,7 @@ examples/                    # 平台示例（按平台分组）
 - `main.rs` - Rust 示例代码
 - `test.bat` - Windows 批处理测试脚本（便于快速测试单个案例）
 
-### 9.3 自动测试要求
+### 10.3 自动测试要求
 
 **重要**：每次修改核心模块时，必须运行受影响预设平台的测试脚本：
 
