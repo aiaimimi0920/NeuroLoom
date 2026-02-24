@@ -6,6 +6,9 @@ pub mod gemini_cli;
 pub mod gemini_api_key;
 pub mod anthropic;
 pub mod antigravity;
+pub mod qwen;
+pub mod kimi;
+pub mod anthropic_oauth;
 
 pub use api_key::ApiKeyAuth;
 pub use service_account::ServiceAccountAuth;
@@ -14,3 +17,6 @@ pub use gemini_cli::GeminiCliOAuth;
 pub use gemini_api_key::GeminiApiKeyAuth;
 pub use anthropic::AnthropicApiKeyAuth;
 pub use antigravity::{AntigravityOAuth, DynamicOAuthConfig};
+pub use qwen::QwenOAuth;
+pub use kimi::KimiOAuth;
+pub use anthropic_oauth::AnthropicOAuth;

@@ -28,6 +28,10 @@ async-stream = "0.3"
 hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"
+rand = "0.8"
+base64 = "0.22"
+dirs = "5"
+open = "5"
 
 [[example]]
 name = "openai_chat"
@@ -41,9 +45,7 @@ path = "examples/gemini/chat/main.rs"
 name = "deepseek_chat"
 path = "examples/deepseek/chat/main.rs"
 
-[[example]]
-name = "anthropic_chat"
-path = "examples/anthropic/chat/main.rs"
+
 
 [[example]]
 name = "iflow_chat"
@@ -87,8 +89,16 @@ name = "openai_tools"
 path = "examples/openai/tools/main.rs"
 
 [[example]]
-name = "anthropic_stream"
-path = "examples/anthropic/stream/main.rs"
+name = "claude_chat"
+path = "examples/claude/chat/main.rs"
+
+[[example]]
+name = "claude_stream"
+path = "examples/claude/stream/main.rs"
+
+[[example]]
+name = "claude_models"
+path = "examples/claude/models/main.rs"
 
 [[example]]
 name = "gemini_stream"
@@ -121,6 +131,54 @@ path = "examples/vertex_api/stream/main.rs"
 [[example]]
 name = "vertex_api_models"
 path = "examples/vertex_api/models/main.rs"
+
+[[example]]
+name = "qwen_auth"
+path = "examples/qwen/auth/main.rs"
+
+[[example]]
+name = "qwen_chat"
+path = "examples/qwen/chat/main.rs"
+
+[[example]]
+name = "qwen_stream"
+path = "examples/qwen/stream/main.rs"
+
+[[example]]
+name = "qwen_models"
+path = "examples/qwen/models/main.rs"
+
+[[example]]
+name = "kimi_auth"
+path = "examples/kimi/auth/main.rs"
+
+[[example]]
+name = "kimi_chat"
+path = "examples/kimi/chat/main.rs"
+
+[[example]]
+name = "kimi_stream"
+path = "examples/kimi/stream/main.rs"
+
+[[example]]
+name = "kimi_models"
+path = "examples/kimi/models/main.rs"
+
+[[example]]
+name = "claude_oauth_auth"
+path = "examples/claude_oauth/auth/main.rs"
+
+[[example]]
+name = "claude_oauth_chat"
+path = "examples/claude_oauth/chat/main.rs"
+
+[[example]]
+name = "claude_oauth_stream"
+path = "examples/claude_oauth/stream/main.rs"
+
+[[example]]
+name = "claude_oauth_models"
+path = "examples/claude_oauth/models/main.rs"
 
 [[example]]
 name = "iflow_auth"

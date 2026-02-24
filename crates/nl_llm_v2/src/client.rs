@@ -267,8 +267,43 @@ impl ClientBuilder {
         self.auth(crate::auth::providers::antigravity::AntigravityOAuth::new().with_cache(cache_path))
     }
 
-    /// Anthropic 专用认证（使用 x-api-key header）
-    pub fn with_anthropic_api_key(self, key: impl Into<String>) -> Self {
+    /// Qwen OAuth 专用：使用 Device Code + PKCE 浏览器授权
+    ///
+    /// ```
+    /// let client = LlmClient::from_preset("qwen")
+    ///     .with_qwen_oauth("~/.config/qwen/token.json")
+    ///     .build();
+    /// ```
+    pub fn with_qwen_oauth(self, cache_path: impl AsRef<std::path::Path>) -> Self {
+        self.auth(crate::auth::providers::qwen::QwenOAuth::new().with_cache(cache_path))
+    }
+
+    /// Kimi OAuth 专用：使用 RFC 8628 Device Code 浏览器授权
+    ///
+    /// ```
+    /// let client = LlmClient::from_preset("kimi")
+    ///     .with_kimi_oauth("~/.config/kimi/token.json")
+    ///     .build();
+    /// ```
+    pub fn with_kimi_oauth(self, cache_path: impl AsRef<std::path::Path>) -> Self {
+        self.auth(crate::auth::providers::kimi::KimiOAuth::new(cache_path))
+    }
+
+    /// Claude OAuth 专用：使用 Authorization Code + PKCE 浏览器授权
+    ///
+    /// 首次运行会打开浏览器完成授权，后续使用缓存 token。
+    ///
+    /// ```
+    /// let client = LlmClient::from_preset("claude_oauth")
+    ///     .with_claude_oauth("~/.config/anthropic/token.json")
+    ///     .build();
+    /// ```
+    pub fn with_claude_oauth(self, cache_path: impl AsRef<std::path::Path>) -> Self {
+        self.auth(crate::auth::providers::anthropic_oauth::AnthropicOAuth::new(cache_path))
+    }
+
+    /// Claude API Key 专用认证（使用 x-api-key header）
+    pub fn with_claude_api_key(self, key: impl Into<String>) -> Self {
         self.auth(AnthropicApiKeyAuth::new(key))
     }
 

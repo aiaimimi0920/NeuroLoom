@@ -7,6 +7,9 @@ pub mod antigravity;
 pub mod gemini_cli;
 pub mod gemini;
 pub mod vertex;
+pub mod qwen;
+pub mod kimi;
+pub mod anthropic;
 
 #[derive(Debug, Clone)]
 pub struct LlmResponse {

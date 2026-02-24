@@ -4,6 +4,8 @@ pub mod iflow;
 pub mod cloudcode;
 pub mod vertex;
 pub mod vertex_api;
+pub mod qwen;
+pub mod kimi;
 pub mod anthropic;
 pub mod proxy;
 
@@ -13,5 +15,7 @@ pub use iflow::IFlowSite;
 pub use cloudcode::CloudCodeSite;
 pub use vertex::VertexSite;
 pub use vertex_api::VertexApiSite;
+pub use qwen::QwenSite;
+pub use kimi::KimiSite;
 pub use anthropic::AnthropicSite;
 pub use proxy::ProxySite;

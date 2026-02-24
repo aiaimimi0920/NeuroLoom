@@ -1,6 +1,6 @@
-//! anthropic 平台测试 - stream
+//! Claude API Key 平台测试 - stream
 //!
-//! 运行方式: cargo run --example anthropic_stream
+//! 运行方式: cargo run --example claude_stream
 //! 或直接运行: test.bat
 
 use nl_llm_v2::{LlmClient, PrimitiveRequest};
@@ -14,16 +14,16 @@ async fn main() -> Result<()> {
         .or_else(|| args.get(1).cloned())
         .unwrap_or_else(|| "dummy_credential".to_string());
 
-    let client = LlmClient::from_preset("anthropic")
+    let client = LlmClient::from_preset("claude")
         .expect("Preset should exist")
-        .with_anthropic_api_key(api_key)
+        .with_claude_api_key(api_key)
         .build();
 
     let prompt = args.get(2).cloned()
         .unwrap_or_else(|| "Hello!".to_string());
 
     let mut req = PrimitiveRequest::single_user_message(&prompt)
-        .with_model("claude-3-5-sonnet-20241022");
+        .with_model("claude-sonnet");
     req.stream = true;
 
     println!("用户: {}\n", prompt);

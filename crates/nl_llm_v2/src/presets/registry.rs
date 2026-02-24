@@ -20,7 +20,7 @@ impl PresetRegistry {
 
     fn register_defaults(&mut self) {
         self.builders.insert("openai", super::openai::builder);
-        self.builders.insert("anthropic", super::anthropic::builder);
+        self.builders.insert("claude", super::claude::builder);
         self.builders.insert("gemini", super::gemini::builder);
         self.builders.insert("vertex", super::vertex::builder);
         self.builders.insert("deepseek", super::deepseek::builder);
@@ -30,6 +30,9 @@ impl PresetRegistry {
         self.builders.insert("openrouter", super::openrouter::builder);
         self.builders.insert("gemini_cli", super::gemini_cli::builder);
         self.builders.insert("vertex_api", super::vertex_api::builder);
+        self.builders.insert("qwen", super::qwen::builder);
+        self.builders.insert("kimi", super::kimi::builder);
+        self.builders.insert("claude_oauth", super::claude_oauth::builder);
         self.builders.insert("antigravity", super::antigravity::builder);
     }
 

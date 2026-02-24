@@ -1,8 +1,9 @@
 @echo off
-REM anthropic 平台测试 - chat
+REM Claude API Key 平台测试 - chat
 REM 用法: test.bat [api_key] [prompt]
+setlocal
 
-cd /d "%~dp0"
+cd /d "%~dp0\..\.."
 
 if "%ANTHROPIC_API_KEY%"=="" (
     if "%1"=="" (
@@ -23,13 +24,14 @@ if "%1"=="" (
 )
 
 echo ========================================
-echo   anthropic chat Test
+echo   Claude Chat Test
 echo ========================================
 echo.
 
-cargo run -p nl_llm_v2 --example anthropic_chat -- %API_KEY% "%PROMPT%"
+cargo run -p nl_llm_v2 --example claude_chat -- %API_KEY% "%PROMPT%"
 
 echo.
 echo ========================================
 echo   Test Complete
 echo ========================================
+pause

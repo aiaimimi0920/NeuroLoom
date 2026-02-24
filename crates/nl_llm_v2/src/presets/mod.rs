@@ -2,7 +2,7 @@ pub mod registry;
 
 // 各预设平台独立模块
 pub mod openai;
-pub mod anthropic;
+pub mod claude;
 pub mod gemini;
 pub mod vertex;
 pub mod deepseek;
@@ -12,6 +12,9 @@ pub mod iflow;
 pub mod openrouter;
 pub mod gemini_cli;
 pub mod vertex_api;
+pub mod qwen;
+pub mod kimi;
+pub mod claude_oauth;
 pub mod antigravity;
 
 pub use registry::{PresetRegistry, REGISTRY};
