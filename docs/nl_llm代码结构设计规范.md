@@ -178,6 +178,34 @@ PrimitiveRequest { stream: true }
 | **iFlow OpenAI** | OpenAI | 添加 `chat_template_kwargs.enable_thinking` |
 | **OpenRouter** | OpenAI | 添加 `provider` 字段 |
 
+#### CloudCode + Claude 模型路由
+
+Antigravity / CloudCode PA 平台除了支持 Gemini 模型外，还通过翻译层支持 Claude 模型。
+Claude 请求经由 CLIProxyAPI 的 `ConvertClaudeRequestToAntigravity` 翻译器转换为 Gemini 格式后发送到 CloudCode PA 端点。
+
+**关键特性**：
+- Claude 模型名称直接使用（如 `claude-opus-4-6-thinking`、`claude-sonnet-4-6`）
+- 模型名中含 `"claude"` 的请求会走 Claude 翻译分支
+- **不能通过 `generateContent` 端点直接探测 Claude 模型**（会返回 404）
+
+**CloudCode PA 内部模型名映射**（参照 `defaultAntigravityAliases()`）：
+
+| 对外名称 | 内部名称 |
+|----------|----------|
+| `gemini-3-pro-preview` | `gemini-3-pro-high` |
+| `gemini-3.1-pro-preview` | `gemini-3.1-pro-high` |
+| `gemini-3-flash-preview` | `gemini-3-flash` |
+| `gemini-3-pro-image-preview` | `gemini-3-pro-image` |
+
+### 3.6 CloudCode PA 模型发现（特例）
+
+> [!NOTE]
+> `fetchAvailableModels` 是 CloudCode PA 独有的端点，并非通用协议的一部分。
+> 仅在需要动态发现 Antigravity / Gemini CLI 平台可用模型列表时使用。
+
+CloudCode PA 提供 `POST /v1internal:fetchAvailableModels`（body: `{}`）端点，
+一次性返回所有可用模型（包括 Gemini 和 Claude），比逐个探测更高效可靠。
+
 ### 3.3 协议变体处理方式
 
 采用**后处理钩子**模式，钩子可以访问和修改 PipelineContext：
@@ -378,6 +406,34 @@ trait Authenticator: Send + Sync {
 }
 ```
 
+### 4.3 动态 OAuth 配置（DynamicOAuthConfig）
+
+对于 Antigravity 等 OAuth 认证平台，支持运行时自定义 OAuth 配置（如使用自己的 OAuth 应用）：
+
+```rust
+/// 动态 OAuth 配置（Owned 版本，用于运行时构造）
+#[derive(Clone)]
+pub struct DynamicOAuthConfig {
+    pub client_id: String,
+    pub client_secret: String,
+    pub redirect_port: u16,
+    pub auth_url: String,
+    pub token_url: String,
+    pub scopes: Vec<String>,
+}
+
+// 使用示例
+let custom_config = DynamicOAuthConfig {
+    client_id: "my-oauth-app-id".into(),
+    ..DynamicOAuthConfig::default()  // 其余使用默认值
+};
+
+let auth = AntigravityOAuth::new()
+    .with_config(custom_config)
+    .with_verbose(true)  // 启用调试日志
+    .with_cache("path/to/cache");
+```
+
 ---
 
 ## 5. 站点定义
@@ -390,8 +446,8 @@ struct Site {
     id: String,
     /// Base URL
     base_url: String,
-    /// 额外 Headers
-    extra_headers: HashMap<String, String>,
+    /// 额外 Headers（借用形式，生命周期绑定 &self）
+    extra_headers: HashMap<&str, &str>,
     /// 超时设置
     timeout: Duration,
 }
@@ -455,6 +511,7 @@ pub trait Site: Send + Sync {
     fn build_url(&self, ctx: &UrlContext) -> String;
 
     /// 获取额外 Headers
+    /// 返回 HashMap<&str, &str>，值可以借用 &self 字段
     fn extra_headers(&self) -> HashMap<&str, &str>;
 
     /// 获取超时设置
@@ -552,7 +609,7 @@ impl DefaultModelResolver {
         aliases.insert("gpt4".into(), "gpt-4o".into());
         aliases.insert("gpt4-turbo".into(), "gpt-4-turbo".into());
         aliases.insert("gpt3".into(), "gpt-3.5-turbo".into());
-        // Claude 别名
+        // Claude 别名 (Official API)
         aliases.insert("claude".into(), "claude-sonnet-4-20250514".into());
         aliases.insert("claude-opus".into(), "claude-opus-4-20250514".into());
         aliases.insert("claude-sonnet".into(), "claude-sonnet-4-20250514".into());
@@ -560,6 +617,7 @@ impl DefaultModelResolver {
         aliases.insert("gemini".into(), "gemini-2.5-flash".into());
         aliases.insert("gemini-pro".into(), "gemini-2.5-pro".into());
         aliases.insert("gemini-flash".into(), "gemini-2.5-flash".into());
+        // 注意：Antigravity 专属别名由 AntigravityModelResolver 提供
 
         let mut capabilities = HashMap::new();
         // OpenAI
@@ -582,6 +640,14 @@ impl DefaultModelResolver {
 
         Self { aliases, capabilities, context_lengths }
     }
+
+    /// 设置或覆盖模型别名（供预设级 Resolver 扩展）
+    pub fn set_alias(&mut self, alias: impl Into<String>, model: impl Into<String>) { ... }
+    pub fn set_capability(&mut self, model: impl Into<String>, cap: Capability) { ... }
+    pub fn set_context_length(&mut self, model: impl Into<String>, length: usize) { ... }
+    pub fn extend_aliases(&mut self, aliases: Vec<(impl Into<String>, impl Into<String>)>) { ... }
+    pub fn extend_capabilities(&mut self, caps: Vec<(impl Into<String>, Capability)>) { ... }
+    pub fn extend_context_lengths(&mut self, lengths: Vec<(impl Into<String>, usize)>) { ... }
 }
 
 impl ModelResolver for DefaultModelResolver {
@@ -606,6 +672,55 @@ impl ModelResolver for DefaultModelResolver {
         // 默认保留 1/4 作为输出
         (max * 3 / 4, max / 4)
     }
+}
+```
+
+### 6.3 预设级模型解析器
+
+> [!NOTE]
+> 不同预设可能需要不同的模型别名映射。例如 `claude-opus` 在官方 Claude API 和 Antigravity 平台解析为不同的模型名。
+
+预设级 ModelResolver 基于 `DefaultModelResolver` 扩展，覆盖特定平台的别名和能力：
+
+```rust
+/// Antigravity / CloudCode PA 专属模型解析器
+pub struct AntigravityModelResolver {
+    inner: DefaultModelResolver,
+}
+
+impl AntigravityModelResolver {
+    pub fn new() -> Self {
+        let mut inner = DefaultModelResolver::new();
+
+        // 覆盖 Claude 别名 → Antigravity 版本
+        inner.set_alias("claude-opus", "claude-opus-4-6-thinking");
+        inner.set_alias("claude-sonnet", "claude-sonnet-4-6");
+
+        // Gemini 3.x 预览版 → CloudCode PA 内部名称
+        inner.extend_aliases(vec![
+            ("gemini-3-pro-preview", "gemini-3-pro-high"),
+            ("gemini-3.1-pro-preview", "gemini-3.1-pro-high"),
+            ("gemini-3-flash-preview", "gemini-3-flash"),
+            ("gemini-3-pro-image-preview", "gemini-3-pro-image"),
+        ]);
+
+        // 添加 Antigravity 特有的模型能力和上下文长度配置...
+        Self { inner }
+    }
+}
+```
+
+预设配置中使用：
+
+```rust
+// crates/nl_llm_v2/src/presets/antigravity.rs
+pub fn builder() -> ClientBuilder {
+    ClientBuilder::new()
+        .site(CloudCodeSite::new())
+        .protocol(GeminiProtocol {})
+        .protocol_hook(CloudCodeHook {})
+        .model_resolver(AntigravityModelResolver::new())  // 使用专属 Resolver
+        .default_model("gemini-2.5-flash")
 }
 ```
 
@@ -739,7 +854,7 @@ struct PlatformPreset {
 | iFlow | OpenAI | Cookie | Thinking 钩子 |
 | OpenRouter | OpenAI | API Key | Provider 字段 |
 | Gemini CLI | CloudCode | OAuth | CloudCode 包装 |
-| Antigravity | CloudCode | OAuth | CloudCode 包装 |
+| Antigravity | CloudCode | OAuth | CloudCode 包装，支持 Claude 模型路由 |
 
 ---
 
@@ -877,8 +992,10 @@ examples/                    # 平台示例（按平台分组）
 │   └── chat/
 │
 ├── antigravity/
-│   ├── auth/
-│   └── chat/
+│   ├── auth/               # OAuth 认证测试
+│   ├── chat/               # 基础对话
+│   ├── stream/             # 流式输出
+│   └── models/             # 模型列表查询（fetchAvailableModels）
 │
 ├── deepseek/
 │   └── chat/
