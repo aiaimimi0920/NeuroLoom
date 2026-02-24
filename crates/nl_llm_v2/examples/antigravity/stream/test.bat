@@ -1,33 +1,24 @@
 @echo off
-REM antigravity 平台测试 - stream
-REM 用法: test.bat [api_key] [prompt]
+REM antigravity stream test
+REM Usage: test.bat [prompt]
+REM OAuth cache stored in examples/antigravity/.cache/
 
-cd /d "%~dp0"
-
-if "%ANTIGRAVITY_API_KEY%"=="" (
-    if "%1"=="" (
-        echo Warning: No ANTIGRAVITY_API_KEY provided.
-        set API_KEY=dummy_credential
-    ) else (
-        set API_KEY=%1
-        shift
-    )
-) else (
-    set API_KEY=%ANTIGRAVITY_API_KEY%
-)
+cd /d "%~dp0\..\..\.."
 
 if "%1"=="" (
-    set PROMPT=你好！请给我讲一个长篇故事。
+    set "PROMPT=Hello! Tell me a long story."
 ) else (
-    set PROMPT=%1
+    set "PROMPT=%1"
 )
 
 echo ========================================
 echo   antigravity stream Test
 echo ========================================
 echo.
+echo   Prompt: %PROMPT%
+echo.
 
-cargo run --example antigravity_stream -- %API_KEY% "%PROMPT%"
+cargo run -p nl_llm_v2 --example antigravity_stream -- "" "%PROMPT%"
 
 echo.
 echo ========================================

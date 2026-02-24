@@ -27,7 +27,7 @@ echo   deepseek chat Test
 echo ========================================
 echo.
 
-cargo run --example deepseek_chat -- %API_KEY% "%PROMPT%"
+cargo run -p nl_llm_v2 --example deepseek_chat -- %API_KEY% "%PROMPT%"
 
 echo.
 echo ========================================

@@ -1,0 +1,31 @@
+   Compiling nl_llm_v2 v0.1.0 (C:\Users\Public\nas_home\AI\GameEditor\NeuroLoom\crates\nl_llm_v2)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.29s
+     Running `C:/Users/vmjcv/AppData/Local/Temp/NeuroLoom_target\debug\examples\antigravity_models.exe`
+缓存文件: C:\Users\Public\nas_home\AI\GameEditor\NeuroLoom\crates\nl_llm_v2\examples\antigravity\.cache\oauth_token.json
+
+=== [1/2] CloudCode PA 项目配置 ===
+
+项目 ID: fifth-tracer-pgvlf
+当前 Tier: Gemini Code Assist (standard-tier)
+付费 Tier: Gemini Code Assist in Google One AI Pro (额度: ? GOOGLE_ONE_AI)
+付费 Tier: Gemini Code Assist in Google One AI Pro (额度: 24 GOOGLE_ONE_AI)
+
+=== [2/2] CloudCode PA 模型可用性 ===
+(基于 CLIProxyAPI GetGeminiCLIModels 标准列表)
+
+  ✅ gemini-2.5-pro               可用
+     └─ Gemini 2.5 Pro — 最强推理 (1M token)
+  ✅ gemini-2.5-flash             可用
+     └─ Gemini 2.5 Flash — 快速多模态 (1M token)
+  ✅ gemini-2.5-flash-lite        可用
+     └─ Gemini 2.5 Flash Lite — 最低成本
+  ✅ gemini-3-pro-preview         可用 (配额限制中)
+     └─ Gemini 3 Pro Preview — SOTA 推理 + Agent
+  ✅ gemini-3.1-pro-preview       可用 (配额限制中)
+     └─ Gemini 3.1 Pro Preview — 最新预览版
+  ✅ gemini-3-flash-preview       可用 (配额限制中)
+     └─ Gemini 3 Flash Preview — 最快智能模型
+  ✅ gemini-2.0-flash             可用 (配额限制中)
+     └─ Gemini 2.0 Flash (旧版)
+  ❌ gemini-1.5-pro               不存在
+

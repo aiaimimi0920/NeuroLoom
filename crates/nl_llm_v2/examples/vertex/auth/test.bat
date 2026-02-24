@@ -27,7 +27,7 @@ echo   vertex auth Test
 echo ========================================
 echo.
 
-cargo run --example vertex_auth -- %API_KEY% "%PROMPT%"
+cargo run -p nl_llm_v2 --example vertex_auth -- %API_KEY% "%PROMPT%"
 
 echo.
 echo ========================================

@@ -27,7 +27,7 @@ echo   openai stream Test
 echo ========================================
 echo.
 
-cargo run --example openai_stream -- %API_KEY% "%PROMPT%"
+cargo run -p nl_llm_v2 --example openai_stream -- %API_KEY% "%PROMPT%"
 
 echo.
 echo ========================================

@@ -27,7 +27,7 @@ echo   openrouter chat Test
 echo ========================================
 echo.
 
-cargo run --example openrouter_chat -- %API_KEY% "%PROMPT%"
+cargo run -p nl_llm_v2 --example openrouter_chat -- %API_KEY% "%PROMPT%"
 
 echo.
 echo ========================================

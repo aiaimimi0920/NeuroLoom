@@ -27,7 +27,7 @@ echo   anthropic stream Test
 echo ========================================
 echo.
 
-cargo run --example anthropic_stream -- %API_KEY% "%PROMPT%"
+cargo run -p nl_llm_v2 --example anthropic_stream -- %API_KEY% "%PROMPT%"
 
 echo.
 echo ========================================

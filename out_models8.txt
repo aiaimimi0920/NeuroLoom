@@ -1,0 +1,45 @@
+   Compiling nl_llm_v2 v0.1.0 (C:\Users\Public\nas_home\AI\GameEditor\NeuroLoom\crates\nl_llm_v2)
+warning: unused variable: `project_id`
+  --> crates\nl_llm_v2\examples\antigravity\models\main.rs:76:9
+   |
+76 |     let project_id = token_data.get("extra")
+   |         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_project_id`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `nl_llm_v2` (example "antigravity_models") generated 1 warning (run `cargo fix --example "antigravity_models" -p nl_llm_v2` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.90s
+     Running `C:/Users/vmjcv/AppData/Local/Temp/NeuroLoom_target\debug\examples\antigravity_models.exe`
+缓存文件: C:\Users\Public\nas_home\AI\GameEditor\NeuroLoom\crates\nl_llm_v2\examples\antigravity\.cache\oauth_token.json
+
+=== [1/2] CloudCode PA 项目配置 ===
+
+项目 ID: fifth-tracer-pgvlf
+当前 Tier: Gemini Code Assist (standard-tier)
+付费 Tier: Gemini Code Assist in Google One AI Pro (额度: 1000 GOOGLE_ONE_AI)
+付费 Tier: Gemini Code Assist in Google One AI Pro (额度: 2524 GOOGLE_ONE_AI)
+
+=== [2/2] CloudCode PA 可用模型列表 ===
+(via /v1internal:fetchAvailableModels)
+
+── Gemini (8 个) ──
+  ✅ gemini-2.5-flash                 Gemini 2.5 Flash — 快速多模态 (1M token)
+  ✅ gemini-2.5-flash-lite            Gemini 2.5 Flash Lite — 最低成本
+  ✅ gemini-2.5-pro                   Gemini 2.5 Pro — 最强推理 (1M token)
+  ✅ gemini-3-flash
+  ✅ gemini-3-pro-high
+  ✅ gemini-3-pro-image
+  ✅ gemini-3.1-pro-high
+  ✅ gemini-3.1-pro-low
+
+── Claude (2 个) ──
+  ✅ claude-opus-4-6-thinking         Claude Opus 4.6 + Thinking — 1M ctx
+  ✅ claude-sonnet-4-6                Claude Sonnet 4.6 — 200K ctx
+
+── 其他 (3 个) ──
+  ✅ gpt-oss-120b-medium
+  ✅ tab_flash_lite_preview
+  ✅ tab_jump_flash_lite_preview
+
+共计 13 个可用模型
+

@@ -27,7 +27,7 @@ echo   gemini_cli chat Test
 echo ========================================
 echo.
 
-cargo run --example gemini_cli_chat -- %API_KEY% "%PROMPT%"
+cargo run -p nl_llm_v2 --example gemini_cli_chat -- %API_KEY% "%PROMPT%"
 
 echo.
 echo ========================================

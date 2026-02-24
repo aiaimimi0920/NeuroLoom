@@ -27,7 +27,7 @@ echo   gemini stream Test
 echo ========================================
 echo.
 
-cargo run --example gemini_stream -- %API_KEY% "%PROMPT%"
+cargo run -p nl_llm_v2 --example gemini_stream -- %API_KEY% "%PROMPT%"
 
 echo.
 echo ========================================

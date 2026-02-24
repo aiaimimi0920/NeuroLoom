@@ -27,7 +27,7 @@ echo   iflow thinking Test
 echo ========================================
 echo.
 
-cargo run --example iflow_thinking -- %API_KEY% "%PROMPT%"
+cargo run -p nl_llm_v2 --example iflow_thinking -- %API_KEY% "%PROMPT%"
 
 echo.
 echo ========================================

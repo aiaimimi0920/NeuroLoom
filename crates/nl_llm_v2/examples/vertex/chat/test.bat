@@ -27,7 +27,7 @@ echo   vertex chat Test
 echo ========================================
 echo.
 
-cargo run --example vertex_chat -- %API_KEY% "%PROMPT%"
+cargo run -p nl_llm_v2 --example vertex_chat -- %API_KEY% "%PROMPT%"
 
 echo.
 echo ========================================

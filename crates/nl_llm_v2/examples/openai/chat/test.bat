@@ -27,7 +27,7 @@ echo   openai chat Test
 echo ========================================
 echo.
 
-cargo run --example openai_chat -- %API_KEY% "%PROMPT%"
+cargo run -p nl_llm_v2 --example openai_chat -- %API_KEY% "%PROMPT%"
 
 echo.
 echo ========================================
