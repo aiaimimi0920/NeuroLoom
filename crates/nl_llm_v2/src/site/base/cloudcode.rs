@@ -7,6 +7,8 @@ use crate::site::context::{UrlContext, Action};
 pub struct CloudCodeSite {
     base_url: String,
     timeout: Duration,
+    /// [新增] 允许自定义 User-Agent
+    user_agent: String,
 }
 
 impl CloudCodeSite {
@@ -14,7 +16,35 @@ impl CloudCodeSite {
         Self {
             base_url: "https://cloudcode-pa.googleapis.com/v1internal".to_string(),
             timeout: Duration::from_secs(180), // 代码编写经常等待时间过长需要放大限制
+            user_agent: "google-api-nodejs-client/9.15.1".to_string(),
         }
+    }
+
+    /// [新增] 设置超时时间
+    /// 原因：不同场景可能需要不同的超时设置
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
+    /// [新增] 设置自定义 Base URL
+    /// 原因：支持私有部署或代理场景
+    pub fn with_base_url(mut self, url: impl Into<String>) -> Self {
+        self.base_url = url.into();
+        self
+    }
+
+    /// [新增] 设置自定义 User-Agent
+    /// 原因：某些场景可能需要伪装不同的客户端
+    pub fn with_user_agent(mut self, user_agent: impl Into<String>) -> Self {
+        self.user_agent = user_agent.into();
+        self
+    }
+}
+
+impl Default for CloudCodeSite {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -42,7 +72,7 @@ impl Site for CloudCodeSite {
     fn extra_headers(&self) -> HashMap<&str, &str> {
         let mut headers = HashMap::new();
         headers.insert("Content-Type", "application/json");
-        headers.insert("User-Agent", "google-api-nodejs-client/9.15.1");
+        headers.insert("User-Agent", self.user_agent.as_str());
         headers.insert("X-Goog-Api-Client", "gl-python/3.12.0");
         headers.insert("Client-Metadata", r#"{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}"#);
         headers

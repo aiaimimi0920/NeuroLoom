@@ -11,4 +11,4 @@ pub use service_account::ServiceAccountAuth;
 pub use iflow::IFlowAuth;
 pub use gemini_cli::GeminiCliOAuth;
 pub use anthropic::AnthropicApiKeyAuth;
-pub use antigravity::AntigravityOAuth;
+pub use antigravity::{AntigravityOAuth, DynamicOAuthConfig};
