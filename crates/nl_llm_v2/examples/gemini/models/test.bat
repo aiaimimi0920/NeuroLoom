@@ -1,4 +1,4 @@
-﻿@echo off
+@echo off
 chcp 65001 >nul
 REM gemini 平台测试 - models
 REM 用法: test.bat [api_key]

@@ -1,33 +1,19 @@
 @echo off
+chcp 65001 >nul
 REM vertex 平台测试 - models
-REM 用法: test.bat [api_key] [prompt]
+REM 用法: test.bat [sa_json_path]
 
 cd /d "%~dp0"
 
-if "%GOOGLE_APPLICATION_CREDENTIALS_JSON%"=="" (
-    if "%1"=="" (
-        echo Warning: No GOOGLE_APPLICATION_CREDENTIALS_JSON provided.
-        set API_KEY=dummy_credential
-    ) else (
-        set API_KEY=%1
-        shift
-    )
-) else (
-    set API_KEY=%GOOGLE_APPLICATION_CREDENTIALS_JSON%
-)
-
-if "%1"=="" (
-    set PROMPT=你好！请简单介绍一下你自己。
-) else (
-    set PROMPT=%1
-)
+set "SA_PATH=%~dp0..\vertex_sa.json"
+if "%~1" NEQ "" set "SA_PATH=%~1"
 
 echo ========================================
 echo   vertex models Test
 echo ========================================
 echo.
 
-cargo run -p nl_llm_v2 --example vertex_models -- %API_KEY% "%PROMPT%"
+cargo run -p nl_llm_v2 --example vertex_models -- "%SA_PATH%"
 
 echo.
 echo ========================================

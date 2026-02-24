@@ -107,6 +107,10 @@ name = "vertex_models"
 path = "examples/vertex/models/main.rs"
 
 [[example]]
+name = "vertex_stream"
+path = "examples/vertex/stream/main.rs"
+
+[[example]]
 name = "iflow_auth"
 path = "examples/iflow/auth/main.rs"
 

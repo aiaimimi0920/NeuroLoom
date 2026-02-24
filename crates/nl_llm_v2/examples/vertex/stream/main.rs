@@ -1,11 +1,12 @@
-//! vertex 平台测试 - chat
+//! vertex 平台测试 - stream
 //!
 //! 运行方式:
-//!   cargo run --example vertex_chat -- path/to/sa.json [prompt]
+//!   cargo run --example vertex_stream -- path/to/sa.json [prompt]
 //! 或直接运行: test.bat
 
 use nl_llm_v2::{LlmClient, PrimitiveRequest};
 use anyhow::Result;
+use futures::StreamExt;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -19,16 +20,30 @@ async fn main() -> Result<()> {
         .build();
 
     let prompt = args.get(2).cloned()
-        .unwrap_or_else(|| "Hello! Please introduce yourself briefly.".to_string());
+        .unwrap_or_else(|| "Hello! Tell me a short story.".to_string());
 
     let req = PrimitiveRequest::single_user_message(&prompt)
         .with_model("gemini-2.5-flash");
 
     println!("用户: {}\n", prompt);
-    println!("AI:");
+    println!("AI (Stream):");
 
-    let resp = client.complete(&req).await?;
-    println!("{}", resp.content);
+    let mut stream = client.stream(&req).await?;
+
+    use std::io::Write;
+    while let Some(chunk_res) = stream.next().await {
+        match chunk_res {
+            Ok(chunk) => {
+                print!("{}", chunk.content);
+                std::io::stdout().flush().unwrap();
+            }
+            Err(e) => {
+                eprintln!("\n流读取中断: {}", e);
+                break;
+            }
+        }
+    }
+    println!();
 
     Ok(())
 }

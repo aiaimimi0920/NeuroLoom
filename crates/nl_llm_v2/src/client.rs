@@ -205,7 +205,28 @@ impl ClientBuilder {
         self.auth(IFlowAuth::new(cookie))
     }
 
-    pub fn with_service_account_json(self, json_str: impl Into<String>) -> Self {
+    pub fn with_service_account_json(mut self, json_str: impl Into<String>) -> Self {
+        let json_str = json_str.into();
+
+        // 从 SA JSON 中提取 project_id 用于构建 VertexSite URL
+        #[derive(serde::Deserialize)]
+        struct SaProjectInfo { project_id: Option<String> }
+
+        let project_id = serde_json::from_str::<SaProjectInfo>(&json_str)
+            .ok()
+            .and_then(|sa| sa.project_id)
+            .unwrap_or_else(|| "UNKNOWN_PROJECT".to_string());
+
+        // 重建 VertexSite 使用真实的 project_id
+        self.site = Some(Arc::new(
+            crate::site::base::vertex::VertexSite::new(&project_id, "us-central1")
+        ));
+
+        // 注入 VertexExtension（需要 project_id 和 location 来调用真实 API）
+        self.extension = Some(Arc::new(
+            crate::provider::vertex::VertexExtension::new(&project_id, "us-central1")
+        ));
+
         self.auth(ServiceAccountAuth::new(json_str))
     }
 
