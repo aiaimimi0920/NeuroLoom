@@ -13,17 +13,23 @@ use crate::primitive::PrimitiveRequest;
 use crate::provider::{LlmResponse, BoxLlmStream};
 use crate::provider::extension::{ProviderExtension, ModelInfo};
 use crate::site::context::{UrlContext, Action};
+use crate::concurrency::{ConcurrencyController, ConcurrencyConfig, FailureType};
+use crate::metrics::{PipelineMetrics, MetricsStore, MetricsSummary};
 
 /// LLM 客户端门面类
 pub struct LlmClient {
     site: Arc<dyn Site>,
     authenticator: Arc<Mutex<Box<dyn Authenticator>>>,
     protocol: Arc<dyn ProtocolFormat>,
-    protocol_hooks: Vec<Arc<dyn ProtocolHook>>, 
+    protocol_hooks: Vec<Arc<dyn ProtocolHook>>,
     model_resolver: Box<dyn ModelResolver>,
     default_model: String,
     http: Client,
     extension: Option<Arc<dyn ProviderExtension>>,
+    /// 并发控制器
+    concurrency: Option<Arc<ConcurrencyController>>,
+    /// 指标存储
+    metrics: MetricsStore,
 }
 
 impl LlmClient {
@@ -77,6 +83,16 @@ impl LlmClient {
 
     /// 执行请求
     pub async fn complete(&self, req: &PrimitiveRequest) -> anyhow::Result<LlmResponse> {
+        // 创建指标记录
+        let mut metrics = PipelineMetrics::new();
+
+        // 获取并发许可证（如果启用了并发控制）
+        let permit = if let Some(ctrl) = &self.concurrency {
+            Some(ctrl.acquire().await)
+        } else {
+            None
+        };
+
         // [修复] 使用 default_model 作为 fallback，并 resolve 别名
         // 原因：模型别名（如 "codex"）需要解析为实际模型名（如 "gpt-5.1-codex"）
         let model_raw = if req.model.is_empty() {
@@ -107,12 +123,44 @@ impl LlmClient {
 
         let mut ctx = PipelineContext::from_primitive(resolved_req, url_context);
 
-        pipeline.execute(&mut ctx).await?;
+        let result = pipeline.execute(&mut ctx).await;
+
+        // 记录指标并报告并发状态
+        match &result {
+            Ok(_) => {
+                metrics.finish();
+                self.metrics.record(metrics);
+                if let Some(permit) = permit {
+                    permit.report_success();
+                }
+            }
+            Err(e) => {
+                metrics.finish();
+                self.metrics.record(metrics.finish_error(&e.to_string()));
+                if let Some(permit) = permit {
+                    // 根据错误类型判断失败类型
+                    let failure_type = classify_error(e);
+                    permit.report_failure(failure_type);
+                }
+            }
+        }
+
+        result?;
         ctx.take_response()
     }
 
     /// 执行流式聊天
     pub async fn stream(&self, req: &PrimitiveRequest) -> anyhow::Result<BoxLlmStream> {
+        // 创建指标记录
+        let mut metrics = PipelineMetrics::new();
+
+        // 获取并发许可证（如果启用了并发控制）
+        let permit = if let Some(ctrl) = &self.concurrency {
+            Some(ctrl.acquire().await)
+        } else {
+            None
+        };
+
         // [修复] 使用 default_model 作为 fallback，并 resolve 别名
         let model_raw = if req.model.is_empty() {
             &self.default_model
@@ -139,7 +187,28 @@ impl LlmClient {
         };
         let mut ctx = PipelineContext::from_primitive(req_stream, url_context);
 
-        pipeline.execute(&mut ctx).await?;
+        let result = pipeline.execute(&mut ctx).await;
+
+        // 记录指标并报告并发状态
+        match &result {
+            Ok(_) => {
+                metrics.finish();
+                self.metrics.record(metrics);
+                if let Some(permit) = permit {
+                    permit.report_success();
+                }
+            }
+            Err(e) => {
+                metrics.finish();
+                self.metrics.record(metrics.finish_error(&e.to_string()));
+                if let Some(permit) = permit {
+                    let failure_type = classify_error(e);
+                    permit.report_failure(failure_type);
+                }
+            }
+        }
+
+        result?;
         ctx.take_stream()
     }
 
@@ -167,6 +236,48 @@ impl LlmClient {
             Err(anyhow::anyhow!("Extension API (get_balance) not supported for this provider"))
         }
     }
+
+    /// 获取并发控制器引用
+    pub fn concurrency_controller(&self) -> Option<&ConcurrencyController> {
+        self.concurrency.as_deref()
+    }
+
+    /// 获取并发状态快照
+    pub fn concurrency_snapshot(&self) -> Option<crate::concurrency::ConcurrencySnapshot> {
+        self.concurrency.as_ref().map(|c| c.snapshot())
+    }
+
+    /// 获取指标摘要
+    pub fn metrics_summary(&self) -> MetricsSummary {
+        self.metrics.summary()
+    }
+
+    /// 获取指标存储引用
+    pub fn metrics_store(&self) -> &MetricsStore {
+        &self.metrics
+    }
+}
+
+/// 根据错误类型分类
+fn classify_error(e: &anyhow::Error) -> FailureType {
+    let err_str = e.to_string().to_lowercase();
+
+    // 检查是否是 429 限流错误
+    if err_str.contains("429") || err_str.contains("rate limit") || err_str.contains("too many requests") {
+        return FailureType::RateLimited;
+    }
+
+    // 检查是否是超时错误
+    if err_str.contains("timeout") || err_str.contains("timed out") {
+        return FailureType::Timeout;
+    }
+
+    // 检查是否是服务端错误
+    if err_str.contains("500") || err_str.contains("502") || err_str.contains("503") || err_str.contains("server error") {
+        return FailureType::ServerError;
+    }
+
+    FailureType::Other
 }
 
 /// 客户端构建器
@@ -179,6 +290,8 @@ pub struct ClientBuilder {
     default_model: Option<String>,
     http: Option<Client>,
     extension: Option<Arc<dyn ProviderExtension>>,
+    /// 并发控制配置（None 表示不启用并发控制）
+    concurrency_config: Option<ConcurrencyConfig>,
 }
 
 impl ClientBuilder {
@@ -192,6 +305,7 @@ impl ClientBuilder {
             default_model: None,
             http: None,
             extension: None,
+            concurrency_config: None,
         }
     }
 
@@ -211,6 +325,23 @@ impl ClientBuilder {
 
     pub fn with_cookie(self, cookie: impl Into<String>) -> Self {
         self.auth(IFlowAuth::new(cookie))
+    }
+
+    /// 启用并发控制（使用 Extension 中的默认配置或默认值）
+    pub fn with_concurrency(mut self) -> Self {
+        // 如果有 Extension，使用其并发配置；否则使用默认配置
+        self.concurrency_config = Some(
+            self.extension.as_ref()
+                .map(|ext| ext.concurrency_config())
+                .unwrap_or_default()
+        );
+        self
+    }
+
+    /// 启用并发控制（使用自定义配置）
+    pub fn with_concurrency_config(mut self, config: ConcurrencyConfig) -> Self {
+        self.concurrency_config = Some(config);
+        self
     }
 
     pub fn with_service_account_json(mut self, json_str: impl Into<String>) -> Self {
@@ -326,6 +457,47 @@ impl ClientBuilder {
         self.auth(crate::auth::providers::codex_oauth::CodexOAuth::new(cache_path))
     }
 
+    /// Sourcegraph Amp 专用：切换后端供应商
+    ///
+    /// Amp 平台通过 `/api/provider/{provider}/v1/...` 路由请求到不同后端。
+    /// 默认使用 "openai" 供应商，可切换为 "anthropic"、"google" 等。
+    ///
+    /// # 示例
+    ///
+    /// ```
+    /// // 使用 Anthropic 后端
+    /// let client = LlmClient::from_preset("amp")
+    ///     .expect("Preset should exist")
+    ///     .with_api_key("your-amp-api-key")
+    ///     .with_amp_provider("anthropic")
+    ///     .build();
+    ///
+    /// // 使用 Google Gemini 后端
+    /// let client = LlmClient::from_preset("amp")
+    ///     .expect("Preset should exist")
+    ///     .with_api_key("your-amp-api-key")
+    ///     .with_amp_provider("google")
+    ///     .build();
+    /// ```
+    pub fn with_amp_provider(self, provider: impl Into<String>) -> Self {
+        let provider = provider.into();
+        // 更新 AmpSite 的 provider 字段
+        if let Some(site) = self.site.as_ref() {
+            if site.id() == "amp" {
+                // 重建 AmpSite 并设置新的 provider
+                let new_site = crate::site::base::amp::AmpSite::new()
+                    .with_base_url(site.base_url())
+                    .with_provider(&provider)
+                    .with_timeout(site.timeout());
+                return Self {
+                    site: Some(Arc::new(new_site)),
+                    ..self
+                };
+            }
+        }
+        self
+    }
+
     /// Gemini 官方 API 专用认证（API Key 通过 URL query `?key=` 传递）
     ///
     /// 注意：Gemini API Key 不走 HTTP Header，而是拼在 URL 中。
@@ -404,6 +576,16 @@ impl ClientBuilder {
     }
 
     pub fn build(self) -> LlmClient {
+        // 如果指定了并发控制但没有提供配置，尝试从 Extension 获取
+        let concurrency_config = self.concurrency_config.or_else(|| {
+            self.extension.as_ref().map(|ext| ext.concurrency_config())
+        });
+
+        // 创建并发控制器
+        let concurrency = concurrency_config.map(|config| {
+            Arc::new(ConcurrencyController::new(config))
+        });
+
         LlmClient {
             site: self.site.expect("site is required"),
             authenticator: Arc::new(Mutex::new(
@@ -416,6 +598,8 @@ impl ClientBuilder {
             default_model: self.default_model.unwrap_or_default(),
             http: self.http.unwrap_or_else(Client::new),
             extension: self.extension,
+            concurrency,
+            metrics: MetricsStore::default(),
         }
     }
 }

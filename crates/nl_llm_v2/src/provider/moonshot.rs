@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use crate::auth::traits::Authenticator;
 use crate::provider::extension::{ProviderExtension, ModelInfo};
+use crate::concurrency::ConcurrencyConfig;
 use std::sync::Arc;
 
 /// Moonshot (月之暗面) 静态模型列表扩展
@@ -48,6 +49,11 @@ impl ProviderExtension for MoonshotExtension {
         _auth: &mut dyn Authenticator,
     ) -> anyhow::Result<Vec<ModelInfo>> {
         Ok(moonshot_models())
+    }
+
+    fn concurrency_config(&self) -> ConcurrencyConfig {
+        // Moonshot: 使用保守的并发限制
+        ConcurrencyConfig::new(10)
     }
 }
 

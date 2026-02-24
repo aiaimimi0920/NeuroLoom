@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 use crate::auth::traits::Authenticator;
 use super::extension::{ProviderExtension, ModelInfo};
+use crate::concurrency::ConcurrencyConfig;
+use std::sync::Arc;
 
 /// Qwen Code 扩展
 ///
@@ -45,4 +47,13 @@ impl ProviderExtension for QwenExtension {
             },
         ])
     }
+
+    fn concurrency_config(&self) -> ConcurrencyConfig {
+        // Qwen: 使用保守的并发限制
+        ConcurrencyConfig::new(10)
+    }
+}
+
+pub fn extension() -> Arc<QwenExtension> {
+    Arc::new(QwenExtension::new())
 }

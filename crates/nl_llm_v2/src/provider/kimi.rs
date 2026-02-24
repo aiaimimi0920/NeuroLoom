@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 use crate::auth::traits::Authenticator;
 use super::extension::{ProviderExtension, ModelInfo};
+use crate::concurrency::ConcurrencyConfig;
+use std::sync::Arc;
 
 /// Kimi (Moonshot AI) 扩展 — 静态模型列表
 pub struct KimiExtension;
@@ -37,4 +39,13 @@ impl ProviderExtension for KimiExtension {
             },
         ])
     }
+
+    fn concurrency_config(&self) -> ConcurrencyConfig {
+        // Kimi: 使用保守的并发限制
+        ConcurrencyConfig::new(10)
+    }
+}
+
+pub fn extension() -> Arc<KimiExtension> {
+    Arc::new(KimiExtension::new())
 }

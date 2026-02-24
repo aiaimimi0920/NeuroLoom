@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use crate::auth::traits::Authenticator;
 use crate::provider::extension::{ProviderExtension, ModelInfo};
+use crate::concurrency::ConcurrencyConfig;
 use std::sync::Arc;
 
 /// Codex 静态模型列表扩展
@@ -59,6 +60,11 @@ impl ProviderExtension for CodexExtension {
         _auth: &mut dyn Authenticator,
     ) -> anyhow::Result<Vec<ModelInfo>> {
         Ok(codex_models())
+    }
+
+    fn concurrency_config(&self) -> ConcurrencyConfig {
+        // Codex: 较高并发支持
+        ConcurrencyConfig::new(20)
     }
 }
 

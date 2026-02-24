@@ -15,6 +15,9 @@ pub mod codex;
 pub mod deepseek;
 pub mod moonshot;
 pub mod zhipu;
+pub mod amp;
+pub mod zai;
+pub mod openrouter;
 
 #[derive(Debug, Clone)]
 pub struct LlmResponse {

@@ -36,6 +36,8 @@ impl PresetRegistry {
         self.builders.insert("codex_oauth", super::codex_oauth::builder);
         self.builders.insert("codex_api", super::codex_api::builder);
         self.builders.insert("antigravity", super::antigravity::builder);
+        self.builders.insert("amp", super::amp::builder);
+        self.builders.insert("zai", super::zai::builder);
     }
 
     pub fn get_builder(&self, preset_name: &str) -> Option<ClientBuilder> {

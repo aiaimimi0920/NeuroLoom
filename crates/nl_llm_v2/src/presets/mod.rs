@@ -18,5 +18,7 @@ pub mod claude_oauth;
 pub mod codex_oauth;
 pub mod codex_api;
 pub mod antigravity;
+pub mod amp;
+pub mod zai;
 
 pub use registry::{PresetRegistry, REGISTRY};

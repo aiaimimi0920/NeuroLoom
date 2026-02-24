@@ -13,6 +13,9 @@ pub mod codex;
 pub mod deepseek;
 pub mod moonshot;
 pub mod zhipu;
+pub mod amp;
+pub mod zai;
+pub mod openrouter;
 
 pub use resolver::{ModelResolver, Capability};
 pub use default::DefaultModelResolver;
@@ -29,3 +32,6 @@ pub use codex::CodexModelResolver;
 pub use deepseek::DeepSeekModelResolver;
 pub use moonshot::MoonshotModelResolver;
 pub use zhipu::ZhipuModelResolver;
+pub use amp::AmpModelResolver;
+pub use zai::ZaiModelResolver;
+pub use openrouter::OpenRouterModelResolver;

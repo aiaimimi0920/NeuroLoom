@@ -15,11 +15,14 @@ use crate::provider::zhipu::ZhipuExtension;
 ///     .with_api_key("xxx")
 ///     .build();
 /// ```
+/// 智谱 API 基础 URL
+const ZHIPU_BASE_URL: &str = "https://open.bigmodel.cn/api/paas/v4";
+
 pub fn builder() -> ClientBuilder {
     ClientBuilder::new()
-        .site(OpenAiSite::new().with_base_url("https://open.bigmodel.cn/api/paas/v4"))
+        .site(OpenAiSite::new().with_base_url(ZHIPU_BASE_URL))
         .protocol(OpenAiProtocol {})
         .model_resolver(ZhipuModelResolver::new())
-        .with_extension(Arc::new(ZhipuExtension::new()))
-        .default_model("glm-4")
+        .with_extension(Arc::new(ZhipuExtension::new().with_base_url(ZHIPU_BASE_URL)))
+        .default_model("glm-5")
 }

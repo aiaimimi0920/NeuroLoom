@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use crate::auth::traits::Authenticator;
 use crate::provider::extension::{ProviderExtension, ModelInfo};
+use crate::concurrency::ConcurrencyConfig;
 use std::sync::Arc;
 
 /// OpenAI 静态模型列表扩展
@@ -75,6 +76,13 @@ impl ProviderExtension for OpenAiExtension {
         _auth: &mut dyn Authenticator,
     ) -> anyhow::Result<Vec<ModelInfo>> {
         Ok(openai_models())
+    }
+
+    fn concurrency_config(&self) -> ConcurrencyConfig {
+        // OpenAI 付费用户: 10,000 RPM
+        // 按 10 秒平均响应时间计算，约 1000 并发
+        // 使用保守值 100 作为默认
+        ConcurrencyConfig::new(100)
     }
 }
 

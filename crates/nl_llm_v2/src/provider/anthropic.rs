@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use crate::auth::traits::Authenticator;
 use crate::provider::extension::{ProviderExtension, ModelInfo};
+use crate::concurrency::ConcurrencyConfig;
 use std::sync::Arc;
 
 /// Anthropic (Claude) 静态模型列表扩展
@@ -76,6 +77,12 @@ impl ProviderExtension for AnthropicExtension {
         _auth: &mut dyn Authenticator,
     ) -> anyhow::Result<Vec<ModelInfo>> {
         Ok(claude_models())
+    }
+
+    fn concurrency_config(&self) -> ConcurrencyConfig {
+        // Claude 付费用户: 1,000 RPM (Tier 4+)
+        // 使用保守值 50 作为默认
+        ConcurrencyConfig::new(50)
     }
 }
 

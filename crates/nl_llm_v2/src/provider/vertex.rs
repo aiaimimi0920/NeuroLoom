@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 use crate::auth::traits::Authenticator;
 use super::extension::{ProviderExtension, ModelInfo};
+use crate::concurrency::ConcurrencyConfig;
+use std::sync::Arc;
 
 /// Vertex AI 扩展
 ///
@@ -102,4 +104,13 @@ impl ProviderExtension for VertexExtension {
     ) -> anyhow::Result<Option<String>> {
         Ok(None)
     }
+
+    fn concurrency_config(&self) -> ConcurrencyConfig {
+        // Vertex AI: Google Cloud 服务，支持较高并发
+        ConcurrencyConfig::new(30)
+    }
+}
+
+pub fn extension(project_id: impl Into<String>, location: impl Into<String>) -> Arc<VertexExtension> {
+    Arc::new(VertexExtension::new(project_id, location))
 }

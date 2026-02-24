@@ -237,3 +237,67 @@ path = "examples/codex_api/stream/main.rs"
 [[example]]
 name = "codex_api_models"
 path = "examples/codex_api/models/main.rs"
+
+[[example]]
+name = "amp_chat"
+path = "examples/amp/chat/main.rs"
+
+[[example]]
+name = "amp_stream"
+path = "examples/amp/stream/main.rs"
+
+[[example]]
+name = "amp_models"
+path = "examples/amp/models/main.rs"
+
+[[example]]
+name = "amp_auth"
+path = "examples/amp/auth/main.rs"
+
+[[example]]
+name = "deepseek_chat"
+path = "examples/deepseek/chat/main.rs"
+
+[[example]]
+name = "deepseek_stream"
+path = "examples/deepseek/stream/main.rs"
+
+[[example]]
+name = "deepseek_models"
+path = "examples/deepseek/models/main.rs"
+
+[[example]]
+name = "deepseek_auth"
+path = "examples/deepseek/auth/main.rs"
+
+[[example]]
+name = "zai_chat"
+path = "examples/zai/chat/main.rs"
+
+[[example]]
+name = "zai_stream"
+path = "examples/zai/stream/main.rs"
+
+[[example]]
+name = "zai_models"
+path = "examples/zai/models/main.rs"
+
+[[example]]
+name = "zai_auth"
+path = "examples/zai/auth/main.rs"
+
+[[example]]
+name = "zhipu_chat"
+path = "examples/zhipu/chat/main.rs"
+
+[[example]]
+name = "zhipu_stream"
+path = "examples/zhipu/stream/main.rs"
+
+[[example]]
+name = "zhipu_models"
+path = "examples/zhipu/models/main.rs"
+
+[[example]]
+name = "zhipu_auth"
+path = "examples/zhipu/auth/main.rs"

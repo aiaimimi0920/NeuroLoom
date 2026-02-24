@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use crate::auth::traits::Authenticator;
 use super::extension::{ProviderExtension, ModelInfo};
+use crate::concurrency::ConcurrencyConfig;
 
 /// Gemini 官方 API 扩展
 ///
@@ -104,5 +105,11 @@ impl ProviderExtension for GeminiExtension {
     ) -> anyhow::Result<Option<String>> {
         // Gemini 官方 API 无额度/余额概念
         Ok(None)
+    }
+
+    fn concurrency_config(&self) -> ConcurrencyConfig {
+        // Gemini 免费: 15 RPM, 付费: 2,000 RPM
+        // 使用保守值 30 作为默认
+        ConcurrencyConfig::new(30)
     }
 }

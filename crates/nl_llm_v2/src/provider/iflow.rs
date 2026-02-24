@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use crate::auth::traits::Authenticator;
 use super::extension::{ProviderExtension, ModelInfo};
+use crate::concurrency::ConcurrencyConfig;
 
 pub struct IFlowExtension;
 
@@ -50,5 +51,10 @@ impl ProviderExtension for IFlowExtension {
         models.sort_by(|a, b| a.id.cmp(&b.id));
 
         Ok(models)
+    }
+
+    fn concurrency_config(&self) -> ConcurrencyConfig {
+        // iFlow 企业内部服务，并发限制较宽松
+        ConcurrencyConfig::new(100)
     }
 }

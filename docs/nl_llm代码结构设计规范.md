@@ -1,4 +1,4 @@
-# nl_llm 代码结构设计规范 v2.2
+# nl_llm 代码结构设计规范 v2.3
 
 ## 概述
 
@@ -11,6 +11,7 @@
 3. **原语中间层**：Primitive 作为统一中间表示，解耦输入解析和输出生成
 4. **流水线处理**：数据原语化 → 封包 → 认证 → 发送 → 解包
 5. **错误规范化**：平台错误统一转换为标准错误，携带重试/降级信号
+6. **运行时指标**：响应时间统计、并发控制、余额查询等运行时能力
 
 ---
 
@@ -897,9 +898,16 @@ struct PlatformPreset {
 | Anthropic | Claude | API Key (x-api-key) | 专用 AnthropicSite + anthropic-version header |
 | Gemini | Gemini | API Key | 无 |
 | Vertex AI | Gemini | Service Account / API Key | URL 结构依赖认证类型 |
-| DeepSeek | OpenAI | API Key | 无 |
+| Vertex API | Gemini | API Key | Vertex 简化 API Key 端点 |
+| DeepSeek | OpenAI | API Key | 余额查询 API |
 | Moonshot (Kimi) | OpenAI | API Key | 无 |
-| 智谱 (GLM) | OpenAI | API Key | 无 |
+| Qwen (通义千问) | OpenAI | API Key | 无 |
+| Kimi | OpenAI | API Key | 无 |
+| 智谱 BigModel (GLM国内版) | OpenAI | API Key | 余额查询 API |
+| Z.AI (GLM海外版) | OpenAI | API Key | 动态模型列表 + 余额查询 |
+| Amp CLI | OpenAI | API Key | Provider 路由 URL |
+| Codex OAuth | OpenAI | OAuth | OAuth 认证流 |
+| Codex API | OpenAI | API Key | 无 |
 | iFlow | OpenAI | Cookie | Thinking 钩子 |
 | OpenRouter | OpenAI | API Key | Provider 字段 |
 | Gemini CLI | CloudCode | OAuth | CloudCode 包装 |
@@ -909,7 +917,7 @@ struct PlatformPreset {
 
 ## 9. 扩展能力 (Extension API)
 
-针对每个平台特有的 API 功能（例如获取账户额度与可用的模型列表），通过 `ProviderExtension` 特征作为扩展点提供支持。能够在底层直接发起经过良好封装的平台管理 HTTP 请求。
+针��每个平台特有的 API 功能（例如获取账户额度与可用的模型列表），通过 `ProviderExtension` 特征作为扩展点提供支持。能够在底层直接发起经过良好封装的平台管理 HTTP 请求。
 
 ```rust
 use async_trait::async_trait;
@@ -924,8 +932,18 @@ pub struct ModelInfo {
 pub trait ProviderExtension: Send + Sync {
     fn id(&self) -> &str;
     async fn list_models(&self, http: &reqwest::Client, auth: &mut dyn Authenticator) -> anyhow::Result<Vec<ModelInfo>>;
+
+    /// 获取账户余额或额度信息
+    /// 返回 None 表示该平台不支持余额查询
+    /// 返回 Some(String) 表示余额信息的可读格式
     async fn get_balance(&self, http: &reqwest::Client, auth: &mut dyn Authenticator) -> anyhow::Result<Option<String>> {
         Ok(None)
+    }
+
+    /// 获取并发配置
+    /// 返回该平台的官方最大并发数和推荐配置
+    fn concurrency_config(&self) -> ConcurrencyConfig {
+        ConcurrencyConfig::default()
     }
 }
 ```
@@ -936,11 +954,469 @@ pub trait ProviderExtension: Send + Sync {
   在 `LlmClient` 构建完毕后直接使用：
   ```rust
   let models = client.list_models().await?;
+  let balance = client.get_balance().await?;
   ```
+
+### 9.1 余额查询实现
+
+各平台需要实现 `get_balance` 方法，返回该平台的余额或额度信息：
+
+```rust
+// OpenAI 实现
+impl ProviderExtension for OpenAIExtension {
+    async fn get_balance(&self, http: &Client, auth: &mut dyn Authenticator) -> anyhow::Result<Option<String>> {
+        let req = auth.inject(http.get("https://api.openai.com/v1/usage"))?;
+        let resp = req.send().await?;
+        let json: Value = resp.json().await?;
+        // 解析并格式化余额信息
+        Ok(Some(format!("Total: ${}", json["total_usage"].as_f64().unwrap_or(0.0))))
+    }
+}
+
+// iFlow 实现
+impl ProviderExtension for IFlowExtension {
+    async fn get_balance(&self, http: &Client, auth: &mut dyn Authenticator) -> anyhow::Result<Option<String>> {
+        let req = auth.inject(http.get("https://iflow.cn/api/balance"))?;
+        let resp = req.send().await?;
+        let json: Value = resp.json().await?;
+        Ok(Some(format!("剩余额度: {} tokens", json["balance"].as_u64().unwrap_or(0))))
+    }
+}
+```
 
 ---
 
-## 10. 目录结构
+## 10. 并发控制
+
+### 10.1 设计背景
+
+各 AI 平台都有官方声称的最大并发数限制，但实际运行中：
+1. 官方限制不一定等于实际可承受的并发数
+2. 网络波动、服务端负载变化会影响实际可用并发
+3. 需要在运行时动态调节以获得最佳吞吐量
+
+### 10.2 并发配置
+
+```rust
+/// 并发配置（静态）
+pub struct ConcurrencyConfig {
+    /// 官方声称的最大并发数
+    pub official_max: usize,
+
+    /// 初始并发限制（默认为官方值的 50%）
+    pub initial_limit: usize,
+
+    /// 最小并发限制（下限）
+    pub min_limit: usize,
+
+    /// 最大并发限制（上限，通常等于官方值）
+    pub max_limit: usize,
+
+    /// 调节策略
+    pub strategy: AdjustmentStrategy,
+}
+
+impl Default for ConcurrencyConfig {
+    fn default() -> Self {
+        Self {
+            official_max: 10,
+            initial_limit: 5,
+            min_limit: 1,
+            max_limit: 10,
+            strategy: AdjustmentStrategy::Aimd {
+                additive_increment: 1,
+                multiplicative_decrease: 0.7,
+            },
+        }
+    }
+}
+
+/// 调节策略
+pub enum AdjustmentStrategy {
+    /// AIMD: 加性增、乘性减（类似 TCP 拥塞控制）
+    Aimd {
+        /// 每次成功增加的量
+        additive_increment: usize,
+        /// 失败时乘以这个系数
+        multiplicative_decrease: f32,
+    },
+
+    /// 基于延迟的调节
+    LatencyBased {
+        /// 目标延迟（毫秒）
+        target_latency_ms: u64,
+        /// 低于目标延迟 * 此阈值时增加
+        increase_threshold: f32,
+        /// 高于目标延迟 * 此阈值时减少
+        decrease_threshold: f32,
+    },
+
+    /// 固定（不调节）
+    Fixed,
+}
+```
+
+### 10.3 并发控制器
+
+```rust
+use std::sync::atomic::{AtomicUsize, AtomicU64, AtomicBool, Ordering};
+use std::sync::{Arc, RwLock};
+use tokio::sync::Semaphore;
+use std::collections::VecDeque;
+use std::time::{Instant, Duration};
+
+/// 并发控制器运行时状态
+pub struct ConcurrencyState {
+    /// 当前并发限制
+    current_limit: AtomicUsize,
+
+    /// 当前活跃请求数
+    active_requests: AtomicUsize,
+
+    /// 成功请求计数
+    success_count: AtomicU64,
+
+    /// 失败请求计数
+    failure_count: AtomicU64,
+
+    /// 最近响应时间样本（滑动窗口）
+    recent_latencies: RwLock<VecDeque<u64>>,
+
+    /// 是否处于恢复模式
+    recovering: AtomicBool,
+}
+
+/// 并发控制器
+pub struct ConcurrencyController {
+    config: ConcurrencyConfig,
+    state: ConcurrencyState,
+    semaphore: Arc<Semaphore>,
+}
+
+/// 失败类型
+pub enum FailureType {
+    /// 429 限流错误
+    RateLimited,
+    /// 请求超时
+    Timeout,
+    /// 服务端错误
+    ServerError,
+    /// 其他错误
+    Other,
+}
+
+impl ConcurrencyController {
+    pub fn new(config: ConcurrencyConfig) -> Self {
+        let initial = config.initial_limit;
+        Self {
+            config,
+            state: ConcurrencyState::new(initial),
+            semaphore: Arc::new(Semaphore::new(initial)),
+        }
+    }
+
+    /// 获取许可证（开始请求前调用）
+    pub async fn acquire(&self) -> ConcurrencyPermit<'_> {
+        let permit = self.semaphore.acquire().await.unwrap();
+        self.state.active_requests.fetch_add(1, Ordering::Relaxed);
+        ConcurrencyPermit {
+            controller: self,
+            start_time: Instant::now(),
+            _permit: Some(permit),
+        }
+    }
+
+    /// 报告请求成功
+    pub fn report_success(&self, latency_ms: u64) {
+        self.state.success_count.fetch_add(1, Ordering::Relaxed);
+        self.state.add_latency_sample(latency_ms);
+
+        if self.should_increase() {
+            self.increase_limit();
+        }
+    }
+
+    /// 报告请求失败
+    pub fn report_failure(&self, error_type: FailureType) {
+        self.state.failure_count.fetch_add(1, Ordering::Relaxed);
+
+        let decrease_factor = match error_type {
+            FailureType::RateLimited => 0.5,
+            FailureType::Timeout => 0.7,
+            FailureType::ServerError => 0.8,
+            FailureType::Other => 0.9,
+        };
+
+        self.decrease_limit(decrease_factor);
+    }
+
+    /// 获取状态快照
+    pub fn snapshot(&self) -> ConcurrencySnapshot {
+        ConcurrencySnapshot {
+            official_max: self.config.official_max,
+            current_limit: self.state.current_limit.load(Ordering::Relaxed),
+            active_requests: self.state.active_requests.load(Ordering::Relaxed),
+            success_count: self.state.success_count.load(Ordering::Relaxed),
+            failure_count: self.state.failure_count.load(Ordering::Relaxed),
+            avg_latency_ms: self.state.average_latency(),
+        }
+    }
+
+    // ... 内部方法实现
+}
+
+/// 状态快照
+pub struct ConcurrencySnapshot {
+    pub official_max: usize,
+    pub current_limit: usize,
+    pub active_requests: usize,
+    pub success_count: u64,
+    pub failure_count: u64,
+    pub avg_latency_ms: Option<u64>,
+}
+```
+
+### 10.4 许可证（RAII 模式）
+
+```rust
+/// 许可证，持有期间占用一个并发槽位
+pub struct ConcurrencyPermit<'a> {
+    controller: &'a ConcurrencyController,
+    start_time: Instant,
+    _permit: Option<tokio::sync::SemaphorePermit<'a>>,
+}
+
+impl ConcurrencyPermit<'_> {
+    /// 手动报告成功（自动计算延迟）
+    pub fn report_success(self) {
+        let latency = self.start_time.elapsed().as_millis() as u64;
+        self.controller.report_success(latency);
+        // permit 自动释放
+    }
+
+    /// 手动报告失败
+    pub fn report_failure(self, error_type: FailureType) {
+        self.controller.report_failure(error_type);
+        // permit 自动释放
+    }
+}
+```
+
+### 10.5 各平台官方并发限制参考
+
+| 平台 | 免费层 RPM | 付费层 RPM | 默认并发配置 |
+|------|-----------|-----------|-------------|
+| OpenAI | 3 | 10,000 | `official_max: 10` |
+| Claude | 5 | 1,000 | `official_max: 10` |
+| Gemini | 15 | 2,000 | `official_max: 15` |
+| DeepSeek | 60 | 500 | `official_max: 20` |
+| 智谱 BigModel | - | - | `official_max: 10` |
+| Z.AI (GLM海外版) | - | - | `official_max: 10` |
+| Qwen (通义千问) | 60 | 1,000 | `official_max: 10` |
+| Kimi | - | - | `official_max: 10` |
+| Amp CLI | - | - | `official_max: 5` |
+| iFlow | 无限制 | - | `official_max: 100` |
+| OpenRouter | 取决于后端 | - | `official_max: 10` |
+
+> 注：RPM = Requests Per Minute，并发数需要根据平均请求时长换算。
+
+### 10.6 使用示例
+
+```rust
+// 启用并发控制
+let client = LlmClient::from_preset("openai")
+    .with_api_key("sk-xxx")
+    .with_concurrency()  // 使用默认配置
+    .build();
+
+// 自定义并发配置
+let client = LlmClient::from_preset("claude")
+    .with_api_key("sk-xxx")
+    .with_concurrency_config(ConcurrencyConfig {
+        official_max: 100,
+        initial_limit: 20,
+        min_limit: 5,
+        max_limit: 100,
+        strategy: AdjustmentStrategy::Aimd {
+            additive_increment: 2,
+            multiplicative_decrease: 0.6,
+        },
+    })
+    .build();
+
+// 查看并发状态
+if let Some(ctrl) = client.concurrency_controller() {
+    let snapshot = ctrl.snapshot();
+    println!("当前限制: {}/{}", snapshot.current_limit, snapshot.official_max);
+    println!("活跃请求: {}", snapshot.active_requests);
+}
+```
+
+---
+
+## 11. 响应时间统计与指标
+
+### 11.1 Pipeline 指标收集
+
+每个请求自动收集响应时间等指标：
+
+```rust
+/// Pipeline 执行指标
+pub struct PipelineMetrics {
+    /// 请求开始时间
+    pub start_time: Instant,
+
+    /// 请求结束时间
+    pub end_time: Option<Instant>,
+
+    /// 总响应时间（毫秒）
+    pub response_time_ms: Option<u64>,
+
+    /// 首个 Token 时间（流式请求）
+    pub first_token_time_ms: Option<u64>,
+
+    /// 各阶段耗时
+    pub stage_timings: HashMap<String, u64>,
+}
+
+impl PipelineMetrics {
+    pub fn new() -> Self {
+        Self {
+            start_time: Instant::now(),
+            end_time: None,
+            response_time_ms: None,
+            first_token_time_ms: None,
+            stage_timings: HashMap::new(),
+        }
+    }
+
+    /// 记录阶段耗时
+    pub fn record_stage(&mut self, stage: &str, duration_ms: u64) {
+        self.stage_timings.insert(stage.to_string(), duration_ms);
+    }
+
+    /// 完成记录
+    pub fn finish(&mut self) {
+        self.end_time = Some(Instant::now());
+        self.response_time_ms = Some(self.start_time.elapsed().as_millis() as u64);
+    }
+}
+```
+
+### 11.2 指标存储
+
+```rust
+use std::sync::RwLock;
+use std::collections::VecDeque;
+
+/// 指标存储（滑动窗口）
+pub struct MetricsStore {
+    /// 最近 N 次请求的指标
+    recent_metrics: RwLock<VecDeque<PipelineMetrics>>,
+
+    /// 窗口大小
+    window_size: usize,
+
+    /// 累计统计
+    total_requests: AtomicU64,
+    total_errors: AtomicU64,
+    total_latency_ms: AtomicU64,
+}
+
+impl MetricsStore {
+    pub fn new(window_size: usize) -> Self {
+        Self {
+            recent_metrics: RwLock::new(VecDeque::with_capacity(window_size)),
+            window_size,
+            total_requests: AtomicU64::new(0),
+            total_errors: AtomicU64::new(0),
+            total_latency_ms: AtomicU64::new(0),
+        }
+    }
+
+    /// 记录指标
+    pub fn record(&self, metrics: PipelineMetrics) {
+        self.total_requests.fetch_add(1, Ordering::Relaxed);
+        self.total_latency_ms.fetch_add(
+            metrics.response_time_ms.unwrap_or(0),
+            Ordering::Relaxed
+        );
+
+        let mut recent = self.recent_metrics.write().unwrap();
+        if recent.len() >= self.window_size {
+            recent.pop_front();
+        }
+        recent.push_back(metrics);
+    }
+
+    /// 获取平均响应时间
+    pub fn avg_latency_ms(&self) -> u64 {
+        let total = self.total_requests.load(Ordering::Relaxed);
+        if total == 0 {
+            return 0;
+        }
+        self.total_latency_ms.load(Ordering::Relaxed) / total
+    }
+
+    /// 获取统计摘要
+    pub fn summary(&self) -> MetricsSummary {
+        MetricsSummary {
+            total_requests: self.total_requests.load(Ordering::Relaxed),
+            total_errors: self.total_errors.load(Ordering::Relaxed),
+            avg_latency_ms: self.avg_latency_ms(),
+            recent_count: self.recent_metrics.read().unwrap().len(),
+        }
+    }
+}
+
+/// 指标摘要
+pub struct MetricsSummary {
+    pub total_requests: u64,
+    pub total_errors: u64,
+    pub avg_latency_ms: u64,
+    pub recent_count: usize,
+}
+```
+
+### 11.3 集成到 LlmClient
+
+```rust
+impl LlmClient {
+    pub async fn complete(&self, req: &PrimitiveRequest) -> Result<LlmResponse> {
+        // 获取并发许可证
+        let permit = self.concurrency.as_ref().map(|c| c.acquire()).transpose()?;
+
+        // 创建指标记录
+        let mut metrics = PipelineMetrics::new();
+
+        // 执行请求
+        let result = self.inner_complete(req).await;
+
+        // 记录结果
+        metrics.finish();
+        self.metrics.record(metrics);
+
+        // 报告并发状态
+        if let Some(permit) = permit {
+            match &result {
+                Ok(_) => permit.report_success(),
+                Err(e) => permit.report_failure(e.into()),
+            }
+        }
+
+        result
+    }
+
+    /// 获取指标摘要
+    pub fn metrics_summary(&self) -> MetricsSummary {
+        self.metrics.summary()
+    }
+}
+```
+
+---
+
+## 12. 目录结构
 
 ```
 nl_llm/src/
@@ -967,7 +1443,7 @@ nl_llm/src/
 ├── protocol/                 # 协议格式
 │   ├── mod.rs
 │   ├── traits.rs            # ProtocolFormat trait
-│   ├── error.rs             # 【新增】StandardError 定义
+│   ├── error.rs             # StandardError 定义
 │   ├── base/                # 基础协议
 │   │   ├── mod.rs
 │   │   ├── openai.rs
@@ -982,7 +1458,7 @@ nl_llm/src/
 ├── site/                     # 站点定义
 │   ├── mod.rs
 │   ├── traits.rs            # Site trait
-│   ├── context.rs           # 【新增】UrlContext, Action 定义
+│   ├── context.rs           # UrlContext, Action 定义
 │   └── builder.rs           # Site 构建器
 │
 ├── auth/                     # 认证方式
@@ -1005,17 +1481,41 @@ nl_llm/src/
 │   ├── parameters.rs
 │   └── metadata.rs
 │
-├── provider/                 # 【新增】供应商扩展能力
+├── provider/                 # 供应商扩展能力
 │   ├── mod.rs
 │   ├── extension.rs         # ProviderExtension trait
-│   ├── iflow.rs             # iFlow 扩展实现
-│   └── antigravity.rs       # Antigravity 扩展实现
+│   ├── openai.rs            # OpenAI 扩展
+│   ├── anthropic.rs         # Anthropic 扩展
+│   ├── gemini.rs            # Gemini 扩展
+│   ├── gemini_cli.rs        # Gemini CLI 扩展
+│   ├── vertex.rs            # Vertex AI 扩展
+│   ├── deepseek.rs          # DeepSeek 扩展（含余额查询）
+│   ├── zhipu.rs             # 智谱 BigModel 扩展（含余额查询）
+│   ├── zai.rs               # Z.AI 扩展（动态模型列表 + 余额查询）
+│   ├── qwen.rs              # 通义千问扩展
+│   ├── kimi.rs              # Kimi 扩展
+│   ├── moonshot.rs          # Moonshot 扩展
+│   ├── codex.rs             # Codex 扩展
+│   ├── amp.rs               # Amp CLI 扩展
+│   ├── iflow.rs             # iFlow 扩展
+│   └── antigravity.rs       # Antigravity 扩展
 │
-├── model/                    # 【新增】模型解析
+├── model/                    # 模型解析
 │   ├── mod.rs
 │   ├── resolver.rs          # ModelResolver trait
 │   ├── capabilities.rs      # Capability flags
 │   └── default.rs           # DefaultModelResolver
+│
+├── concurrency/              # 【新增】并发控制
+│   ├── mod.rs
+│   ├── config.rs            # ConcurrencyConfig
+│   ├── controller.rs        # ConcurrencyController
+│   └── permit.rs            # ConcurrencyPermit
+│
+├── metrics/                  # 【新增】指标收集
+│   ├── mod.rs
+│   ├── pipeline.rs          # PipelineMetrics
+│   └── store.rs             # MetricsStore
 │
 ├── pipeline/                 # 流水线
 │   ├── mod.rs
@@ -1034,7 +1534,7 @@ nl_llm/src/
 └── token_bucket.rs          # 令牌桶限流
 ```
 
-### 10.2 预设平台示例目录
+### 12.1 预设平台示例目录
 
 每个预设平台需要有对应的 `examples/` 子目录，用于测试验证该平台是否可正常交互：
 
@@ -1086,12 +1586,30 @@ examples/                    # 平台示例（按平台分组）
 │   └── models/             # 模型列表查询（fetchAvailableModels）
 │
 ├── deepseek/
-│   └── chat/
+│   ├── chat/
+│   ├── stream/
+│   ├── models/
+│   └── auth/
+│
+├── zhipu/                   # 智谱 BigModel（国内版）
+│   ├── chat/
+│   ├── stream/
+│   ├── models/
+│   └── auth/
+│
+├── zai/                     # Z.AI（GLM 海外版）
+│   ├── chat/
+│   ├── stream/
+│   ├── models/
+│   └── auth/
+│
+├── amp/                     # Amp CLI
+│   ├── chat/
+│   ├── stream/
+│   ├── models/
+│   └── auth/
 │
 ├── moonshot/
-│   └── chat/
-│
-├── zhipu/
 │   └── chat/
 │
 └── openrouter/
@@ -1112,7 +1630,7 @@ examples/                    # 平台示例（按平台分组）
 - `main.rs` - Rust 示例代码
 - `test.bat` - Windows 批处理测试脚本（便于快速测试单个案例）
 
-### 10.3 自动测试要求
+### 12.2 自动测试要求
 
 **重要**：每次修改核心模块时，必须运行受影响预设平台的测试脚本：
 
@@ -1137,7 +1655,7 @@ examples/                    # 平台示例（按平台分组）
 
 ---
 
-## 10. 使用示例
+## 13. 使用示例
 
 ### 10.1 使用预设平台
 
@@ -1244,9 +1762,78 @@ req.extra.insert("provider".into(), json!({
 let response = client.complete(req).await?;
 ```
 
+### 10.6 使用并发控制
+
+```rust
+// 启用并发控制（使用默认配置）
+let client = LlmClient::from_preset("openai")
+    .with_api_key("sk-xxx")
+    .with_concurrency()  // 使用 Extension 中配置的默认值
+    .build();
+
+// 自定义并发配置
+let client = LlmClient::from_preset("claude")
+    .with_api_key("sk-xxx")
+    .with_concurrency_config(ConcurrencyConfig {
+        official_max: 100,
+        initial_limit: 20,
+        min_limit: 5,
+        max_limit: 100,
+        strategy: AdjustmentStrategy::Aimd {
+            additive_increment: 2,
+            multiplicative_decrease: 0.6,
+        },
+    })
+    .build();
+
+// 查看并发状态
+if let Some(ctrl) = client.concurrency_controller() {
+    let snapshot = ctrl.snapshot();
+    println!("当前限制: {}/{}", snapshot.current_limit, snapshot.official_max);
+    println!("活跃请求: {}", snapshot.active_requests);
+    println!("平均延迟: {:?}ms", snapshot.avg_latency_ms);
+}
+```
+
+### 10.7 使用余额查询
+
+```rust
+let client = LlmClient::from_preset("openai")
+    .with_api_key("sk-xxx")
+    .build();
+
+// 查询余额
+if let Some(balance) = client.get_balance().await? {
+    println!("账户余额: {}", balance);
+} else {
+    println!("该平台不支持余额查询");
+}
+```
+
+### 10.8 查看运行时指标
+
+```rust
+let client = LlmClient::from_preset("openai")
+    .with_api_key("sk-xxx")
+    .with_concurrency()
+    .build();
+
+// 执行一些请求...
+for i in 0..10 {
+    let response = client.complete(&PrimitiveRequest::single_user_message("Hello")).await?;
+}
+
+// 查看指标摘要
+let summary = client.metrics_summary();
+println!("总请求数: {}", summary.total_requests);
+println!("平均延迟: {}ms", summary.avg_latency_ms);
+println!("错误率: {:.2}%",
+    summary.total_errors as f64 / summary.total_requests as f64 * 100.0);
+```
+
 ---
 
-## 11. 设计原则总结
+## 14. 设计原则总结
 
 | 序号 | 原则 | 说明 |
 |------|------|------|
@@ -1264,78 +1851,99 @@ let response = client.complete(req).await?;
 | 12 | **流式双轨** | 流式请求同时支持 URL 层和 JSON Body 层标识 |
 | 13 | **预设示例** | 每个预设平台提供独立 examples 目录，便于测试验证 |
 | 14 | **自动测试** | 修改核心模块时必须测试受影响的预设平台 |
+| 15 | **并发控制** | 官方并发数 + AIMD 弹性调节，自动适应平台限流 |
+| 16 | **指标收集** | 自动收集响应时间、成功率等运行时指标 |
+| 17 | **余额查询** | Extension 支持各平台余额/额度查询 |
 
 ---
 
-## 12. 迁移计划
+## 15. 迁移计划
 
-### 12.1 Phase 1：基础架构
+### 14.1 Phase 1：基础架构
 
 1. 定义核心 traits（Site, Protocol, Authenticator）
 2. 实现 Pipeline 框架
 3. 实现 Primitive 原语
 4. 实现 StandardError 和错误规范化
 
-### 12.2 Phase 2：协议实现
+### 14.2 Phase 2：协议实现
 
 1. 实现三种基础协议（OpenAI, Claude, Gemini）
 2. 实现协议钩子机制
 3. 实现错误解包方法
 4. 编写协议单元测试
 
-### 12.3 Phase 3：认证实现
+### 14.3 Phase 3：认证实现
 
 1. 迁移现有认证代码
 2. 实现 Authenticator trait
 3. 测试各平台认证流程
 
-### 12.4 Phase 4：预设平台
+### 14.4 Phase 4：预设平台
 
-1. 迁移现有 Provider 为预设
+1. 迁移现有 Provider ��预设
 2. 实现注册表
 3. 实现 ModelResolver
 4. 编写集成测试
 
-### 12.5 Phase 5：客户端 API
+### 14.5 Phase 5：客户端 API
 
 1. 实现 LlmClient builder
 2. 实现 from_preset 便捷方法
 3. 编写使用文档
 
+### 14.6 Phase 6：运行时能力（新增）
+
+1. 实现并发控制器（ConcurrencyController）
+2. 实现 Pipeline 指标收集（PipelineMetrics）
+3. 实现指标存储（MetricsStore）
+4. 为各平台实现 `get_balance` 方法
+5. 为各平台配置官方并发数
+6. 编写运行时能力测试
+
 ---
 
-## 13. 架构评审要点总结
+## 16. 架构评审要点总结
 
-### 13.1 Site/Auth 耦合问题
+### 15.1 Site/Auth 耦合问题
 
 **问题**：部分平台（如 Vertex AI）的 URL 结构依赖认证类型（SA vs API Key 有不同端点）。
 
 **解决方案**：`build_url` 方法接收 `UrlContext`，包含 `auth_type` 和 `action` 信息，Site 实现根据上下文动态构建 URL。
 
-### 13.2 流式/非流式端点异构问题
+### 15.2 流式/非流式端点异构问题
 
 **问题**：部分平台的流式和非流式使用不同端点路径。
 
 **解决方案**：在 `UrlContext` 中添加 `Action` 枚举，`build_url` 根据 action 返回对应端点。
 
-### 13.3 错误规范化问题
+### 15.3 错误规范化问题
 
 **问题**：各平台错误格式不一，上层难以统一处理。
 
 **解决方案**：在 `ProtocolFormat` trait 中添加 `unpack_error` 方法，将平台错误转换为 `StandardError`，携带 `retryable` 和 `fallback_hint` 信息。
 
-### 13.4 模型别名和能力检测问题
+### 15.4 模型别名和能力检测问题
 
 **问题**：用户可能使用别名（如 "gpt4"），且需要知道模型能力（如是否支持 Vision）。
 
 **解决方案**：引入 `ModelResolver` trait，负责别名解析和能力检测。
 
-### 13.5 平台特定参数问题
+### 15.5 平台特定参数问题
 
 **问题**：部分平台有特殊参数（如 OpenRouter 的 provider 字段）。
 
 **解决方案**：在 `PrimitiveRequest` 中添加 `extra: HashMap<String, Value>` 字段，封包时合并到请求体中。
 
+### 15.6 并发控制问题（新增）
+
+**问题**：官方并发限制不一定等于实际可用并发，需要在运行时弹性调节。
+
+**解决方案**：引入 `ConcurrencyController`，采用 AIMD（加性增、乘性减）算法，类似 TCP 拥塞控制：
+- 成功时逐步增加并发限制
+- 遇到 429/超时时降低并发限制
+- 自动适应平台实际负载能力
+
 ---
 
-*本文档作为 `nl_llm` 模块的完整设计规范 v2.1，指导后续实现开发。*
+*本文档作为 `nl_llm` 模块的完整设计规范 v2.3，指导后续实现开发。*

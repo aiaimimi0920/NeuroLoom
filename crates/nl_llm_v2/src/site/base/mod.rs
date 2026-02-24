@@ -10,6 +10,7 @@ pub mod anthropic;
 pub mod codex;
 pub mod codex_api;
 pub mod proxy;
+pub mod amp;
 
 pub use openai::OpenAiSite;
 pub use gemini::GeminiSite;
@@ -23,3 +24,4 @@ pub use anthropic::AnthropicSite;
 pub use codex::CodexSite;
 pub use codex_api::CodexApiSite;
 pub use proxy::ProxySite;
+pub use amp::AmpSite;

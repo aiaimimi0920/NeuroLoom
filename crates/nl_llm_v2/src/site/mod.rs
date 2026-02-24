@@ -10,3 +10,4 @@ pub use base::iflow::IFlowSite;
 pub use base::cloudcode::CloudCodeSite;
 pub use base::vertex::VertexSite;
 pub use base::proxy::ProxySite;
+pub use base::amp::AmpSite;

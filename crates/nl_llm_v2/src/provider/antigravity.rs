@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 use crate::auth::traits::Authenticator;
 use super::extension::{ProviderExtension, ModelInfo};
+use crate::concurrency::ConcurrencyConfig;
 use serde_json::Value;
+use std::sync::Arc;
 
 pub struct AntigravityExtension;
 
@@ -160,4 +162,13 @@ impl ProviderExtension for AntigravityExtension {
             Ok(Some(result))
         }
     }
+
+    fn concurrency_config(&self) -> ConcurrencyConfig {
+        // Antigravity: Google Cloud 内部服务，支持较高并发
+        ConcurrencyConfig::new(30)
+    }
+}
+
+pub fn extension() -> Arc<AntigravityExtension> {
+    Arc::new(AntigravityExtension)
 }
