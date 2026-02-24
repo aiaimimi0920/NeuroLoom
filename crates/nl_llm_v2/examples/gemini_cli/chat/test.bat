@@ -1,35 +1,17 @@
 @echo off
-REM gemini_cli 平台测试 - chat
-REM 用法: test.bat [api_key] [prompt]
+setlocal
 
-cd /d "%~dp0"
-
-if "%GEMINI_CLI_API_KEY%"=="" (
-    if "%1"=="" (
-        echo Warning: No GEMINI_CLI_API_KEY provided.
-        set API_KEY=dummy_credential
-    ) else (
-        set API_KEY=%1
-        shift
-    )
-) else (
-    set API_KEY=%GEMINI_CLI_API_KEY%
-)
-
-if "%1"=="" (
-    set PROMPT=你好！请简单介绍一下你自己。
-) else (
-    set PROMPT=%1
-)
-
+cd /d "%~dp0\..\..\.."
 echo ========================================
 echo   gemini_cli chat Test
 echo ========================================
 echo.
-
-cargo run -p nl_llm_v2 --example gemini_cli_chat -- %API_KEY% "%PROMPT%"
-
+echo   Prompt: Hello! Please introduce yourself briefly.
 echo.
+
+cargo run -p nl_llm_v2 --example gemini_cli_chat -- "" "Hello! Please introduce yourself briefly."
+
 echo ========================================
 echo   Test Complete
 echo ========================================
+pause

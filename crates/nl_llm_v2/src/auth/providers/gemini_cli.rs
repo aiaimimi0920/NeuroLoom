@@ -65,6 +65,22 @@ impl GeminiCliOAuth {
         self
     }
 
+    async fn resolve_project_id_extra(&self, access_token: &str, context: &str) -> std::collections::HashMap<String, serde_json::Value> {
+        let mut extra = std::collections::HashMap::new();
+        match self.fetch_project_id(access_token).await {
+            Ok(Some(pid)) => {
+                extra.insert("project_id".to_string(), serde_json::Value::String(pid));
+            }
+            Ok(None) => {
+                eprintln!("[GeminiCliOAuth] fetch_project_id returned None during {}", context);
+            }
+            Err(e) => {
+                eprintln!("[GeminiCliOAuth] fetch_project_id error during {}: {}", context, e);
+            }
+        }
+        extra
+    }
+
     async fn do_login(&self) -> anyhow::Result<TokenStorage> {
         let state = format!("{}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos());
         let redirect_uri = format!("http://127.0.0.1:{}/oauth2callback", GEMINI_CLI_OAUTH_CONFIG.redirect_port);
@@ -136,7 +152,7 @@ impl GeminiCliOAuth {
         let token_resp: OAuthTokenResponse = res.json().await?;
         let expires_at = chrono::Utc::now() + chrono::Duration::seconds(token_resp.expires_in);
 
-        let extra = std::collections::HashMap::new();
+        let extra = self.resolve_project_id_extra(&token_resp.access_token, "login").await;
 
         Ok(TokenStorage {
             access_token: token_resp.access_token,
@@ -165,7 +181,7 @@ impl GeminiCliOAuth {
         let token_resp: OAuthTokenResponse = res.json().await?;
         let expires_at = chrono::Utc::now() + chrono::Duration::seconds(token_resp.expires_in);
 
-        let extra = std::collections::HashMap::new();
+        let extra = self.resolve_project_id_extra(&token_resp.access_token, "refresh").await;
 
         Ok(TokenStorage {
             access_token: token_resp.access_token,
@@ -175,6 +191,115 @@ impl GeminiCliOAuth {
             provider: "GeminiCLI".to_string(),
             extra,
         })
+    }
+
+    async fn fetch_project_id(&self, access_token: &str) -> anyhow::Result<Option<String>> {
+        let url = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist";
+        let body = serde_json::json!({
+            "metadata": {
+                "ideType": "IDE_UNSPECIFIED",
+                "platform": "PLATFORM_UNSPECIFIED",
+                "pluginType": "GEMINI"
+            }
+        });
+
+        let res = self.http.post(url)
+            .header("Authorization", format!("Bearer {}", access_token))
+            .header("Content-Type", "application/json")
+            .header("User-Agent", "google-api-nodejs-client/9.15.1")
+            .header("X-Goog-Api-Client", "google-cloud-sdk vscode_cloudshelleditor/0.1")
+            .header("Client-Metadata", r#"{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}"#)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("HTTP request failed: {}", e))?;
+
+        if !res.status().is_success() {
+            let status = res.status();
+            let body = res.text().await.unwrap_or_default();
+            eprintln!("[GeminiCliOAuth] loadCodeAssist failed with status {}: {}", status, body);
+            return Ok(None);
+        }
+
+        let json = res.json::<serde_json::Value>().await
+            .map_err(|e| anyhow::anyhow!("Failed to parse JSON response: {}", e))?;
+
+        let mut project_id = String::new();
+        if let Some(id) = json.get("cloudaicompanionProject").and_then(|v| v.as_str()) {
+            project_id = id.trim().to_string();
+        } else if let Some(obj) = json.get("cloudaicompanionProject").and_then(|v| v.as_object()) {
+            if let Some(id) = obj.get("id").and_then(|v| v.as_str()) {
+                project_id = id.trim().to_string();
+            }
+        }
+
+        if !project_id.is_empty() {
+            return Ok(Some(project_id));
+        }
+
+        let tier_id = json.get("allowedTiers")
+            .and_then(|v| v.as_array())
+            .and_then(|tiers| {
+                tiers.iter().find_map(|t| {
+                    if t.get("isDefault").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        t.get("id").and_then(|v| v.as_str()).map(|s| s.to_string())
+                    } else {
+                        None
+                    }
+                })
+            })
+            .unwrap_or_else(|| "legacy-tier".to_string());
+
+        match self.onboard_user(access_token, &tier_id).await {
+            Ok(Some(pid)) => Ok(Some(pid)),
+            Ok(None) => Ok(None),
+            Err(e) => {
+                eprintln!("[GeminiCliOAuth] onboard_user error: {}", e);
+                Ok(None)
+            }
+        }
+    }
+
+    async fn onboard_user(&self, access_token: &str, tier_id: &str) -> anyhow::Result<Option<String>> {
+        let url = "https://cloudcode-pa.googleapis.com/v1internal:onboardUser";
+        let body = serde_json::json!({
+            "tierId": tier_id,
+            "metadata": {
+                "ideType": "IDE_UNSPECIFIED",
+                "platform": "PLATFORM_UNSPECIFIED",
+                "pluginType": "GEMINI"
+            }
+        });
+
+        for attempt in 0..3 {
+            let res = self.http.post(url)
+                .header("Authorization", format!("Bearer {}", access_token))
+                .header("Content-Type", "application/json")
+                .header("User-Agent", "google-api-nodejs-client/9.15.1")
+                .header("X-Goog-Api-Client", "google-cloud-sdk vscode_cloudshelleditor/0.1")
+                .header("Client-Metadata", r#"{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}"#)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| anyhow::anyhow!("HTTP request failed: {}", e))?;
+
+            if res.status().is_success() {
+                if let Ok(json) = res.json::<serde_json::Value>().await {
+                    if let Some(id) = json.get("cloudaicompanionProject").and_then(|v| v.as_str()) {
+                        return Ok(Some(id.trim().to_string()));
+                    } else if let Some(obj) = json.get("cloudaicompanionProject").and_then(|v| v.as_object()) {
+                        if let Some(id) = obj.get("id").and_then(|v| v.as_str()) {
+                            return Ok(Some(id.trim().to_string()));
+                        }
+                    }
+                }
+            } else {
+                eprintln!("[GeminiCliOAuth] onboardUser attempt {} failed with status {}", attempt + 1, res.status());
+            }
+            tokio::time::sleep(Duration::from_millis(1000)).await;
+        }
+
+        Ok(None)
     }
 }
 
@@ -190,7 +315,7 @@ impl Authenticator for GeminiCliOAuth {
 
     fn needs_refresh(&self) -> bool {
         self.token.as_ref().map_or(true, |t| {
-            matches!(t.status(300), TokenStatus::Expired | TokenStatus::ExpiringSoon)
+            matches!(t.status(300), TokenStatus::Expired | TokenStatus::ExpiringSoon) || !t.extra.contains_key("project_id")
         })
     }
 

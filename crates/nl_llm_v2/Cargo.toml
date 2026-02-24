@@ -65,9 +65,6 @@ path = "examples/zhipu/chat/main.rs"
 name = "openrouter_chat"
 path = "examples/openrouter/chat/main.rs"
 
-[[example]]
-name = "gemini_cli_chat"
-path = "examples/gemini_cli/chat/main.rs"
 
 [[example]]
 name = "antigravity_chat"
@@ -124,6 +121,18 @@ path = "examples/iflow/models/main.rs"
 [[example]]
 name = "gemini_cli_auth"
 path = "examples/gemini_cli/auth/main.rs"
+
+[[example]]
+name = "gemini_cli_chat"
+path = "examples/gemini_cli/chat/main.rs"
+
+[[example]]
+name = "gemini_cli_stream"
+path = "examples/gemini_cli/stream/main.rs"
+
+[[example]]
+name = "gemini_cli_models"
+path = "examples/gemini_cli/models/main.rs"
 
 [[example]]
 name = "antigravity_auth"

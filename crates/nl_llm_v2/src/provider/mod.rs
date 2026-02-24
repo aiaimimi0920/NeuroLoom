@@ -4,6 +4,7 @@ use futures::stream::BoxStream;
 pub mod extension;
 pub mod iflow;
 pub mod antigravity;
+pub mod gemini_cli;
 
 #[derive(Debug, Clone)]
 pub struct LlmResponse {

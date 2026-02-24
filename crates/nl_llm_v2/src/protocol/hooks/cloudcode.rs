@@ -27,29 +27,32 @@ impl ProtocolHook for CloudCodeHook {
 
         let request_id = format!("agent-{}", Uuid::new_v4());
         
-        // 尝试从身份认证阶段存入透传环境的 extra 数据中获取真实的 Project ID
-        // 若缺少，则使用 generate 兜底以防止 API 直接结构性宕机
-        let project = ctx.auth_extra.get("project_id")
+        let project_val = ctx.auth_extra.get("project_id")
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
-            .map(|s| s.to_string())
-            .unwrap_or_else(Self::generate_project_id);
+            .unwrap_or(""); // 必须提供 project 字段，支持空字符串跳过计费校验
 
-        *packed = serde_json::json!({
+        let wrapper = serde_json::json!({
             "model": model,
-            "userAgent": "antigravity",
+            "userAgent": "cloud-code-protocol",
             "requestType": "agent",
-            "project": project,
+            "project": project_val,
             "requestId": request_id,
             "request": original_request
         });
 
-        // 插入 sessionId 以符合 CloudCode 规范
+        *packed = wrapper;
+
+        // 插入 sessionId 以符合 CloudCode 规范 (注意: 必须为纯负数字符串，否则将由于后端整数越界或解析异常而触发 500 INTERNAL_ERROR)
         if let Some(req_obj) = packed.get_mut("request").and_then(|r| r.as_object_mut()) {
             if !req_obj.contains_key("sessionId") {
+                let d = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos();
                 req_obj.insert(
                     "sessionId".to_string(),
-                    Value::String(format!("session-{}", Uuid::new_v4())),
+                    serde_json::Value::String(format!("-{}", d & 0x7FFFFFFFFFFFFFFF)),
                 );
             }
         }
