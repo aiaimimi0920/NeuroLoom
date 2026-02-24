@@ -77,13 +77,14 @@ impl LlmClient {
 
     /// 执行请求
     pub async fn complete(&self, req: &PrimitiveRequest) -> anyhow::Result<LlmResponse> {
-        // [修复] 使用 default_model 作为 fallback
-        // 原因：当请求未指定模型时，应使用客户端配置的默认模型
-        let model = if req.model.is_empty() {
+        // [修复] 使用 default_model 作为 fallback，并 resolve 别名
+        // 原因：模型别名（如 "codex"）需要解析为实际模型名（如 "gpt-5.1-codex"）
+        let model_raw = if req.model.is_empty() {
             &self.default_model
         } else {
             &req.model
         };
+        let resolved_model = self.model_resolver.resolve(model_raw);
 
         let pipeline = self.build_pipeline(false);
 
@@ -94,12 +95,17 @@ impl LlmClient {
         drop(auth);  // 提前释放锁，避免后续阶段死锁
 
         let url_context = UrlContext {
-            model,
+            model: &resolved_model,
             auth_type,
             action: Action::Generate,
             tenant: None,
         };
-        let mut ctx = PipelineContext::from_primitive(req.clone(), url_context);
+
+        // [修复] 将 resolved 后的模型名写入 primitive，确保 protocol.pack() 使用正确的模型名
+        let mut resolved_req = req.clone();
+        resolved_req.model = resolved_model.clone();
+
+        let mut ctx = PipelineContext::from_primitive(resolved_req, url_context);
 
         pipeline.execute(&mut ctx).await?;
         ctx.take_response()
@@ -107,15 +113,17 @@ impl LlmClient {
 
     /// 执行流式聊天
     pub async fn stream(&self, req: &PrimitiveRequest) -> anyhow::Result<BoxLlmStream> {
-        // [修复] 使用 default_model 作为 fallback
-        let model = if req.model.is_empty() {
+        // [修复] 使用 default_model 作为 fallback，并 resolve 别名
+        let model_raw = if req.model.is_empty() {
             &self.default_model
         } else {
             &req.model
         };
+        let resolved_model = self.model_resolver.resolve(model_raw);
 
         let mut req_stream = req.clone();
         req_stream.stream = true;
+        req_stream.model = resolved_model.clone();
         let pipeline = self.build_pipeline(true);
 
         // [修复] 从 authenticator 获取正确的 auth_type
@@ -124,7 +132,7 @@ impl LlmClient {
         drop(auth);
 
         let url_context = UrlContext {
-            model,
+            model: &resolved_model,
             auth_type,
             action: Action::Stream,
             tenant: None,
@@ -305,6 +313,17 @@ impl ClientBuilder {
     /// Claude API Key 专用认证（使用 x-api-key header）
     pub fn with_claude_api_key(self, key: impl Into<String>) -> Self {
         self.auth(AnthropicApiKeyAuth::new(key))
+    }
+
+    /// Codex OAuth 专用：使用 Authorization Code + PKCE 浏览器授权
+    ///
+    /// ```
+    /// let client = LlmClient::from_preset("codex_oauth")
+    ///     .with_codex_oauth("~/.config/codex/token.json")
+    ///     .build();
+    /// ```
+    pub fn with_codex_oauth(self, cache_path: impl AsRef<std::path::Path>) -> Self {
+        self.auth(crate::auth::providers::codex_oauth::CodexOAuth::new(cache_path))
     }
 
     /// Gemini 官方 API 专用认证（API Key 通过 URL query `?key=` 传递）

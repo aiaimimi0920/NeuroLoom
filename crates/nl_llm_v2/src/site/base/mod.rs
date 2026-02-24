@@ -7,6 +7,8 @@ pub mod vertex_api;
 pub mod qwen;
 pub mod kimi;
 pub mod anthropic;
+pub mod codex;
+pub mod codex_api;
 pub mod proxy;
 
 pub use openai::OpenAiSite;
@@ -18,4 +20,6 @@ pub use vertex_api::VertexApiSite;
 pub use qwen::QwenSite;
 pub use kimi::KimiSite;
 pub use anthropic::AnthropicSite;
+pub use codex::CodexSite;
+pub use codex_api::CodexApiSite;
 pub use proxy::ProxySite;

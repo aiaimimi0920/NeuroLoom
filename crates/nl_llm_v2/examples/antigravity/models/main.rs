@@ -16,28 +16,7 @@ use std::path::PathBuf;
 /// 已知模型描述 (用于在 fetchAvailableModels 结果中注释模型)
 /// 模型名使用 CloudCode PA 的内部名称
 /// 参照: CLIProxyAPI GetAntigravityModelConfig() + defaultAntigravityAliases()
-const CANDIDATE_MODELS: &[(&str, &str)] = &[
-    // ═══ Gemini 系列 (内部名称) ═══
-    ("gemini-2.5-pro",            "Gemini 2.5 Pro — 最强推理 (1M token)"),
-    ("gemini-2.5-flash",          "Gemini 2.5 Flash — 快速多模态 (1M token)"),
-    ("gemini-2.5-flash-lite",     "Gemini 2.5 Flash Lite — 最低成本"),
-    ("gemini-3-pro-high",         "Gemini 3 Pro (alias: gemini-3-pro-preview)"),
-    ("gemini-3.1-pro-high",       "Gemini 3.1 Pro (最新)"),
-    ("gemini-3.1-pro-low",        "Gemini 3.1 Pro (低 Thinking)"),
-    ("gemini-3-flash",            "Gemini 3 Flash (alias: gemini-3-flash-preview)"),
-    ("gemini-3-pro-image",        "Gemini 3 Pro Image (alias: gemini-3-pro-image-preview)"),
 
-    // ═══ Claude 系列 (via CloudCode PA) ═══
-    ("claude-opus-4-6-thinking",   "Claude Opus 4.6 + Thinking — 1M ctx"),
-    ("claude-sonnet-4-6",          "Claude Sonnet 4.6 — 200K ctx"),
-    ("claude-sonnet-4-6-thinking", "Claude Sonnet 4.6 + Thinking"),
-    ("claude-opus-4-5-thinking",   "Claude Opus 4.5 + Thinking"),
-    ("claude-sonnet-4-5",          "Claude Sonnet 4.5"),
-    ("claude-sonnet-4-5-thinking", "Claude Sonnet 4.5 + Thinking"),
-
-    // ═══ 其他 ═══
-    ("gpt-oss-120b-medium",        "GPT OSS 120B Medium"),
-];
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -60,8 +39,8 @@ async fn main() -> Result<()> {
 
     println!("缓存文件: {}\n", cache_path.display());
 
-    // 1. 从缓存文件读取 access_token
-    let token_data: serde_json::Value = {
+    // 1. 从缓存文件读取 access_token (仅验证存在性)
+    let _token_data: serde_json::Value = {
         let content = std::fs::read_to_string(&cache_path)
             .map_err(|e| anyhow::anyhow!(
                 "无法读取 token 文件 '{}': {}\n提示：请先运行 antigravity_chat 或 antigravity_auth 完成登录",
@@ -70,7 +49,7 @@ async fn main() -> Result<()> {
         serde_json::from_str(&content)?
     };
 
-    let http = reqwest::Client::new();
+    let _http = reqwest::Client::new();
 
     let client = nl_llm_v2::LlmClient::from_preset("antigravity")
         .expect("antigravity preset should exist")

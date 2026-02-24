@@ -1,35 +1,15 @@
 @echo off
-REM openai 平台测试 - stream
-REM 用法: test.bat [api_key] [prompt]
-
 cd /d "%~dp0"
-
-if "%OPENAI_API_KEY%"=="" (
-    if "%1"=="" (
-        echo Warning: No OPENAI_API_KEY provided.
-        set API_KEY=dummy_credential
-    ) else (
-        set API_KEY=%1
-        shift
-    )
-) else (
-    set API_KEY=%OPENAI_API_KEY%
-)
-
-if "%1"=="" (
-    set PROMPT=你好！请简单介绍一下你自己。
-) else (
-    set PROMPT=%1
-)
-
 echo ========================================
-echo   openai stream Test
+echo   OpenAI Stream Test
 echo ========================================
-echo.
-
-cargo run -p nl_llm_v2 --example openai_stream -- %API_KEY% "%PROMPT%"
-
-echo.
+echo 请设置 OPENAI_API_KEY 环境变量
+echo Usage: set OPENAI_API_KEY=your_key && test.bat "Hello!"
+echo ========================================
+set "PROMPT=%~1"
+if "%PROMPT%"=="" set "PROMPT=Hello!"
+cargo run -p nl_llm_v2 --example openai_stream -- "%PROMPT%"
 echo ========================================
 echo   Test Complete
 echo ========================================
+pause

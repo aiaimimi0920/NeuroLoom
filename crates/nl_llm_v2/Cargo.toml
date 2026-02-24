@@ -42,30 +42,12 @@ name = "gemini_chat"
 path = "examples/gemini/chat/main.rs"
 
 [[example]]
-name = "deepseek_chat"
-path = "examples/deepseek/chat/main.rs"
-
-
-
-[[example]]
 name = "iflow_chat"
 path = "examples/iflow/chat/main.rs"
 
 [[example]]
 name = "vertex_chat"
 path = "examples/vertex/chat/main.rs"
-
-[[example]]
-name = "moonshot_chat"
-path = "examples/moonshot/chat/main.rs"
-
-[[example]]
-name = "zhipu_chat"
-path = "examples/zhipu/chat/main.rs"
-
-[[example]]
-name = "openrouter_chat"
-path = "examples/openrouter/chat/main.rs"
 
 
 [[example]]
@@ -87,6 +69,14 @@ path = "examples/openai/stream/main.rs"
 [[example]]
 name = "openai_tools"
 path = "examples/openai/tools/main.rs"
+
+[[example]]
+name = "openai_auth"
+path = "examples/openai/auth/main.rs"
+
+[[example]]
+name = "openai_models"
+path = "examples/openai/models/main.rs"
 
 [[example]]
 name = "claude_chat"
@@ -215,3 +205,35 @@ path = "examples/gemini_cli/models/main.rs"
 [[example]]
 name = "antigravity_auth"
 path = "examples/antigravity/auth/main.rs"
+
+[[example]]
+name = "codex_oauth_auth"
+path = "examples/codex_oauth/auth/main.rs"
+
+[[example]]
+name = "codex_oauth_chat"
+path = "examples/codex_oauth/chat/main.rs"
+
+[[example]]
+name = "codex_oauth_stream"
+path = "examples/codex_oauth/stream/main.rs"
+
+[[example]]
+name = "codex_oauth_models"
+path = "examples/codex_oauth/models/main.rs"
+
+[[example]]
+name = "codex_api_auth"
+path = "examples/codex_api/auth/main.rs"
+
+[[example]]
+name = "codex_api_chat"
+path = "examples/codex_api/chat/main.rs"
+
+[[example]]
+name = "codex_api_stream"
+path = "examples/codex_api/stream/main.rs"
+
+[[example]]
+name = "codex_api_models"
+path = "examples/codex_api/models/main.rs"

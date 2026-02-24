@@ -9,6 +9,7 @@ pub mod antigravity;
 pub mod qwen;
 pub mod kimi;
 pub mod anthropic_oauth;
+pub mod codex_oauth;
 
 pub use api_key::ApiKeyAuth;
 pub use service_account::ServiceAccountAuth;
@@ -20,3 +21,4 @@ pub use antigravity::{AntigravityOAuth, DynamicOAuthConfig};
 pub use qwen::QwenOAuth;
 pub use kimi::KimiOAuth;
 pub use anthropic_oauth::AnthropicOAuth;
+pub use codex_oauth::CodexOAuth;

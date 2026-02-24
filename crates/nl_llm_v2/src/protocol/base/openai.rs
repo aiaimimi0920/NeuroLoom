@@ -41,8 +41,23 @@ impl ProtocolFormat for OpenAiProtocol {
         if let Some(top_p) = params.top_p {
             body["top_p"] = json!(top_p);
         }
+
+        let is_reasoning_model = primitive.model.starts_with("o1") || primitive.model.starts_with("o3");
+
         if let Some(max_tok) = params.max_tokens {
-            body["max_tokens"] = json!(max_tok);
+            if is_reasoning_model {
+                // OpenAI 对于 o1 / o3 建议且通常强制使用 max_completion_tokens
+                body["max_completion_tokens"] = json!(max_tok);
+            } else {
+                body["max_tokens"] = json!(max_tok);
+            }
+        }
+
+        // 推理模型特有参数 reasoning_effort
+        if is_reasoning_model {
+            if let Some(effort) = primitive.extra.get("reasoning_effort") {
+                body["reasoning_effort"] = effort.clone();
+            }
         }
 
         body

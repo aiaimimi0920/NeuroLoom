@@ -33,6 +33,8 @@ impl PresetRegistry {
         self.builders.insert("qwen", super::qwen::builder);
         self.builders.insert("kimi", super::kimi::builder);
         self.builders.insert("claude_oauth", super::claude_oauth::builder);
+        self.builders.insert("codex_oauth", super::codex_oauth::builder);
+        self.builders.insert("codex_api", super::codex_api::builder);
         self.builders.insert("antigravity", super::antigravity::builder);
     }
 

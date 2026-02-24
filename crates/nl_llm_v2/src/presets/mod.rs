@@ -15,6 +15,8 @@ pub mod vertex_api;
 pub mod qwen;
 pub mod kimi;
 pub mod claude_oauth;
+pub mod codex_oauth;
+pub mod codex_api;
 pub mod antigravity;
 
 pub use registry::{PresetRegistry, REGISTRY};
