@@ -146,7 +146,17 @@ impl LlmClient {
             let mut auth = self.authenticator.lock().await;
             ext.list_models(&self.http, &mut **auth).await
         } else {
-            Err(anyhow::anyhow!("Extension API not supported for this provider"))
+            Err(anyhow::anyhow!("Extension API (list_models) not supported for this provider"))
+        }
+    }
+
+    /// 获取账户额度/余额信息（如果平台支持该扩展）
+    pub async fn get_balance(&self) -> anyhow::Result<Option<String>> {
+        if let Some(ext) = &self.extension {
+            let mut auth = self.authenticator.lock().await;
+            ext.get_balance(&self.http, &mut **auth).await
+        } else {
+            Err(anyhow::anyhow!("Extension API (get_balance) not supported for this provider"))
         }
     }
 }

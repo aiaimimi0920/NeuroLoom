@@ -91,4 +91,73 @@ impl ProviderExtension for AntigravityExtension {
 
         Ok(available_models)
     }
+
+    async fn get_balance(
+        &self, 
+        http: &reqwest::Client, 
+        auth: &mut dyn Authenticator
+    ) -> anyhow::Result<Option<String>> {
+        let url = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist";
+        let body = serde_json::json!({
+            "metadata": {
+                "ideType": "ANTIGRAVITY",
+                "platform": "PLATFORM_UNSPECIFIED",
+                "pluginType": "GEMINI"
+            }
+        });
+
+        auth.refresh().await?;
+
+        let req = http.post(url)
+            .header("Content-Type", "application/json")
+            .header("User-Agent", "google-api-nodejs-client/9.15.1")
+            .header("X-Goog-Api-Client", "gl-python/3.12.0")
+            .header("Client-Metadata", r#"{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}"#)
+            .json(&body);
+        
+        let req = auth.inject(req)?;
+        let res = req.send().await?;
+        let status = res.status();
+        let text = res.text().await?;
+
+        if !status.is_success() {
+            return Err(anyhow::anyhow!("loadCodeAssist failed ({}): {}", status, text));
+        }
+
+        let json: Value = serde_json::from_str(&text)?;
+        let mut result = String::new();
+
+        if let Some(project) = json.get("cloudaicompanionProject") {
+            if let Some(p) = project.as_str() {
+                result.push_str(&format!("项目 ID: {}\n", p));
+            } else if let Some(obj) = project.as_object() {
+                if let Some(id) = obj.get("id").and_then(|v| v.as_str()) {
+                    result.push_str(&format!("项目 ID: {}\n", id));
+                }
+            }
+        }
+
+        if let Some(tier) = json.get("currentTier") {
+            let id = tier.get("id").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let name = tier.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+            result.push_str(&format!("当前 Tier: {} ({})\n", name, id));
+        }
+
+        if let Some(paid) = json.get("paidTier") {
+            let name = paid.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+            if let Some(credits) = paid.get("availableCredits").and_then(|v| v.as_array()) {
+                for c in credits {
+                    let amount = c.get("creditAmount").and_then(|v| v.as_str()).unwrap_or("?");
+                    let ctype = c.get("creditType").and_then(|v| v.as_str()).unwrap_or("?");
+                    result.push_str(&format!("付费 Tier: {} (额度: {} {})\n", name, amount, ctype));
+                }
+            }
+        }
+
+        if result.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(result))
+        }
+    }
 }

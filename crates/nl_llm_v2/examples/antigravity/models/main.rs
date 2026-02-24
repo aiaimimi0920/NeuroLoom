@@ -70,84 +70,24 @@ async fn main() -> Result<()> {
         serde_json::from_str(&content)?
     };
 
-    let access_token = token_data.get("access_token")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("token 文件中缺少 access_token 字段"))?;
-
-    let _project_id = token_data.get("extra")
-        .and_then(|e| e.get("project_id"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
-
     let http = reqwest::Client::new();
-
-    // ── Part 1: CloudCode PA 项目配置 ──
-    println!("=== [1/2] CloudCode PA 项目配置 ===\n");
-    {
-        let url = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist";
-        let body = serde_json::json!({
-            "metadata": {
-                "ideType": "ANTIGRAVITY",
-                "platform": "PLATFORM_UNSPECIFIED",
-                "pluginType": "GEMINI"
-            }
-        });
-
-        let res = http.post(url)
-            .header("Authorization", format!("Bearer {}", access_token))
-            .header("Content-Type", "application/json")
-            .header("User-Agent", "google-api-nodejs-client/9.15.1")
-            .header("X-Goog-Api-Client", "gl-python/3.12.0")
-            .header("Client-Metadata", r#"{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}"#)
-            .json(&body)
-            .send()
-            .await?;
-
-        let status = res.status();
-        let text = res.text().await?;
-
-        if !status.is_success() {
-            eprintln!("loadCodeAssist 失败 ({}): {}", status, text);
-        } else {
-            let json: serde_json::Value = serde_json::from_str(&text)?;
-
-            if let Some(project) = json.get("cloudaicompanionProject") {
-                if let Some(p) = project.as_str() {
-                    println!("项目 ID: {}", p);
-                } else if let Some(obj) = project.as_object() {
-                    if let Some(id) = obj.get("id").and_then(|v| v.as_str()) {
-                        println!("项目 ID: {}", id);
-                    }
-                }
-            }
-
-            if let Some(tier) = json.get("currentTier") {
-                let id = tier.get("id").and_then(|v| v.as_str()).unwrap_or("unknown");
-                let name = tier.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
-                println!("当前 Tier: {} ({})", name, id);
-            }
-
-            if let Some(paid) = json.get("paidTier") {
-                let name = paid.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
-                if let Some(credits) = paid.get("availableCredits").and_then(|v| v.as_array()) {
-                    for c in credits {
-                        let amount = c.get("creditAmount").and_then(|v| v.as_str()).unwrap_or("?");
-                        let ctype = c.get("creditType").and_then(|v| v.as_str()).unwrap_or("?");
-                        println!("付费 Tier: {} (额度: {} {})", name, amount, ctype);
-                    }
-                }
-            }
-        }
-    }
-
-    // ── Part 2: 通过 Extension API 获取所有可用模型 ──
-    println!("\n=== [2/2] CloudCode PA 可用模型列表 ===");
-    println!("(via Extension API)\n");
 
     let client = nl_llm_v2::LlmClient::from_preset("antigravity")
         .expect("antigravity preset should exist")
         .with_antigravity_oauth(&cache_path)
         .build();
+
+    // ── Part 1: CloudCode PA 项目配置 ──
+    println!("=== [1/2] CloudCode PA 项目配置 ===\n");
+    if let Ok(Some(balance_info)) = client.get_balance().await {
+        println!("{}", balance_info);
+    } else {
+        println!("无法获取项目额度信息或该平台不支持。\n");
+    }
+
+    // ── Part 2: 通过 Extension API 获取所有可用模型 ──
+    println!("\n=== [2/2] CloudCode PA 可用模型列表 ===");
+    println!("(via Extension API)\n");
 
     let models_list = client.list_models().await?;
 
