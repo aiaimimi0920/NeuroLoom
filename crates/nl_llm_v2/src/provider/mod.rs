@@ -5,6 +5,7 @@ pub mod extension;
 pub mod iflow;
 pub mod antigravity;
 pub mod gemini_cli;
+pub mod gemini;
 
 #[derive(Debug, Clone)]
 pub struct LlmResponse {

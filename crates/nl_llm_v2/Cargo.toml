@@ -95,6 +95,10 @@ name = "gemini_stream"
 path = "examples/gemini/stream/main.rs"
 
 [[example]]
+name = "gemini_models"
+path = "examples/gemini/models/main.rs"
+
+[[example]]
 name = "vertex_auth"
 path = "examples/vertex/auth/main.rs"
 

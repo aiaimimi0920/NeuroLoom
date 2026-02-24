@@ -224,6 +224,23 @@ impl ClientBuilder {
         self.auth(AnthropicApiKeyAuth::new(key))
     }
 
+    /// Gemini 官方 API 专用认证（API Key 通过 URL query `?key=` 传递）
+    ///
+    /// 注意：Gemini API Key 不走 HTTP Header，而是拼在 URL 中。
+    /// 此方法会同时将 key 传递给 GeminiSite、GeminiExtension 和创建空壳认证器。
+    pub fn with_gemini_api_key(mut self, key: impl Into<String>) -> Self {
+        let key = key.into();
+        // 重建 GeminiSite 并注入 API Key
+        self.site = Some(Arc::new(
+            crate::site::base::gemini::GeminiSite::new().with_api_key(&key)
+        ));
+        // 注入带 key 的 Extension（用于 list_models）
+        self.extension = Some(Arc::new(
+            crate::provider::gemini::GeminiExtension::new().with_api_key(&key)
+        ));
+        self.auth(crate::auth::providers::GeminiApiKeyAuth::new(key))
+    }
+
     /// 修改 Base URL（代理站场景）
     /// 用于代理站场景：LlmClient::from_preset("openai").with_base_url("https://proxy.example.com/v1")
     /// [修复] 使用 ProxySite 包装原站点，保留 URL 构建逻辑
