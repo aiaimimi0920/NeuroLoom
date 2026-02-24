@@ -3,6 +3,7 @@ use crate::site::base::cloudcode::CloudCodeSite;
 use crate::protocol::base::gemini::GeminiProtocol;
 use crate::protocol::hooks::cloudcode::CloudCodeHook;
 use crate::provider::gemini_cli::GeminiCliExtension;
+use crate::model::GeminiCliModelResolver;
 
 pub fn builder() -> ClientBuilder {
     ClientBuilder::new()
@@ -10,5 +11,6 @@ pub fn builder() -> ClientBuilder {
         .protocol(GeminiProtocol {})
         .with_protocol_hook(std::sync::Arc::new(CloudCodeHook {}))
         .with_extension(std::sync::Arc::new(GeminiCliExtension {}))
+        .model_resolver(GeminiCliModelResolver::new())
         .default_model("gemini-2.5-flash")
 }
