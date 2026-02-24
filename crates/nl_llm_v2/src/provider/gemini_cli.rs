@@ -46,8 +46,8 @@ impl ProviderExtension for GeminiCliExtension {
         _http: &reqwest::Client, 
         _auth: &mut dyn Authenticator
     ) -> anyhow::Result<Option<String>> {
-        // 由于 Gemini CLI OAuth 没有访问 loadCodeAssist 的权限，额度查询总是返回 None
-        // 在外层的调用侧处理该特殊逻辑
+        // Gemini CLI 通过 CloudCode PA 使用免费配额，无独立的额度查询 API
+        // loadCodeAssist 仅用于获取 project_id（已在 Auth 层处理），不含额度信息
         Ok(None)
     }
 }

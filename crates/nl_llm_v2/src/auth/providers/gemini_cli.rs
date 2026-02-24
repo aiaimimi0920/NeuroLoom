@@ -17,6 +17,8 @@ pub const GEMINI_CLI_OAUTH_CONFIG: GeminiCliOAuthConfig = GeminiCliOAuthConfig {
     token_url: "https://oauth2.googleapis.com/token",
     scopes: &[
         "https://www.googleapis.com/auth/cloud-platform",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
     ],
 };
 
@@ -207,7 +209,7 @@ impl GeminiCliOAuth {
             .header("Authorization", format!("Bearer {}", access_token))
             .header("Content-Type", "application/json")
             .header("User-Agent", "google-api-nodejs-client/9.15.1")
-            .header("X-Goog-Api-Client", "google-cloud-sdk vscode_cloudshelleditor/0.1")
+            .header("X-Goog-Api-Client", "gl-python/3.12.0")
             .header("Client-Metadata", r#"{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}"#)
             .json(&body)
             .send()
@@ -276,7 +278,7 @@ impl GeminiCliOAuth {
                 .header("Authorization", format!("Bearer {}", access_token))
                 .header("Content-Type", "application/json")
                 .header("User-Agent", "google-api-nodejs-client/9.15.1")
-                .header("X-Goog-Api-Client", "google-cloud-sdk vscode_cloudshelleditor/0.1")
+                .header("X-Goog-Api-Client", "gl-python/3.12.0")
                 .header("Client-Metadata", r#"{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}"#)
                 .json(&body)
                 .send()

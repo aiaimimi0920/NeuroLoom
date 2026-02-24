@@ -3,16 +3,12 @@ use crate::protocol::traits::ProtocolHook;
 use serde_json::Value;
 use uuid::Uuid;
 
-/// 注入 CloudCode 必需的 Project 参数和 Headers
+/// CloudCode 协议钩子
+///
+/// 在 Gemini 协议封包后添加 CloudCode PA 网关所需的外层包装：
+/// `model`、`userAgent`、`requestType`、`project`、`requestId`、`sessionId` 等字段。
+/// `project` 值从认证层的 `auth_extra["project_id"]` 获取。
 pub struct CloudCodeHook;
-
-impl CloudCodeHook {
-    /// 自动生成一个随机项目用于绕过
-    pub fn generate_project_id() -> String {
-        let uid = Uuid::new_v4().to_string();
-        format!("project-{}", &uid[..6])
-    }
-}
 
 impl ProtocolHook for CloudCodeHook {
     fn after_pack(&self, ctx: &mut PipelineContext<'_>, packed: &mut Value) {
