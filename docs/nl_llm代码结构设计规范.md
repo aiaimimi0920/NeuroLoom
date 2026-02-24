@@ -724,6 +724,49 @@ pub fn builder() -> ClientBuilder {
 }
 ```
 
+### 6.4 iFlow 平台模型解析器示例
+
+```rust
+/// iFlow 平台专属模型解析器
+pub struct IFlowModelResolver {
+    inner: DefaultModelResolver,
+}
+
+impl IFlowModelResolver {
+    pub fn new() -> Self {
+        let mut inner = DefaultModelResolver::new();
+
+        // 添加 iFlow 平台特有的模型别名
+        inner.extend_aliases(vec![
+            ("qwen", "qwen3-max"),
+            ("qwen-max", "qwen3-max"),
+            ("glm", "glm-4-flash"),
+            ("deepseek", "deepseek-v3"),
+        ]);
+
+        // 配置 iFlow 平台模型能力
+        inner.extend_capabilities(vec![
+            ("qwen3-max", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
+            ("glm-4", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
+            ("deepseek-r1", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
+        ]);
+
+        // 配置上下文长度...
+        Self { inner }
+    }
+}
+
+// 预设配置中使用
+pub fn builder() -> ClientBuilder {
+    ClientBuilder::new()
+        .site(IFlowSite::new())
+        .protocol(OpenAiProtocol {})
+        .protocol_hook(IflowThinkingHook {})
+        .model_resolver(IFlowModelResolver::new())
+        .default_model("qwen3-max")
+}
+```
+
 ---
 
 ## 7. 原语格式（完整定义）

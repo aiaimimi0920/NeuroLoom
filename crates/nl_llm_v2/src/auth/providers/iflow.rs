@@ -1,11 +1,16 @@
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 use async_trait::async_trait;
 use reqwest::{Client, RequestBuilder, header::{HeaderMap, HeaderValue}};
 use serde::Deserialize;
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
 
 use crate::auth::traits::Authenticator;
 use crate::auth::types::{TokenStatus, TokenStorage};
 use crate::site::context::AuthType;
+
+type HmacSha256 = Hmac<Sha256>;
 
 /// iFlow API Key 响应结构
 #[derive(Debug, Deserialize)]
@@ -23,7 +28,10 @@ struct IFlowKeyData {
     api_key: String,
 }
 
-/// iFlow Cookie 认证器（使用 Cookie 换取临时的 API Key 并在 Header 中注入）
+/// iFlow Cookie 认证器
+///
+/// 使用浏览器 Cookie（BXAuth）换取临时 API Key，
+/// 并在请求中注入 HMAC-SHA256 签名（x-iflow-signature）
 pub struct IFlowAuth {
     token: Option<TokenStorage>,
     cookie_str: String,
@@ -55,6 +63,7 @@ impl IFlowAuth {
         self
     }
 
+    /// 从完整的 Cookie 字符串中提取 BXAuth 值
     fn extract_bx_auth(cookie: &str) -> String {
         for part in cookie.split(';') {
             let part = part.trim();
@@ -62,6 +71,7 @@ impl IFlowAuth {
                 return format!("{};", part);
             }
         }
+        // 如果输入本身就是裸 BXAuth 值
         if !cookie.is_empty() && !cookie.ends_with(';') {
             format!("{};", cookie)
         } else {
@@ -86,6 +96,19 @@ impl IFlowAuth {
         }
         headers
     }
+
+    /// 生成 HMAC-SHA256 签名
+    /// 签名格式: HMAC-SHA256(apiKey, "userAgent:sessionId:timestamp")
+    fn create_signature(api_key: &str, user_agent: &str, session_id: &str, timestamp: u64) -> String {
+        if api_key.is_empty() {
+            return String::new();
+        }
+        let payload = format!("{}:{}:{}", user_agent, session_id, timestamp);
+        let mut mac = HmacSha256::new_from_slice(api_key.as_bytes())
+            .expect("HMAC can take key of any size");
+        mac.update(payload.as_bytes());
+        hex::encode(mac.finalize().into_bytes())
+    }
 }
 
 #[async_trait]
@@ -109,7 +132,7 @@ impl Authenticator for IFlowAuth {
             return Err(anyhow::anyhow!("Missing cookie for iFlow auth"));
         }
 
-        // STEP 1: GET 获取用户信息与 name 
+        // STEP 1: GET 获取用户信息与 name
         let get_resp = self.http.get("https://platform.iflow.cn/api/openapi/apikey")
             .headers(self.build_headers(false))
             .send()
@@ -166,7 +189,29 @@ impl Authenticator for IFlowAuth {
 
     fn inject(&self, req: RequestBuilder) -> anyhow::Result<RequestBuilder> {
         if let Some(t) = &self.token {
-            Ok(req.bearer_auth(&t.access_token))
+            let api_key = &t.access_token;
+
+            // 生成 session-id
+            let session_id = format!("session-{}", uuid::Uuid::new_v4());
+
+            // 生成时间戳（毫秒）
+            let timestamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+
+            // 生成 HMAC-SHA256 签名
+            let user_agent = "iFlow-Cli";
+            let signature = Self::create_signature(api_key, user_agent, &session_id, timestamp);
+
+            let mut req = req.bearer_auth(api_key);
+            req = req.header("session-id", &session_id);
+            req = req.header("x-iflow-timestamp", format!("{}", timestamp));
+            if !signature.is_empty() {
+                req = req.header("x-iflow-signature", &signature);
+            }
+
+            Ok(req)
         } else {
             Err(anyhow::anyhow!("IFlowAuth not initialized"))
         }
@@ -174,5 +219,17 @@ impl Authenticator for IFlowAuth {
 
     fn auth_type(&self) -> AuthType {
         AuthType::Cookie
+    }
+
+    /// [新增] 获取额外的元数据
+    /// 原因：便于调试和透传认证相关信息
+    fn get_extra<'a>(&'a self) -> Option<&'a std::collections::HashMap<String, serde_json::Value>> {
+        self.token.as_ref().map(|t| &t.extra)
+    }
+}
+
+impl Default for IFlowAuth {
+    fn default() -> Self {
+        Self::new("")
     }
 }
