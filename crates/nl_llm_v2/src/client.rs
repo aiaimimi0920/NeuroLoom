@@ -1,21 +1,25 @@
+use reqwest::Client;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use reqwest::Client;
 
-use crate::site::Site;
+use crate::auth::providers::{
+    AnthropicApiKeyAuth, ApiKeyAuth, IFlowAuth, ServiceAccountAuth, SparkAuth,
+};
 use crate::auth::Authenticator;
-use crate::auth::providers::{ApiKeyAuth, IFlowAuth, ServiceAccountAuth, AnthropicApiKeyAuth};
-use crate::protocol::traits::{ProtocolFormat, ProtocolHook};
-use crate::model::{ModelResolver, DefaultModelResolver, Capability};
+use crate::concurrency::{ConcurrencyConfig, ConcurrencyController, FailureType};
+use crate::metrics::{MetricsStore, MetricsSummary, PipelineMetrics};
+use crate::model::{Capability, DefaultModelResolver, ModelResolver};
+use crate::pipeline::stages::{
+    AuthenticateStage, PackStage, PrimitivizeStage, SendStage, UnpackStage,
+};
 use crate::pipeline::{Pipeline, PipelineContext};
-use crate::pipeline::stages::{PrimitivizeStage, PackStage, AuthenticateStage, SendStage, UnpackStage};
 use crate::primitive::PrimitiveRequest;
-use crate::provider::{LlmResponse, BoxLlmStream};
-use crate::provider::extension::{ProviderExtension, ModelInfo};
+use crate::protocol::traits::{ProtocolFormat, ProtocolHook};
 use crate::provider::balance::BalanceStatus;
-use crate::site::context::{UrlContext, Action};
-use crate::concurrency::{ConcurrencyController, ConcurrencyConfig, FailureType};
-use crate::metrics::{PipelineMetrics, MetricsStore, MetricsSummary};
+use crate::provider::extension::{ModelInfo, ProviderExtension};
+use crate::provider::{BoxLlmStream, LlmResponse};
+use crate::site::context::{Action, UrlContext};
+use crate::site::Site;
 
 /// LLM 客户端门面类
 pub struct LlmClient {
@@ -114,7 +118,7 @@ impl LlmClient {
         // 原因：不同认证方式会影响 URL 构建（如 Vertex AI 的 SA vs API Key）
         let auth = self.authenticator.lock().await;
         let auth_type = auth.auth_type();
-        drop(auth);  // 提前释放锁，避免后续阶段死锁
+        drop(auth); // 提前释放锁，避免后续阶段死锁
 
         let url_context = UrlContext {
             model: &resolved_model,
@@ -229,7 +233,9 @@ impl LlmClient {
             let mut auth = self.authenticator.lock().await;
             ext.list_models(&self.http, &mut **auth).await
         } else {
-            Err(anyhow::anyhow!("Extension API (list_models) not supported for this provider"))
+            Err(anyhow::anyhow!(
+                "Extension API (list_models) not supported for this provider"
+            ))
         }
     }
 
@@ -239,7 +245,9 @@ impl LlmClient {
             let mut auth = self.authenticator.lock().await;
             ext.get_balance(&self.http, &mut **auth).await
         } else {
-            Err(anyhow::anyhow!("Extension API (get_balance) not supported for this provider"))
+            Err(anyhow::anyhow!(
+                "Extension API (get_balance) not supported for this provider"
+            ))
         }
     }
 
@@ -269,7 +277,10 @@ fn classify_error(e: &anyhow::Error) -> FailureType {
     let err_str = e.to_string().to_lowercase();
 
     // 检查是否是 429 限流错误
-    if err_str.contains("429") || err_str.contains("rate limit") || err_str.contains("too many requests") {
+    if err_str.contains("429")
+        || err_str.contains("rate limit")
+        || err_str.contains("too many requests")
+    {
         return FailureType::RateLimited;
     }
 
@@ -279,7 +290,11 @@ fn classify_error(e: &anyhow::Error) -> FailureType {
     }
 
     // 检查是否是服务端错误
-    if err_str.contains("500") || err_str.contains("502") || err_str.contains("503") || err_str.contains("server error") {
+    if err_str.contains("500")
+        || err_str.contains("502")
+        || err_str.contains("503")
+        || err_str.contains("server error")
+    {
         return FailureType::ServerError;
     }
 
@@ -329,6 +344,13 @@ impl ClientBuilder {
         self.auth(ApiKeyAuth::new(key))
     }
 
+    /// 讯飞星火专用认证。
+    ///
+    /// 支持 `APIPassword`（推荐）和 `APIKey:APISecret`（兼容）两种输入。
+    pub fn with_spark_auth(self, token: impl Into<String>) -> Self {
+        self.auth(SparkAuth::new(token))
+    }
+
     pub fn with_cookie(self, cookie: impl Into<String>) -> Self {
         self.auth(IFlowAuth::new(cookie))
     }
@@ -337,9 +359,10 @@ impl ClientBuilder {
     pub fn with_concurrency(mut self) -> Self {
         // 如果有 Extension，使用其并发配置；否则使用默认配置
         self.concurrency_config = Some(
-            self.extension.as_ref()
+            self.extension
+                .as_ref()
                 .map(|ext| ext.concurrency_config())
-                .unwrap_or_default()
+                .unwrap_or_default(),
         );
         self
     }
@@ -355,7 +378,9 @@ impl ClientBuilder {
 
         // 从 SA JSON 中提取 project_id 用于构建 VertexSite URL
         #[derive(serde::Deserialize)]
-        struct SaProjectInfo { project_id: Option<String> }
+        struct SaProjectInfo {
+            project_id: Option<String>,
+        }
 
         let project_id = serde_json::from_str::<SaProjectInfo>(&json_str)
             .ok()
@@ -363,14 +388,16 @@ impl ClientBuilder {
             .unwrap_or_else(|| "UNKNOWN_PROJECT".to_string());
 
         // 重建 VertexSite 使用真实的 project_id
-        self.site = Some(Arc::new(
-            crate::site::base::vertex::VertexSite::new(&project_id, "us-central1")
-        ));
+        self.site = Some(Arc::new(crate::site::base::vertex::VertexSite::new(
+            &project_id,
+            "us-central1",
+        )));
 
         // 注入 VertexExtension（需要 project_id 和 location 来调用真实 API）
-        self.extension = Some(Arc::new(
-            crate::provider::vertex::VertexExtension::new(&project_id, "us-central1")
-        ));
+        self.extension = Some(Arc::new(crate::provider::vertex::VertexExtension::new(
+            &project_id,
+            "us-central1",
+        )));
 
         self.auth(ServiceAccountAuth::new(json_str))
     }
@@ -388,14 +415,14 @@ impl ClientBuilder {
         let key = key.into();
 
         // VertexApiSite: API Key 模式不需要 project_id
-        self.site = Some(Arc::new(
-            crate::site::base::vertex_api::VertexApiSite::new(&key)
-        ));
+        self.site = Some(Arc::new(crate::site::base::vertex_api::VertexApiSite::new(
+            &key,
+        )));
 
         // API Key 模式使用 GeminiExtension（走 generativelanguage.googleapis.com，支持 API Key）
         // 而非 VertexExtension（走 aiplatform.googleapis.com，需要 Bearer Token）
         self.extension = Some(Arc::new(
-            crate::provider::gemini::GeminiExtension::new().with_api_key(&key)
+            crate::provider::gemini::GeminiExtension::new().with_api_key(&key),
         ));
 
         // GeminiApiKeyAuth: 不注入 Header（key 已在 URL 中）
@@ -409,7 +436,9 @@ impl ClientBuilder {
 
     /// Antigravity 专用：使用专属的 Client ID / Secret 和广度 Scopes 登录
     pub fn with_antigravity_oauth(self, cache_path: impl AsRef<std::path::Path>) -> Self {
-        self.auth(crate::auth::providers::antigravity::AntigravityOAuth::new().with_cache(cache_path))
+        self.auth(
+            crate::auth::providers::antigravity::AntigravityOAuth::new().with_cache(cache_path),
+        )
     }
 
     /// Qwen OAuth 专用：使用 Device Code + PKCE 浏览器授权
@@ -460,7 +489,9 @@ impl ClientBuilder {
     ///     .build();
     /// ```
     pub fn with_codex_oauth(self, cache_path: impl AsRef<std::path::Path>) -> Self {
-        self.auth(crate::auth::providers::codex_oauth::CodexOAuth::new(cache_path))
+        self.auth(crate::auth::providers::codex_oauth::CodexOAuth::new(
+            cache_path,
+        ))
     }
 
     /// Sourcegraph Amp 专用：切换后端供应商
@@ -512,11 +543,11 @@ impl ClientBuilder {
         let key = key.into();
         // 重建 GeminiSite 并注入 API Key
         self.site = Some(Arc::new(
-            crate::site::base::gemini::GeminiSite::new().with_api_key(&key)
+            crate::site::base::gemini::GeminiSite::new().with_api_key(&key),
         ));
         // 注入带 key 的 Extension（用于 list_models）
         self.extension = Some(Arc::new(
-            crate::provider::gemini::GeminiExtension::new().with_api_key(&key)
+            crate::provider::gemini::GeminiExtension::new().with_api_key(&key),
         ));
         self.auth(crate::auth::providers::GeminiApiKeyAuth::new(key))
     }
@@ -530,7 +561,9 @@ impl ClientBuilder {
         let url = url.into();
         match self.site {
             Some(inner) => Self {
-                site: Some(Arc::new(crate::site::base::proxy::ProxySite::new(inner, url))),
+                site: Some(Arc::new(crate::site::base::proxy::ProxySite::new(
+                    inner, url,
+                ))),
                 ..self
             },
             None => {
@@ -583,23 +616,21 @@ impl ClientBuilder {
 
     pub fn build(self) -> LlmClient {
         // 如果指定了并发控制但没有提供配置，尝试从 Extension 获取
-        let concurrency_config = self.concurrency_config.or_else(|| {
-            self.extension.as_ref().map(|ext| ext.concurrency_config())
-        });
+        let concurrency_config = self
+            .concurrency_config
+            .or_else(|| self.extension.as_ref().map(|ext| ext.concurrency_config()));
 
         // 创建并发控制器
-        let concurrency = concurrency_config.map(|config| {
-            Arc::new(ConcurrencyController::new(config))
-        });
+        let concurrency =
+            concurrency_config.map(|config| Arc::new(ConcurrencyController::new(config)));
 
         LlmClient {
             site: self.site.expect("site is required"),
-            authenticator: Arc::new(Mutex::new(
-                self.authenticator.expect("auth is required")
-            )),
+            authenticator: Arc::new(Mutex::new(self.authenticator.expect("auth is required"))),
             protocol: self.protocol.expect("protocol is required"),
             protocol_hooks: self.protocol_hooks,
-            model_resolver: self.model_resolver
+            model_resolver: self
+                .model_resolver
                 .unwrap_or_else(|| Box::new(DefaultModelResolver::new())),
             default_model: self.default_model.unwrap_or_default(),
             http: self.http.unwrap_or_else(Client::new),

@@ -1,6 +1,6 @@
-use crate::concurrency::ConcurrencyConfig;
-use crate::provider::extension::{ProviderExtension, ModelInfo};
 use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 use reqwest::Client;
 
 /// 讯飞星火默认基础 URL (OpenAI 兼容端点)
@@ -13,7 +13,8 @@ const DEFAULT_BASE_URL: &str = "https://spark-api-open.xf-yun.com/v1";
 /// ## 核心特性
 ///
 /// - **OpenAI 兼容**: 标准 `/v1/chat/completions` 端点
-/// - **认证方式**: `Authorization: Bearer <APIKey>:<APISecret>`（双密钥拼接）
+/// - **认证方式**: `Authorization: Bearer <APIPassword>`（推荐）
+///   - 兼容历史输入：`APIKey:APISecret`
 /// - **静态模型列表**: 使用严格筛选的优质模型列表
 ///
 /// ## 模型说明
@@ -39,10 +40,10 @@ const DEFAULT_BASE_URL: &str = "https://spark-api-open.xf-yun.com/v1";
 /// ```rust,no_run
 /// use nl_llm_v2::LlmClient;
 ///
-/// // 注意：讯飞 Bearer Token = APIKey:APISecret
+/// // 推荐：APIPassword
 /// let client = LlmClient::from_preset("spark")
 ///     .expect("Preset should exist")
-///     .with_api_key("your-api-key:your-api-secret")
+///     .with_spark_auth("your_api_password")
 ///     .with_concurrency()
 ///     .build();
 ///
@@ -50,7 +51,7 @@ const DEFAULT_BASE_URL: &str = "https://spark-api-open.xf-yun.com/v1";
 ///     .with_model("ultra");  // 自动解析为 4.0Ultra
 /// ```
 pub struct SparkExtension {
-    /// API 基础 URL
+    /// API 基础 URL（目前仅用于对外配置透传，便于后续扩展动态模型探测接口）
     base_url: String,
 }
 
@@ -116,6 +117,7 @@ impl ProviderExtension for SparkExtension {
         _http: &Client,
         _auth: &mut dyn Authenticator,
     ) -> anyhow::Result<Vec<ModelInfo>> {
+        let _ = &self.base_url;
         Ok(spark_models())
     }
 

@@ -14,7 +14,7 @@
 /// ```rust,no_run
 /// let client = nl_llm_v2::LlmClient::from_preset("spark")
 ///     .expect("Preset should exist")
-///     .with_api_key("your_api_password")
+///     .with_spark_auth("your_api_password")
 ///     .build();
 /// ```
 use crate::client::ClientBuilder;

@@ -1,9 +1,9 @@
 //! 讯飞星火 流式输出
 //!
-//! 运行方式: cargo run -p nl_llm_v2 --example spark_stream -- <api_key:api_secret> [prompt]
+//! 运行方式: cargo run -p nl_llm_v2 --example spark_stream -- <api_password|api_key:api_secret> [prompt]
 
-use nl_llm_v2::{LlmClient, PrimitiveRequest};
 use futures::StreamExt;
+use nl_llm_v2::{LlmClient, PrimitiveRequest};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -14,7 +14,8 @@ async fn main() -> anyhow::Result<()> {
             std::process::exit(1);
         });
 
-    let prompt = std::env::args().nth(2)
+    let prompt = std::env::args()
+        .nth(2)
         .unwrap_or_else(|| "写一首关于人工智能的五言绝句。".to_string());
 
     println!("========================================");
@@ -23,7 +24,7 @@ async fn main() -> anyhow::Result<()> {
 
     let client = LlmClient::from_preset("spark_x")
         .expect("Preset should exist")
-        .with_api_key(&api_key)
+        .with_spark_auth(&api_key)
         .build();
 
     println!("模型: {}", client.resolve_model("ultra"));
