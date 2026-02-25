@@ -1,0 +1,27 @@
+   Compiling nl_llm_new v0.1.0 (C:\Users\Public\nas_home\AI\GameEditor\NeuroLoom\crates\nl_llm_new)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.86s
+     Running `C:/Users/vmjcv/AppData/Local/Temp/NeuroLoom_target\debug\examples\test_old.exe`
+Sending via old provider...
+>>> OLD DBG PAYLOAD:
+{
+  "_gw_model": "gemini-1.5-pro",
+  "model": "gemini-1.5-pro",
+  "project": "",
+  "request": {
+    "contents": [
+      {
+        "parts": [
+          {
+            "text": "Hello"
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "sessionId": "-1771911297134052900"
+  },
+  "requestId": "agent-d660fce7-d245-4029-b57a-98be38b29068",
+  "requestType": "agent",
+  "userAgent": "cloud-code-protocol"
+}
+Error! Provider(ProviderError { message: "gemini_cli generateContent failed (500): {\n  \"error\": {\n    \"code\": 500,\n    \"message\": \"Internal error encountered.\",\n    \"errors\": [\n      {\n        \"message\": \"Internal error encountered.\",\n        \"domain\": \"global\",\n        \"reason\": \"backendError\"\n      }\n    ],\n    \"status\": \"INTERNAL\"\n  }\n}", retryable: true, should_fallback: true, retry_after_ms: None })

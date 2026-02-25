@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use crate::auth::traits::Authenticator;
 use crate::concurrency::ConcurrencyConfig;
+use super::balance::BalanceStatus;
 
 /// 获取到的模型信息
 ///
@@ -91,19 +92,55 @@ pub trait ProviderExtension: Send + Sync {
 
     /// 获取平台的余额或额度信息
     ///
-    /// 返回 `None` 表示该平台不支持余额查询。
-    /// 返回 `Some(String)` 表示余额信息的可读格式。
+    /// 返回结构化的 `BalanceStatus`，包含：
+    /// - 免费额度状态（如有）
+    /// - 付费余额状态（如有）
+    /// - 是否还有免费额度可用
+    /// - 是否应该降低优先级
     ///
-    /// # 示例返回值
+    /// # 实现说明
     ///
-    /// - OpenAI: `"Total: $12.34"`
-    /// - iFlow: `"剩余额度: 1000 tokens"`
+    /// - 各平台应根据自身 API 返回结构化数据
+    /// - 不支持查询的平台返回 `Ok(None)` 或使用 `BalanceStatus::unsupported()`
+    /// - 查询失败返回 `Err(...)`
+    ///
+    /// # 示例
+    ///
+    /// ```rust,ignore
+    /// async fn get_balance(&self, http: &Client, auth: &mut dyn Authenticator) -> anyhow::Result<Option<BalanceStatus>> {
+    ///     // 调用平台 API
+    ///     let resp = http.get("https://api.example.com/balance")
+    ///         .bearer_auth(auth.api_key())
+    ///         .send()
+    ///         .await?;
+    ///
+    ///     let data: BalanceResponse = resp.json().await?;
+    ///
+    ///     Ok(Some(BalanceStatus {
+    ///         display: format!("余额: ${}", data.balance),
+    ///         quota_type: QuotaType::PaidOnly,
+    ///         free: None,
+    ///         paid: Some(QuotaStatus {
+    ///             unit: BillingUnit::Money { currency: "USD".into() },
+    ///             used: data.used,
+    ///             total: None,
+    ///             remaining: Some(data.balance),
+    ///             remaining_ratio: None,
+    ///             resets: false,
+    ///             reset_at: None,
+    ///         }),
+    ///         has_free_quota: false,
+    ///         should_deprioritize: data.balance < 1.0,
+    ///         is_unavailable: false,
+    ///     }))
+    /// }
+    /// ```
     async fn get_balance(
         &self,
         _http: &reqwest::Client,
         _auth: &mut dyn Authenticator
-    ) -> anyhow::Result<Option<String>> {
-        Ok(None) // 默认不实现
+    ) -> anyhow::Result<Option<BalanceStatus>> {
+        Ok(None) // 默认不支持
     }
 
     /// 获取并发配置

@@ -155,6 +155,22 @@ name = "kimi_models"
 path = "examples/kimi/models/main.rs"
 
 [[example]]
+name = "kimi_coding_chat"
+path = "examples/kimi_coding/chat/main.rs"
+
+[[example]]
+name = "qwen_coder_stream"
+path = "examples/qwen_coder/stream/main.rs"
+
+[[example]]
+name = "kimi_oauth_chat"
+path = "examples/kimi_oauth/chat/main.rs"
+
+[[example]]
+name = "qwen_oauth_chat"
+path = "examples/qwen_oauth/chat/main.rs"
+
+[[example]]
 name = "claude_oauth_auth"
 path = "examples/claude_oauth/auth/main.rs"
 
@@ -301,3 +317,407 @@ path = "examples/zhipu/models/main.rs"
 [[example]]
 name = "zhipu_auth"
 path = "examples/zhipu/auth/main.rs"
+
+[[example]]
+name = "kat_coder_auth"
+path = "examples/kat_coder/auth/main.rs"
+
+[[example]]
+name = "kat_coder_chat"
+path = "examples/kat_coder/chat/main.rs"
+
+[[example]]
+name = "kat_coder_stream"
+path = "examples/kat_coder/stream/main.rs"
+
+[[example]]
+name = "kat_coder_models"
+path = "examples/kat_coder/models/main.rs"
+
+[[example]]
+name = "longcat_auth"
+path = "examples/longcat/auth/main.rs"
+
+[[example]]
+name = "longcat_chat"
+path = "examples/longcat/chat/main.rs"
+
+[[example]]
+name = "longcat_stream"
+path = "examples/longcat/stream/main.rs"
+
+[[example]]
+name = "longcat_models"
+path = "examples/longcat/models/main.rs"
+
+[[example]]
+name = "minimax_auth"
+path = "examples/minimax/auth/main.rs"
+
+[[example]]
+name = "minimax_chat"
+path = "examples/minimax/chat/main.rs"
+
+[[example]]
+name = "minimax_stream"
+path = "examples/minimax/stream/main.rs"
+
+[[example]]
+name = "minimax_models"
+path = "examples/minimax/models/main.rs"
+
+[[example]]
+name = "minimax_cn_auth"
+path = "examples/minimax_cn/auth/main.rs"
+
+[[example]]
+name = "minimax_cn_chat"
+path = "examples/minimax_cn/chat/main.rs"
+
+[[example]]
+name = "minimax_cn_stream"
+path = "examples/minimax_cn/stream/main.rs"
+
+[[example]]
+name = "minimax_cn_models"
+path = "examples/minimax_cn/models/main.rs"
+
+[[example]]
+name = "doubaoseed_auth"
+path = "examples/doubaoseed/auth/main.rs"
+
+[[example]]
+name = "doubaoseed_chat"
+path = "examples/doubaoseed/chat/main.rs"
+
+[[example]]
+name = "doubaoseed_stream"
+path = "examples/doubaoseed/stream/main.rs"
+
+[[example]]
+name = "doubaoseed_models"
+path = "examples/doubaoseed/models/main.rs"
+
+[[example]]
+name = "bailing_auth"
+path = "examples/bailing/auth/main.rs"
+
+[[example]]
+name = "bailing_chat"
+path = "examples/bailing/chat/main.rs"
+
+[[example]]
+name = "bailing_stream"
+path = "examples/bailing/stream/main.rs"
+
+[[example]]
+name = "bailing_models"
+path = "examples/bailing/models/main.rs"
+
+[[example]]
+name = "mimo_auth"
+path = "examples/mimo/auth/main.rs"
+
+[[example]]
+name = "mimo_chat"
+path = "examples/mimo/chat/main.rs"
+
+[[example]]
+name = "mimo_stream"
+path = "examples/mimo/stream/main.rs"
+
+[[example]]
+name = "mimo_models"
+path = "examples/mimo/models/main.rs"
+
+[[example]]
+name = "modelscope_auth"
+path = "examples/modelscope/auth/main.rs"
+
+[[example]]
+name = "modelscope_chat"
+path = "examples/modelscope/chat/main.rs"
+
+[[example]]
+name = "modelscope_stream"
+path = "examples/modelscope/stream/main.rs"
+
+[[example]]
+name = "modelscope_models"
+path = "examples/modelscope/models/main.rs"
+
+[[example]]
+name = "aihubmix_auth"
+path = "examples/aihubmix/auth/main.rs"
+
+[[example]]
+name = "aihubmix_chat"
+path = "examples/aihubmix/chat/main.rs"
+
+[[example]]
+name = "aihubmix_stream"
+path = "examples/aihubmix/stream/main.rs"
+
+[[example]]
+name = "aihubmix_models"
+path = "examples/aihubmix/models/main.rs"
+
+[[example]]
+name = "siliconflow_auth"
+path = "examples/siliconflow/auth/main.rs"
+
+[[example]]
+name = "siliconflow_chat"
+path = "examples/siliconflow/chat/main.rs"
+
+[[example]]
+name = "siliconflow_stream"
+path = "examples/siliconflow/stream/main.rs"
+
+[[example]]
+name = "siliconflow_models"
+path = "examples/siliconflow/models/main.rs"
+
+[[example]]
+name = "siliconflow_en_auth"
+path = "examples/siliconflow_en/auth/main.rs"
+
+[[example]]
+name = "siliconflow_en_chat"
+path = "examples/siliconflow_en/chat/main.rs"
+
+[[example]]
+name = "siliconflow_en_stream"
+path = "examples/siliconflow_en/stream/main.rs"
+
+[[example]]
+name = "siliconflow_en_models"
+path = "examples/siliconflow_en/models/main.rs"
+
+[[example]]
+name = "dmxapi_auth"
+path = "examples/dmxapi/auth/main.rs"
+
+[[example]]
+name = "dmxapi_chat"
+path = "examples/dmxapi/chat/main.rs"
+
+[[example]]
+name = "dmxapi_stream"
+path = "examples/dmxapi/stream/main.rs"
+
+[[example]]
+name = "dmxapi_models"
+path = "examples/dmxapi/models/main.rs"
+
+[[example]]
+name = "openrouter_auth"
+path = "examples/openrouter/auth/main.rs"
+
+[[example]]
+name = "openrouter_chat"
+path = "examples/openrouter/chat/main.rs"
+
+[[example]]
+name = "openrouter_stream"
+path = "examples/openrouter/stream/main.rs"
+
+[[example]]
+name = "openrouter_models"
+path = "examples/openrouter/models/main.rs"
+
+[[example]]
+name = "dmxapi_tools"
+path = "examples/dmxapi/tools/main.rs"
+
+[[example]]
+name = "nvidia_auth"
+path = "examples/nvidia/auth/main.rs"
+
+[[example]]
+name = "nvidia_chat"
+path = "examples/nvidia/chat/main.rs"
+
+[[example]]
+name = "nvidia_stream"
+path = "examples/nvidia/stream/main.rs"
+
+[[example]]
+name = "nvidia_models"
+path = "examples/nvidia/models/main.rs"
+
+[[example]]
+name = "packycode_auth"
+path = "examples/packycode/auth/main.rs"
+
+[[example]]
+name = "packycode_chat"
+path = "examples/packycode/chat/main.rs"
+
+[[example]]
+name = "packycode_stream"
+path = "examples/packycode/stream/main.rs"
+
+[[example]]
+name = "packycode_models"
+path = "examples/packycode/models/main.rs"
+
+[[example]]
+name = "cubence_auth"
+path = "examples/cubence/auth/main.rs"
+
+[[example]]
+name = "cubence_chat"
+path = "examples/cubence/chat/main.rs"
+
+[[example]]
+name = "cubence_stream"
+path = "examples/cubence/stream/main.rs"
+
+[[example]]
+name = "cubence_models"
+path = "examples/cubence/models/main.rs"
+
+[[example]]
+name = "cubence_tools"
+path = "examples/cubence/tools/main.rs"
+
+[[example]]
+name = "aigocode_auth"
+path = "examples/aigocode/auth/main.rs"
+
+[[example]]
+name = "aigocode_chat"
+path = "examples/aigocode/chat/main.rs"
+
+[[example]]
+name = "aigocode_stream"
+path = "examples/aigocode/stream/main.rs"
+
+[[example]]
+name = "aigocode_models"
+path = "examples/aigocode/models/main.rs"
+
+[[example]]
+name = "rightcode_auth"
+path = "examples/rightcode/auth/main.rs"
+
+[[example]]
+name = "rightcode_chat"
+path = "examples/rightcode/chat/main.rs"
+
+[[example]]
+name = "rightcode_stream"
+path = "examples/rightcode/stream/main.rs"
+
+[[example]]
+name = "rightcode_models"
+path = "examples/rightcode/models/main.rs"
+
+[[example]]
+name = "rightcode_tools"
+path = "examples/rightcode/tools/main.rs"
+
+[[example]]
+name = "aicodemirror_auth"
+path = "examples/aicodemirror/auth/main.rs"
+
+[[example]]
+name = "aicodemirror_chat"
+path = "examples/aicodemirror/chat/main.rs"
+
+[[example]]
+name = "aicodemirror_stream"
+path = "examples/aicodemirror/stream/main.rs"
+
+[[example]]
+name = "aicodemirror_models"
+path = "examples/aicodemirror/models/main.rs"
+
+[[example]]
+name = "azure_openai_auth"
+path = "examples/azure_openai/auth/main.rs"
+
+[[example]]
+name = "azure_openai_chat"
+path = "examples/azure_openai/chat/main.rs"
+
+[[example]]
+name = "azure_openai_models"
+path = "examples/azure_openai/models/main.rs"
+
+[[example]]
+name = "azure_openai_stream"
+path = "examples/azure_openai/stream/main.rs"
+
+[[example]]
+name = "azure_openai_tools"
+path = "examples/azure_openai/tools/main.rs"
+
+[[example]]
+name = "aws_claude_models"
+path = "examples/aws_claude/models/main.rs"
+
+[[example]]
+name = "aws_claude_chat"
+path = "examples/aws_claude/chat/main.rs"
+
+[[example]]
+name = "aws_claude_ak_chat"
+path = "examples/aws_claude_ak/chat/main.rs"
+
+[[example]]
+name = "aws_claude_ak_models"
+path = "examples/aws_claude_ak/models/main.rs"
+
+[[example]]
+name = "cohere_chat"
+path = "examples/cohere/chat/main.rs"
+
+[[example]]
+name = "cohere_stream"
+path = "examples/cohere/stream/main.rs"
+
+[[example]]
+name = "cohere_models"
+path = "examples/cohere/models/main.rs"
+
+[[example]]
+name = "cloudflare_chat"
+path = "examples/cloudflare/chat/main.rs"
+
+[[example]]
+name = "cloudflare_models"
+path = "examples/cloudflare/models/main.rs"
+
+[[example]]
+name = "qianfan_chat"
+path = "examples/qianfan/chat/main.rs"
+
+[[example]]
+name = "qianfan_models"
+path = "examples/qianfan/models/main.rs"
+
+[[example]]
+name = "spark_auth"
+path = "examples/spark/auth/main.rs"
+
+[[example]]
+name = "spark_chat"
+path = "examples/spark/chat/main.rs"
+
+[[example]]
+name = "spark_stream"
+path = "examples/spark/stream/main.rs"
+
+[[example]]
+name = "spark_models"
+path = "examples/spark/models/main.rs"
+
+[[example]]
+name = "perplexity_chat"
+path = "examples/perplexity/chat/main.rs"
+
+[[example]]
+name = "perplexity_models"
+path = "examples/perplexity/models/main.rs"

@@ -912,16 +912,21 @@ struct PlatformPreset {
 | OpenRouter | OpenAI | API Key | Provider 字段 |
 | Gemini CLI | CloudCode | OAuth | CloudCode 包装 |
 | Antigravity | CloudCode | OAuth | CloudCode 包装，支持 Claude 模型路由 |
+| DMXAPI | OpenAI | API Key | 聚合平台，支持 Claude/GPT 模型 |
+| Cubence | OpenAI | API Key | AI 工具代理平台，支持 Claude Code/Codex/Gemini CLI |
+| RightCode | OpenAI | API Key | 企业级 AI Agent 中转平台，GPT-5/Codex 系列 |
+| Azure OpenAI | OpenAI | API Key | 微软云平台 OpenAI 服务，需要 endpoint + deployment |
 
 ---
 
 ## 9. 扩展能力 (Extension API)
 
-针��每个平台特有的 API 功能（例如获取账户额度与可用的模型列表），通过 `ProviderExtension` 特征作为扩展点提供支持。能够在底层直接发起经过良好封装的平台管理 HTTP 请求。
+针对每个平台特有的 API 功能（例如获取账户额度与可用的模型列表），通过 `ProviderExtension` 特征作为扩展点提供支持。能够在底层直接发起经过良好封装的平台管理 HTTP 请求。
 
 ```rust
 use async_trait::async_trait;
 use crate::auth::traits::Authenticator;
+use crate::provider::balance::BalanceStatus;
 
 pub struct ModelInfo {
     pub id: String,
@@ -935,8 +940,8 @@ pub trait ProviderExtension: Send + Sync {
 
     /// 获取账户余额或额度信息
     /// 返回 None 表示该平台不支持余额查询
-    /// 返回 Some(String) 表示余额信息的可读格式
-    async fn get_balance(&self, http: &reqwest::Client, auth: &mut dyn Authenticator) -> anyhow::Result<Option<String>> {
+    /// 返回 Some(BalanceStatus) 表示结构化的余额状态
+    async fn get_balance(&self, http: &reqwest::Client, auth: &mut dyn Authenticator) -> anyhow::Result<Option<BalanceStatus>> {
         Ok(None)
     }
 
@@ -957,29 +962,235 @@ pub trait ProviderExtension: Send + Sync {
   let balance = client.get_balance().await?;
   ```
 
-### 9.1 余额查询实现
+### 9.1 余额查询设计
 
-各平台需要实现 `get_balance` 方法，返回该平台的余额或额度信息：
+#### 计费模式分析
+
+各 LLM 平台的计费模式主要分为以下几类：
+
+| 计费模式 | 说明 | 示例平台 |
+|----------|------|----------|
+| **Token 计费** | 按输入/输出 token 数量计费，最常见 | OpenAI, DeepSeek, Claude |
+| **请求次数计费** | 按 RPD (Requests Per Day) 或 RPM 限制 | Gemini Free Tier |
+| **金额余额** | 充值金额逐次扣减，支持多币种 | 多数付费平台 |
+| **预留吞吐量** | 按小时��费，买断算力（企业级，无免费额度概念） | Azure PTU, AWS Bedrock |
+
+> **注意**：预留吞吐量 (PTU) 是企业级付费服务，不存在"免费额度耗尽"的问题，不在本设计考虑范围内。
+
+#### 余额类型
+
+| 类型 | 特点 | 重置策略 |
+|------|------|----------|
+| **免费额度** | 平台赠送，每日/每月重置或一次性 | 定时重置 |
+| **赠送余额** | 活动赠送，无重置 | 不重置 |
+| **付费余额** | 用户充值，支持负余额 | 不重置 |
+
+#### 设计原则
+
+- **Provider 层只负责"提供信息"**：查询并返回结构化余额数据
+- **决策逻辑由上层处理**：何时降优先级、暂停调用等由调度层决定
+
+#### 数据结构定义
 
 ```rust
-// OpenAI 实现
-impl ProviderExtension for OpenAIExtension {
-    async fn get_balance(&self, http: &Client, auth: &mut dyn Authenticator) -> anyhow::Result<Option<String>> {
-        let req = auth.inject(http.get("https://api.openai.com/v1/usage"))?;
-        let resp = req.send().await?;
-        let json: Value = resp.json().await?;
-        // 解析并格式化余额信息
-        Ok(Some(format!("Total: ${}", json["total_usage"].as_f64().unwrap_or(0.0))))
+/// 计费单位
+#[derive(Debug, Clone)]
+pub enum BillingUnit {
+    /// Token 数量（最常见）
+    Tokens,
+    /// 请求次数 (RPD/RPM)
+    Requests,
+    /// 金额（美元、人民币等）
+    Money { currency: String },
+}
+
+/// 额度状态（单个额度）
+#[derive(Debug, Clone)]
+pub struct QuotaStatus {
+    /// 计费单位
+    pub unit: BillingUnit,
+
+    /// 已使用量
+    pub used: f64,
+
+    /// 总量限制（None = 无限制）
+    pub total: Option<f64>,
+
+    /// 剩余量
+    pub remaining: Option<f64>,
+
+    /// 剩余比例 (0.0-1.0)，未知则为 None
+    /// - 1.0 = 满额
+    /// - 0.0 = 耗尽
+    pub remaining_ratio: Option<f32>,
+
+    /// 是否会自动重置（如每日/每月）
+    pub resets: bool,
+
+    /// 重置时间
+    pub reset_at: Option<DateTime<Utc>>,
+}
+
+/// 额度类型
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QuotaType {
+    /// 仅免费额度
+    FreeOnly,
+    /// 仅付费余额
+    PaidOnly,
+    /// 混合（有免费也有付费）
+    Mixed,
+    /// 未知/不支持查询
+    Unknown,
+}
+
+/// 余额状态（整体）
+#[derive(Debug, Clone)]
+pub struct BalanceStatus {
+    /// 可读描述（用于日志/显示）
+    /// 例如："免费额度: 800/1000 tokens" 或 "余额: $12.34"
+    pub display: String,
+
+    /// 额度类型
+    pub quota_type: QuotaType,
+
+    /// 免费额度状态（如果有）
+    pub free: Option<QuotaStatus>,
+
+    /// 付费余额状态（如果有）
+    pub paid: Option<QuotaStatus>,
+
+    /// 是否还有可用免费额度
+    /// 便捷字段，供上层快速判断是否还能"白嫖"
+    pub has_free_quota: bool,
+
+    /// 是否应该降低优先级
+    /// 由各平台实现决定阈值逻辑，如：
+    /// - DeepSeek: 赠送余额 < 10% 时返回 true
+    /// - Gemini: RPD 接近上限时返回 true
+    pub should_deprioritize: bool,
+
+    /// 是否完全不可用
+    /// - API 错误导致无法查询
+    /// - 余额完全耗尽且无重置机制
+    pub is_unavailable: bool,
+}
+
+impl BalanceStatus {
+    /// 创建一个不支持余额查询的状态
+    pub fn unsupported() -> Self { /* ... */ }
+
+    /// 创建一个查询失败的状态
+    pub fn error(message: impl Into<String>) -> Self { /* ... */ }
+}
+```
+
+#### 实现示例
+
+```rust
+// DeepSeek 实现：区分赠送余额和充值余额
+impl ProviderExtension for DeepSeekExtension {
+    async fn get_balance(&self, http: &Client, auth: &mut dyn Authenticator) -> anyhow::Result<Option<BalanceStatus>> {
+        let resp = http.get("https://api.deepseek.com/user/balance")
+            .bearer_auth(auth.api_key())
+            .send().await?;
+
+        let json: DeepSeekBalanceResponse = resp.json().await?;
+
+        // 解析赠送余额和充值余额
+        let granted = json.balance_infos.iter()
+            .map(|i| i.granted_balance.parse::<f64>().unwrap_or(0.0))
+            .sum::<f64>();
+        let topped_up = json.balance_infos.iter()
+            .map(|i| i.topped_up_balance.parse::<f64>().unwrap_or(0.0))
+            .sum::<f64>();
+
+        Ok(Some(BalanceStatus {
+            display: format!("总额: ¥{:.2} (赠送: ¥{:.2}, 充值: ¥{:.2})",
+                granted + topped_up, granted, topped_up),
+            quota_type: if granted > 0.0 && topped_up > 0.0 {
+                QuotaType::Mixed
+            } else if granted > 0.0 {
+                QuotaType::FreeOnly
+            } else {
+                QuotaType::PaidOnly
+            },
+            free: if granted > 0.0 {
+                Some(QuotaStatus {
+                    unit: BillingUnit::Money { currency: "CNY".into() },
+                    used: 0.0,
+                    total: None,
+                    remaining: Some(granted),
+                    remaining_ratio: None,
+                    resets: false,
+                    reset_at: None,
+                })
+            } else { None },
+            paid: if topped_up > 0.0 {
+                Some(QuotaStatus {
+                    unit: BillingUnit::Money { currency: "CNY".into() },
+                    used: 0.0,
+                    total: None,
+                    remaining: Some(topped_up),
+                    remaining_ratio: None,
+                    resets: false,
+                    reset_at: None,
+                })
+            } else { None },
+            has_free_quota: granted > 0.0,
+            should_deprioritize: granted > 0.0 && granted < 1.0, // 赠送余额低于阈值
+            is_unavailable: false,
+        }))
     }
 }
 
-// iFlow 实现
-impl ProviderExtension for IFlowExtension {
-    async fn get_balance(&self, http: &Client, auth: &mut dyn Authenticator) -> anyhow::Result<Option<String>> {
-        let req = auth.inject(http.get("https://iflow.cn/api/balance"))?;
-        let resp = req.send().await?;
-        let json: Value = resp.json().await?;
-        Ok(Some(format!("剩余额度: {} tokens", json["balance"].as_u64().unwrap_or(0))))
+// Kimi 实现：区分代金券和现金余额
+impl ProviderExtension for KimiExtension {
+    async fn get_balance(&self, http: &Client, auth: &mut dyn Authenticator) -> anyhow::Result<Option<BalanceStatus>> {
+        // Kimi 提供: available_balance, cash_balance, voucher_balance
+        // 代金券 (voucher) 视为免费额度
+        // ...
+    }
+}
+
+// Gemini Free Tier 实现：请求次数限制
+impl ProviderExtension for GeminiExtension {
+    async fn get_balance(&self, http: &Client, auth: &mut dyn Authenticator) -> anyhow::Result<Option<BalanceStatus>> {
+        // Gemini 官方 API 无余额查询，但 Free Tier 有 RPD 限制
+        // 可返回估算的请求次数状态
+        Ok(None)
+    }
+}
+```
+
+#### 上层调度使用
+
+```rust
+// 调度器根据余额状态决策
+if let Some(balance) = client.get_balance().await? {
+    // 1. 检查是否还能白嫖
+    if balance.has_free_quota {
+        // 优先使用该平台
+    }
+
+    // 2. 检查是否应降低优先级
+    if balance.should_deprioritize {
+        // 将该平台优先级调低
+        scheduler.deprioritize(platform_id);
+    }
+
+    // 3. 检查是否完全不可用
+    if balance.is_unavailable {
+        // 暂停该平台调用
+        scheduler.pause(platform_id);
+    }
+
+    // 4. 获取详细额度信息
+    if let Some(free) = &balance.free {
+        println!("免费额度剩余: {:.1}%", free.remaining_ratio.unwrap_or(0.0) * 100.0);
+        if free.resets {
+            println!("重置时间: {:?}", free.reset_at);
+        }
     }
 }
 ```

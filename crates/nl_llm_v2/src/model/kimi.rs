@@ -1,12 +1,22 @@
 use super::default::DefaultModelResolver;
 use super::resolver::{ModelResolver, Capability};
 
-/// Kimi (Moonshot AI) 模型解析器
+/// Kimi/Moonshot 平台专属模型解析器
 ///
-/// 支持的模型来自 CLIProxyAPI 参考：
-/// - kimi-k2: 通用对话模型
-/// - kimi-k2-thinking: 推理增强模型
-/// - kimi-k2.5: 最新版本
+/// ## 支持的主流模型
+///
+/// | 模型 | 能力 | 上下文 | 说明 |
+/// |------|------|--------|------|
+/// | `moonshot-v1-32k` | Chat, Tools, Streaming | 32K | 标准通用 |
+/// | `kimi-k2.5`       | Chat, Tools, Streaming | 128K | 新版旗舰大模型 |
+/// | `kimi-for-coding` | Chat, Tools, Streaming | 128K | 代码专用 |
+///
+/// ## 常用别名
+///
+/// | 别名 | 解析为 | 说明 |
+/// |------|--------|------|
+/// | `kimi` / `k2.5` | `kimi-k2.5` | 最新旗舰大核 |
+/// | `coding` / `code` | `kimi-for-coding` | 编码专家 |
 pub struct KimiModelResolver {
     inner: DefaultModelResolver,
 }
@@ -15,28 +25,43 @@ impl KimiModelResolver {
     pub fn new() -> Self {
         let mut inner = DefaultModelResolver::new();
 
-        // === 模型别名 ===
+        // ========== 模型别名 ==========
         inner.extend_aliases(vec![
-            ("kimi", "k2"),
-            ("kimi-thinking", "k2-thinking"),
-            ("moonshot", "k2"),
-            ("kimi-k2", "k2"),             // 兼容带有 kimi- 前缀的别名
-            ("kimi-k2-thinking", "k2-thinking"),
-            ("kimi-k2.5", "k2.5"),
+            // 基础系列
+            ("moonshot", "moonshot-v1-32k"),
+            ("moonshot-8k", "moonshot-v1-8k"),
+            ("moonshot-32k", "moonshot-v1-32k"),
+            ("moonshot-128k", "moonshot-v1-128k"),
+            
+            // K2.5 最新系列
+            ("kimi", "kimi-k2.5"),
+            ("k2.5", "kimi-k2.5"),
+            ("kimi-k2.5", "kimi-k2.5"),
+
+            // 专属代码大模型 (通常可能跑在 api.kimi.com 节点下)
+            ("coding", "kimi-for-coding"),
+            ("code", "kimi-for-coding"),
         ]);
 
-        // === 能力配置 ===
+        // ========== 能力配置 ==========
+        // 绝大部分支持对话、流式和工具调用 (Function Calling)
+        let standard_caps = Capability::CHAT | Capability::TOOLS | Capability::STREAMING;
+        
         inner.extend_capabilities(vec![
-            ("k2", Capability::CHAT | Capability::TOOLS | Capability::STREAMING),
-            ("k2-thinking", Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("k2.5", Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
+            ("moonshot-v1-8k", standard_caps),
+            ("moonshot-v1-32k", standard_caps),
+            ("moonshot-v1-128k", standard_caps),
+            ("kimi-k2.5", standard_caps),
+            ("kimi-for-coding", standard_caps),
         ]);
 
-        // === 上下文长度 ===
+        // ========== 上下文长度 ==========
         inner.extend_context_lengths(vec![
-            ("k2", 131_072),
-            ("k2-thinking", 131_072),
-            ("k2.5", 131_072),
+            ("moonshot-v1-8k", 8_192),
+            ("moonshot-v1-32k", 32_768),
+            ("moonshot-v1-128k", 131_072),
+            ("kimi-k2.5", 131_072),
+            ("kimi-for-coding", 131_072),
         ]);
 
         Self { inner }

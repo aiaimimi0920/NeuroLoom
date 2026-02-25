@@ -3,6 +3,7 @@ use reqwest::Client;
 use serde::Deserialize;
 use crate::auth::traits::Authenticator;
 use crate::provider::extension::{ProviderExtension, ModelInfo};
+use crate::provider::balance::{BalanceStatus, QuotaStatus, QuotaType, BillingUnit};
 use crate::concurrency::ConcurrencyConfig;
 use std::sync::Arc;
 
@@ -164,7 +165,7 @@ impl ProviderExtension for ZaiExtension {
         &self,
         http: &Client,
         auth: &mut dyn Authenticator,
-    ) -> anyhow::Result<Option<String>> {
+    ) -> anyhow::Result<Option<BalanceStatus>> {
         let url = self.build_balance_url();
 
         let req = http.get(&url);
@@ -175,11 +176,27 @@ impl ProviderExtension for ZaiExtension {
                 match resp.json::<ZaiBalanceResponse>().await {
                     Ok(balance_resp) => {
                         if let Some(balance) = balance_resp.balance.or(balance_resp.total_balance) {
-                            Ok(Some(format!("余额: ${:.4}", balance)))
+                            Ok(Some(BalanceStatus {
+                                display: format!("余额: ${:.4}", balance),
+                                quota_type: QuotaType::PaidOnly,
+                                free: None,
+                                paid: Some(QuotaStatus {
+                                    unit: BillingUnit::Money { currency: "USD".to_string() },
+                                    used: 0.0,
+                                    total: None,
+                                    remaining: Some(balance),
+                                    remaining_ratio: None,
+                                    resets: false,
+                                    reset_at: None,
+                                }),
+                                has_free_quota: false,
+                                should_deprioritize: balance < 1.0,
+                                is_unavailable: false,
+                            }))
                         } else if let Some(msg) = balance_resp.message {
-                            Ok(Some(msg))
+                            Ok(Some(BalanceStatus::error(msg)))
                         } else {
-                            Ok(Some("余额信息不可用".to_string()))
+                            Ok(Some(BalanceStatus::error("余额信息不可用")))
                         }
                     }
                     Err(_) => Ok(None)

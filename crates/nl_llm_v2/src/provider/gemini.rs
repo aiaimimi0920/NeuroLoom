@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use crate::auth::traits::Authenticator;
 use super::extension::{ProviderExtension, ModelInfo};
+use super::balance::BalanceStatus;
 use crate::concurrency::ConcurrencyConfig;
 
 /// Gemini 官方 API 扩展
@@ -102,7 +103,7 @@ impl ProviderExtension for GeminiExtension {
         &self,
         _http: &reqwest::Client,
         _auth: &mut dyn Authenticator,
-    ) -> anyhow::Result<Option<String>> {
+    ) -> anyhow::Result<Option<BalanceStatus>> {
         // Gemini 官方 API 无额度/余额概念
         Ok(None)
     }

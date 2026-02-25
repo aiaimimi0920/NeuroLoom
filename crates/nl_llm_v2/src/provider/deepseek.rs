@@ -3,6 +3,7 @@ use reqwest::Client;
 use serde::Deserialize;
 use crate::auth::traits::Authenticator;
 use crate::provider::extension::{ProviderExtension, ModelInfo};
+use crate::provider::balance::{BalanceStatus, QuotaStatus, QuotaType, BillingUnit};
 use crate::concurrency::ConcurrencyConfig;
 use std::sync::Arc;
 
@@ -135,7 +136,7 @@ impl ProviderExtension for DeepSeekExtension {
         &self,
         http: &Client,
         auth: &mut dyn Authenticator,
-    ) -> anyhow::Result<Option<String>> {
+    ) -> anyhow::Result<Option<BalanceStatus>> {
         let url = self.build_balance_url();
         let req = http.get(&url);
         let req = auth.inject(req)?;
@@ -145,29 +146,96 @@ impl ProviderExtension for DeepSeekExtension {
 
         if !status.is_success() {
             let err_text = resp.text().await.unwrap_or_default();
-            return Err(anyhow::anyhow!("DeepSeek balance API failed ({}): {}", status, err_text));
+            return Ok(Some(BalanceStatus::error(format!("API 错误 ({}): {}", status, err_text))));
         }
 
         let json: DeepSeekBalanceResponse = resp.json().await
             .map_err(|e| anyhow::anyhow!("Failed to parse balance response: {}", e))?;
 
         if !json.is_available {
-            return Ok(Some("账户不可用".to_string()));
+            return Ok(Some(BalanceStatus {
+                display: "账户不可用".to_string(),
+                quota_type: QuotaType::Unknown,
+                free: None,
+                paid: None,
+                has_free_quota: false,
+                should_deprioritize: true,
+                is_unavailable: true,
+            }));
         }
 
-        // 格式化余额信息
-        let mut parts = Vec::new();
+        // 解析余额信息
+        // DeepSeek 返回赠送余额 (granted) 和充值余额 (topped_up)
+        let mut display_parts = Vec::new();
+        let mut has_granted = false;
+        let mut granted_balance = 0.0f64;
+        let mut topped_up_balance = 0.0f64;
+
         for info in &json.balance_infos {
-            parts.push(format!(
+            display_parts.push(format!(
                 "{}: 总额 {} (赠送 {} / 充值 {})",
                 info.currency,
                 info.total_balance,
                 info.granted_balance,
                 info.topped_up_balance
             ));
+
+            // 尝试解析数值
+            if let Ok(val) = info.granted_balance.parse::<f64>() {
+                granted_balance += val;
+                if val > 0.0 {
+                    has_granted = true;
+                }
+            }
+            if let Ok(val) = info.topped_up_balance.parse::<f64>() {
+                topped_up_balance += val;
+            }
         }
 
-        Ok(Some(parts.join(", ")))
+        let _total_balance = granted_balance + topped_up_balance;
+        let has_free = granted_balance > 0.0;
+        // 当赠送余额低于某个阈值时建议降优先级（这里设为 1.0 作为示例阈值）
+        let should_deprioritize = has_granted && granted_balance < 1.0;
+
+        Ok(Some(BalanceStatus {
+            display: display_parts.join(", "),
+            quota_type: if has_granted && topped_up_balance > 0.0 {
+                QuotaType::Mixed
+            } else if has_granted {
+                QuotaType::FreeOnly
+            } else {
+                QuotaType::PaidOnly
+            },
+            free: if has_granted {
+                Some(QuotaStatus {
+                    unit: BillingUnit::Money { currency: "CNY".to_string() },
+                    used: 0.0, // DeepSeek 不返回已使用量
+                    total: None,
+                    remaining: Some(granted_balance),
+                    remaining_ratio: None,
+                    resets: false,
+                    reset_at: None,
+                })
+            } else {
+                None
+            },
+            paid: if topped_up_balance > 0.0 {
+                Some(QuotaStatus {
+                    unit: BillingUnit::Money { currency: "CNY".to_string() },
+                    used: 0.0,
+                    total: None,
+                    remaining: Some(topped_up_balance),
+                    remaining_ratio: None,
+                    resets: false,
+                    reset_at: None,
+                })
+            } else {
+                None
+            },
+            has_free_quota: has_free,
+            should_deprioritize,
+            is_unavailable: false,
+        }))
     }
 
     fn concurrency_config(&self) -> ConcurrencyConfig {

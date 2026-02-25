@@ -1,2 +1,2 @@
    Compiling nl_llm_v2 v0.1.0 (C:\Users\Public\nas_home\AI\GameEditor\NeuroLoom\crates\nl_llm_v2)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 24.74s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.21s

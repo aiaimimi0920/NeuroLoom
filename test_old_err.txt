@@ -1,0 +1,48 @@
+   Compiling nl_llm_new v0.1.0 (C:\Users\Public\nas_home\AI\GameEditor\NeuroLoom\crates\nl_llm_new)
+error[E0432]: unresolved import `nl_llm_new::provider::Provider`
+  --> crates\nl_llm_new\examples\test_old.rs:31:9
+   |
+31 |     use nl_llm_new::provider::Provider;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no `Provider` in `provider`
+   |
+help: consider importing this variant instead
+   |
+31 -     use nl_llm_new::provider::Provider;
+31 +     use nl_llm_new::Error::Provider;
+   |
+
+warning: unused import: `nl_llm_new::provider::GenericClient`
+ --> crates\nl_llm_new\examples\test_old.rs:2:5
+  |
+2 | use nl_llm_new::provider::GenericClient;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+error[E0599]: no function or associated item named `new` found for struct `GeminiCliConfig` in the current scope
+  --> crates\nl_llm_new\examples\test_old.rs:18:35
+   |
+18 |     let config = GeminiCliConfig::new(path.to_string_lossy().to_string(), "gemini-2.5-flash".to_string());
+   |                                   ^^^ function or associated item not found in `GeminiCliConfig`
+
+error[E0599]: no method named `complete` found for struct `GenericClient<E, P>` in the current scope
+  --> crates\nl_llm_new\examples\test_old.rs:32:20
+   |
+32 |     match provider.complete(&req).await {
+   |                    ^^^^^^^^ method not found in `GenericClient<GeminiCliEndpoint, CloudCodeProtocol>`
+   |
+  ::: C:\Users\Public\nas_home\AI\GameEditor\NeuroLoom\crates\nl_llm_new\src\provider\traits.rs:25:14
+   |
+25 |     async fn complete(&self, body: serde_json::Value) -> crate::Result<LlmResponse>;
+   |              -------- the method is available for `GenericClient<GeminiCliEndpoint, CloudCodeProtocol>` here
+   |
+   = help: items from traits can only be used if the trait is in scope
+help: trait `LlmProvider` which provides `complete` is implemented but not in scope; perhaps you want to import it
+   |
+ 1 + use nl_llm_new::LlmProvider;
+   |
+
+Some errors have detailed explanations: E0432, E0599.
+For more information about an error, try `rustc --explain E0432`.
+warning: `nl_llm_new` (example "test_old") generated 1 warning
+error: could not compile `nl_llm_new` (example "test_old") due to 3 previous errors; 1 warning emitted

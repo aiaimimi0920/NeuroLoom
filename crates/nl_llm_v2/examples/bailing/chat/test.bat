@@ -11,7 +11,7 @@ if exist "%~dp0..\..\.env.local" (
 )
 
 if "%BAILING_API_KEY%"=="" (
-    set BAILING_API_KEY=sk-studio-14bd9faa0a174be39adde5c133de0c9a
+    set BAILING_API_KEY=YOUR_API_KEY_HERE
 )
 
 cargo run -p nl_llm_v2 --example bailing_chat -- "%BAILING_API_KEY%"

@@ -3,6 +3,7 @@ use reqwest::Client;
 use serde::Deserialize;
 use crate::auth::traits::Authenticator;
 use crate::provider::extension::{ProviderExtension, ModelInfo};
+use crate::provider::balance::{BalanceStatus, QuotaStatus, QuotaType, BillingUnit};
 use crate::concurrency::ConcurrencyConfig;
 use std::sync::Arc;
 
@@ -119,7 +120,7 @@ impl ProviderExtension for ZhipuExtension {
         &self,
         http: &Client,
         auth: &mut dyn Authenticator,
-    ) -> anyhow::Result<Option<String>> {
+    ) -> anyhow::Result<Option<BalanceStatus>> {
         let url = self.build_billing_url();
         let req = http.get(&url);
         let req = auth.inject(req)?;
@@ -129,39 +130,98 @@ impl ProviderExtension for ZhipuExtension {
 
         if !status.is_success() {
             let err = resp.text().await.unwrap_or_default();
-            return Err(anyhow::anyhow!("智谱余额查询失败 ({}): {}", status, err));
+            return Ok(Some(BalanceStatus::error(format!("API 错误 ({}): {}", status, err))));
         }
 
         let json: ZhipuQuotaResponse = resp.json().await
             .map_err(|e| anyhow::anyhow!("解析余额响应失败: {}", e))?;
 
         if !json.success {
-            return Ok(Some("余额查询失败（API 返回 success=false）".to_string()));
+            return Ok(Some(BalanceStatus {
+                display: "余额查询失败（API 返回 success=false）".to_string(),
+                quota_type: QuotaType::Unknown,
+                free: None,
+                paid: None,
+                has_free_quota: false,
+                should_deprioritize: false,
+                is_unavailable: true,
+            }));
         }
 
         if let Some(data) = json.data {
-            let mut parts = Vec::new();
+            let mut display_parts = Vec::new();
+            let granted = data.granted_quota.unwrap_or(0.0);
+            let remain = data.remain_quota.unwrap_or(0.0);
+            let has_granted = granted > 0.0;
 
             if let Some(total) = data.total_quota {
-                parts.push(format!("总额度: ¥{:.2}", total));
+                display_parts.push(format!("总额度: ¥{:.2}", total));
             }
             if let Some(used) = data.used_quota {
-                parts.push(format!("已用: ¥{:.2}", used));
+                display_parts.push(format!("已用: ¥{:.2}", used));
             }
-            if let Some(remain) = data.remain_quota {
-                parts.push(format!("剩余: ¥{:.2}", remain));
+            if remain > 0.0 {
+                display_parts.push(format!("剩余: ¥{:.2}", remain));
             }
-            if let Some(granted) = data.granted_quota {
-                parts.push(format!("赠送: ¥{:.2}", granted));
+            if has_granted {
+                display_parts.push(format!("赠送: ¥{:.2}", granted));
             }
 
-            if parts.is_empty() {
-                Ok(Some("账户有效（无额度信息）".to_string()))
-            } else {
-                Ok(Some(parts.join(", ")))
+            if display_parts.is_empty() {
+                return Ok(Some(BalanceStatus {
+                    display: "账户有效（无额度信息）".to_string(),
+                    quota_type: QuotaType::Unknown,
+                    free: None,
+                    paid: None,
+                    has_free_quota: false,
+                    should_deprioritize: false,
+                    is_unavailable: false,
+                }));
             }
+
+            Ok(Some(BalanceStatus {
+                display: display_parts.join(", "),
+                quota_type: if has_granted { QuotaType::Mixed } else { QuotaType::PaidOnly },
+                free: if has_granted {
+                    Some(QuotaStatus {
+                        unit: BillingUnit::Money { currency: "CNY".to_string() },
+                        used: 0.0,
+                        total: None,
+                        remaining: Some(granted),
+                        remaining_ratio: None,
+                        resets: false,
+                        reset_at: None,
+                    })
+                } else {
+                    None
+                },
+                paid: Some(QuotaStatus {
+                    unit: BillingUnit::Money { currency: "CNY".to_string() },
+                    used: data.used_quota.unwrap_or(0.0),
+                    total: data.total_quota,
+                    remaining: Some(remain),
+                    remaining_ratio: if let (Some(used), Some(total)) = (data.used_quota, data.total_quota) {
+                        if total > 0.0 { Some(((total - used) / total) as f32) } else { None }
+                    } else {
+                        None
+                    },
+                    resets: false,
+                    reset_at: None,
+                }),
+                has_free_quota: has_granted,
+                should_deprioritize: remain < 1.0,
+                is_unavailable: false,
+            }))
         } else {
-            Ok(Some("账户有效（无额度详情）".to_string()))
+            Ok(Some(BalanceStatus {
+                display: "账户有效（无额度详情）".to_string(),
+                quota_type: QuotaType::Unknown,
+                free: None,
+                paid: None,
+                has_free_quota: false,
+                should_deprioritize: false,
+                is_unavailable: false,
+            }))
         }
     }
 

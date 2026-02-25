@@ -12,6 +12,7 @@ use crate::pipeline::stages::{PrimitivizeStage, PackStage, AuthenticateStage, Se
 use crate::primitive::PrimitiveRequest;
 use crate::provider::{LlmResponse, BoxLlmStream};
 use crate::provider::extension::{ProviderExtension, ModelInfo};
+use crate::provider::balance::BalanceStatus;
 use crate::site::context::{UrlContext, Action};
 use crate::concurrency::{ConcurrencyController, ConcurrencyConfig, FailureType};
 use crate::metrics::{PipelineMetrics, MetricsStore, MetricsSummary};
@@ -55,6 +56,11 @@ impl LlmClient {
     /// 获取上下文窗口建议
     pub fn context_window_hint(&self, model: &str) -> (usize, usize) {
         self.model_resolver.context_window_hint(model)
+    }
+
+    /// 获取模型最大上下文长度
+    pub fn max_context(&self, model: &str) -> usize {
+        self.model_resolver.max_context(model)
     }
 
     /// 拼装处理管线
@@ -228,7 +234,7 @@ impl LlmClient {
     }
 
     /// 获取账户额度/余额信息（如果平台支持该扩展）
-    pub async fn get_balance(&self) -> anyhow::Result<Option<String>> {
+    pub async fn get_balance(&self) -> anyhow::Result<Option<BalanceStatus>> {
         if let Some(ext) = &self.extension {
             let mut auth = self.authenticator.lock().await;
             ext.get_balance(&self.http, &mut **auth).await

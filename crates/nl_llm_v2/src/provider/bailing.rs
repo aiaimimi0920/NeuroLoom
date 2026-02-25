@@ -1,5 +1,6 @@
 use crate::concurrency::ConcurrencyConfig;
 use crate::provider::extension::{ProviderExtension, ModelInfo};
+use crate::provider::balance::BalanceStatus;
 use crate::auth::traits::Authenticator;
 use reqwest::Client;
 use std::sync::Arc;
@@ -85,7 +86,7 @@ impl ProviderExtension for BaiLingExtension {
         &self,
         _http: &Client,
         _auth: &mut dyn Authenticator,
-    ) -> anyhow::Result<Option<String>> {
+    ) -> anyhow::Result<Option<BalanceStatus>> {
         Ok(None)
     }
 

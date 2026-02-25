@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use crate::auth::traits::Authenticator;
 use super::extension::{ProviderExtension, ModelInfo};
+use super::balance::BalanceStatus;
 use crate::concurrency::ConcurrencyConfig;
 use std::sync::Arc;
 
@@ -47,7 +48,7 @@ impl ProviderExtension for GeminiCliExtension {
         &self,
         _http: &reqwest::Client,
         _auth: &mut dyn Authenticator
-    ) -> anyhow::Result<Option<String>> {
+    ) -> anyhow::Result<Option<BalanceStatus>> {
         // Gemini CLI 通过 CloudCode PA 使用免费配额，无独立的额度查询 API
         // loadCodeAssist 仅用于获取 project_id（已在 Auth 层处理），不含额度信息
         Ok(None)

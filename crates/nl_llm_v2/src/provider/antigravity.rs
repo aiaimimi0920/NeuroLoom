@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use crate::auth::traits::Authenticator;
 use super::extension::{ProviderExtension, ModelInfo};
+use super::balance::{BalanceStatus, QuotaStatus, QuotaType, BillingUnit};
 use crate::concurrency::ConcurrencyConfig;
 use serde_json::Value;
 use std::sync::Arc;
@@ -95,10 +96,10 @@ impl ProviderExtension for AntigravityExtension {
     }
 
     async fn get_balance(
-        &self, 
-        http: &reqwest::Client, 
+        &self,
+        http: &reqwest::Client,
         auth: &mut dyn Authenticator
-    ) -> anyhow::Result<Option<String>> {
+    ) -> anyhow::Result<Option<BalanceStatus>> {
         let url = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist";
         let body = serde_json::json!({
             "metadata": {
@@ -116,25 +117,27 @@ impl ProviderExtension for AntigravityExtension {
             .header("X-Goog-Api-Client", "gl-python/3.12.0")
             .header("Client-Metadata", r#"{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}"#)
             .json(&body);
-        
+
         let req = auth.inject(req)?;
         let res = req.send().await?;
         let status = res.status();
         let text = res.text().await?;
 
         if !status.is_success() {
-            return Err(anyhow::anyhow!("loadCodeAssist failed ({}): {}", status, text));
+            return Ok(Some(BalanceStatus::error(format!("API 错误 ({}): {}", status, text))));
         }
 
         let json: Value = serde_json::from_str(&text)?;
-        let mut result = String::new();
+        let mut display_parts = Vec::new();
+        let mut has_free = false;
+        let mut paid_credits = 0.0f64;
 
         if let Some(project) = json.get("cloudaicompanionProject") {
             if let Some(p) = project.as_str() {
-                result.push_str(&format!("项目 ID: {}\n", p));
+                display_parts.push(format!("项目 ID: {}", p));
             } else if let Some(obj) = project.as_object() {
                 if let Some(id) = obj.get("id").and_then(|v| v.as_str()) {
-                    result.push_str(&format!("项目 ID: {}\n", id));
+                    display_parts.push(format!("项目 ID: {}", id));
                 }
             }
         }
@@ -142,24 +145,71 @@ impl ProviderExtension for AntigravityExtension {
         if let Some(tier) = json.get("currentTier") {
             let id = tier.get("id").and_then(|v| v.as_str()).unwrap_or("unknown");
             let name = tier.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
-            result.push_str(&format!("当前 Tier: {} ({})\n", name, id));
+            display_parts.push(format!("当前 Tier: {} ({})", name, id));
+            // 免费层级判断
+            if id.contains("free") || name.to_lowercase().contains("free") {
+                has_free = true;
+            }
         }
 
         if let Some(paid) = json.get("paidTier") {
             let name = paid.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
             if let Some(credits) = paid.get("availableCredits").and_then(|v| v.as_array()) {
                 for c in credits {
-                    let amount = c.get("creditAmount").and_then(|v| v.as_str()).unwrap_or("?");
-                    let ctype = c.get("creditType").and_then(|v| v.as_str()).unwrap_or("?");
-                    result.push_str(&format!("付费 Tier: {} (额度: {} {})\n", name, amount, ctype));
+                    let amount = c.get("creditAmount").and_then(|v| v.as_str()).unwrap_or("0");
+                    let ctype = c.get("creditType").and_then(|v| v.as_str()).unwrap_or("");
+                    display_parts.push(format!("付费 Tier: {} (额度: {} {})", name, amount, ctype));
+                    if let Ok(val) = amount.parse::<f64>() {
+                        paid_credits += val;
+                    }
                 }
             }
         }
 
-        if result.is_empty() {
+        if display_parts.is_empty() {
             Ok(None)
         } else {
-            Ok(Some(result))
+            Ok(Some(BalanceStatus {
+                display: display_parts.join("\n"),
+                quota_type: if has_free && paid_credits > 0.0 {
+                    QuotaType::Mixed
+                } else if has_free {
+                    QuotaType::FreeOnly
+                } else if paid_credits > 0.0 {
+                    QuotaType::PaidOnly
+                } else {
+                    QuotaType::Unknown
+                },
+                free: if has_free {
+                    Some(QuotaStatus {
+                        unit: BillingUnit::Requests, // 免费层通常是请求次数限制
+                        used: 0.0,
+                        total: None,
+                        remaining: None,
+                        remaining_ratio: None,
+                        resets: true,
+                        reset_at: None,
+                    })
+                } else {
+                    None
+                },
+                paid: if paid_credits > 0.0 {
+                    Some(QuotaStatus {
+                        unit: BillingUnit::Money { currency: "USD".to_string() },
+                        used: 0.0,
+                        total: None,
+                        remaining: Some(paid_credits),
+                        remaining_ratio: None,
+                        resets: false,
+                        reset_at: None,
+                    })
+                } else {
+                    None
+                },
+                has_free_quota: has_free,
+                should_deprioritize: false,
+                is_unavailable: false,
+            }))
         }
     }
 
