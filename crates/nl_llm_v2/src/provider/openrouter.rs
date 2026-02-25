@@ -7,6 +7,7 @@ use reqwest::Client;
 use serde::Deserialize;
 use crate::auth::traits::Authenticator;
 use crate::provider::extension::{ProviderExtension, ModelInfo};
+use crate::provider::balance::BalanceStatus;
 use crate::concurrency::ConcurrencyConfig;
 use std::sync::Arc;
 
@@ -79,7 +80,7 @@ impl ProviderExtension for OpenRouterExtension {
         &self,
         _http: &Client,
         _auth: &mut dyn Authenticator,
-    ) -> anyhow::Result<Option<String>> {
+    ) -> anyhow::Result<Option<BalanceStatus>> {
         // OpenRouter 没有公开的余额查询 API
         Ok(None)
     }
