@@ -35,6 +35,7 @@
 //! - 初始: 5
 
 use crate::concurrency::ConcurrencyConfig;
+use crate::model::perplexity::PERPLEXITY_MODEL_META;
 use crate::provider::extension::{ProviderExtension, ModelInfo};
 use crate::provider::balance::BalanceStatus;
 use crate::auth::traits::Authenticator;
@@ -52,17 +53,18 @@ impl Default for PerplexityExtension {
 }
 
 fn perplexity_models() -> Vec<ModelInfo> {
-    vec![
-        // === Sonar 搜索系列 ===
-        ModelInfo { id: "sonar-pro".to_string(), description: "Sonar Pro — 旗舰搜索模型,200K context,$3/$15".to_string() },
-        ModelInfo { id: "sonar".to_string(), description: "Sonar — 标准搜索模型,128K context,$1/$1".to_string() },
-        // === Sonar 推理系列 ===
-        ModelInfo { id: "sonar-reasoning-pro".to_string(), description: "Sonar Reasoning Pro — 深度推理+搜索,$2/$8".to_string() },
-        ModelInfo { id: "sonar-reasoning".to_string(), description: "Sonar Reasoning — 标准推理+搜索,$1/$5".to_string() },
-        // === 研究/离线 ===
-        ModelInfo { id: "sonar-deep-research".to_string(), description: "Sonar Deep Research — 深度研究,$2/$8".to_string() },
-        ModelInfo { id: "r1-1776".to_string(), description: "R1-1776 — 离线推理模型(无搜索),$2/$8".to_string() },
-    ]
+    PERPLEXITY_MODEL_META
+        .iter()
+        .map(|meta| ModelInfo {
+            id: meta.id.to_string(),
+            description: format!(
+                "{},{}K context,{}",
+                meta.summary,
+                meta.context / 1_000,
+                meta.price_per_million
+            ),
+        })
+        .collect()
 }
 
 #[async_trait::async_trait]
