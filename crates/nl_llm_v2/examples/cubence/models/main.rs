@@ -1,49 +1,35 @@
-//! Cubence 模型列表
+//! cubence 平台测试 - models
+//!
+//! 运行方式: cargo run --example cubence_models
+//! 或直接运行: test.bat
 
-use nl_llm_v2::LlmClient;
+use nl_llm_v2::{LlmClient, PrimitiveRequest};
+use anyhow::Result;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let api_key = std::env::var("CUBENCE_API_KEY")
-        .or_else(|_| std::env::args().nth(1).ok_or(()))
-        .unwrap_or_else(|_| {
-            eprintln!("用法: cubence_models <API_KEY>");
-            std::process::exit(1);
-        });
+async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+
+    let api_key = std::env::var("CUBENCE_API_KEY").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("cubence")
         .expect("Preset should exist")
-        .with_api_key(&api_key)
+        .with_api_key(api_key)
         .build();
 
-    println!("========================================");
-    println!("  Cubence 模型列表");
-    println!("========================================\n");
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
 
-    match client.list_models().await {
-        Ok(models) => {
-            println!("共 {} 个模型:\n", models.len());
-            for (i, m) in models.iter().enumerate() {
-                println!("  {}. {} — {}", i + 1, m.id, m.description);
-            }
-        }
-        Err(e) => { println!("❌ 获取失败: {}", e); }
-    }
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("unknown");
 
-    println!("\n----------------------------------------");
-    println!("  常用别名");
-    println!("----------------------------------------\n");
+    println!("用户: {}\n", prompt);
+    println!("AI:");
 
-    let aliases = [
-        ("cubence / sonnet", "claude-sonnet-4-5-20250929"),
-        ("4o", "gpt-4o"),
-        ("4o-mini", "gpt-4o-mini"),
-        ("gemini", "gemini-2.0-flash"),
-        ("gemini-pro", "gemini-2.5-pro"),
-    ];
-    for (alias, target) in aliases {
-        println!("  '{}' -> '{}'", alias, target);
-    }
+    let resp = client.complete(&req).await?;
+    println!("{}", resp.content);
 
     Ok(())
 }

@@ -1,16 +1,35 @@
 @echo off
-setlocal enabledelayedexpansion
-chcp 65001 >nul
+REM minimax_cn 平台测试 - stream
+REM 用法: test.bat [api_key] [prompt]
 
-for /f "tokens=1,* delims==" %%a in ('type ..\..\..\..\..\..\.env.local 2^>nul ^| findstr /B "MINIMAX_CN_API_KEY="') do set MINIMAX_CN_API_KEY=%%b
+cd /d "%~dp0"
 
 if "%MINIMAX_CN_API_KEY%"=="" (
-    echo [INFO] MINIMAX_CN_API_KEY not found in .env.local, using hardcoded key for testing.
-    set MINIMAX_CN_API_KEY=YOUR_API_KEY_HERE
+    if "%1"=="" (
+        echo Warning: No MINIMAX_CN_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
+) else (
+    set API_KEY=%MINIMAX_CN_API_KEY%
 )
 
-if "%~1"=="" (
-    cargo run -p nl_llm_v2 --example minimax_cn_stream -- "%MINIMAX_CN_API_KEY%"
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
 ) else (
-    cargo run -p nl_llm_v2 --example minimax_cn_stream -- "%MINIMAX_CN_API_KEY%" %*
+    set PROMPT=%1
 )
+
+echo ========================================
+echo   minimax_cn stream Test
+echo ========================================
+echo.
+
+cargo run --example minimax_cn_stream -- %API_KEY% "%PROMPT%"
+
+echo.
+echo ========================================
+echo   Test Complete
+echo ========================================

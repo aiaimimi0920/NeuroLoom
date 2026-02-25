@@ -1,29 +1,35 @@
-//! Claude OAuth 对话示例
+//! claude_oauth 平台测试 - chat
+//!
+//! 运行方式: cargo run --example claude_oauth_chat
+//! 或直接运行: test.bat
 
 use nl_llm_v2::{LlmClient, PrimitiveRequest};
 use anyhow::Result;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cache_path = dirs::config_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("anthropic")
-        .join("token.json");
+    let args: Vec<String> = std::env::args().collect();
+
+    let api_key = std::env::var("CLAUDE_OAUTH_API_KEY").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("claude_oauth")
         .expect("Preset should exist")
-        .with_claude_oauth(&cache_path)
+        .with_api_key(api_key)
         .build();
 
-    let prompt = std::env::args().nth(1)
-        .unwrap_or_else(|| "Hello! Please introduce yourself briefly.".to_string());
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
 
-    let req = PrimitiveRequest::single_user_message(&prompt)
-        .with_model("claude-sonnet");
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("unknown");
 
     println!("用户: {}\n", prompt);
+    println!("AI:");
+
     let resp = client.complete(&req).await?;
-    println!("AI: {}", resp.content);
+    println!("{}", resp.content);
 
     Ok(())
 }

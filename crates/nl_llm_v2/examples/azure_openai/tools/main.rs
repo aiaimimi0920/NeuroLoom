@@ -1,91 +1,41 @@
-//! Azure OpenAI 工具调用示例
+//! azure_openai 平台测试 - tools
 //!
-//! 运行方式:
-//!   set AZURE_OPENAI_API_KEY=your-key
-//!   set AZURE_OPENAI_ENDPOINT=https://YOUR-RESOURCE.openai.azure.com
-//!   cargo run -p nl_llm_v2 --example azure_openai_tools
+//! 运行方式: cargo run --example azure_openai_tools
+//! 或直接运行: test.bat
 
-use nl_llm_v2::{LlmClient, primitive::tool::PrimitiveTool, PrimitiveRequest};
-use serde_json::json;
+use nl_llm_v2::{LlmClient, PrimitiveRequest};
+use anyhow::Result;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let api_key = std::env::var("AZURE_OPENAI_API_KEY")
-        .or_else(|_| std::env::args().nth(1).ok_or(()))
-        .unwrap_or_else(|_| {
-            eprintln!("用法: azure_openai_tools <API_KEY> <ENDPOINT> <DEPLOYMENT>");
-            eprintln!("或设置环境变量:");
-            eprintln!("  AZURE_OPENAI_API_KEY");
-            eprintln!("  AZURE_OPENAI_ENDPOINT");
-            std::process::exit(1);
-        });
+async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
 
-    let endpoint = std::env::var("AZURE_OPENAI_ENDPOINT")
-        .or_else(|_| std::env::args().nth(2).ok_or(()))
-        .unwrap_or_else(|_| {
-            eprintln!("错误: 需要设置 AZURE_OPENAI_ENDPOINT 环境变量");
-            std::process::exit(1);
-        });
-
-    let deployment = std::env::args().nth(3).unwrap_or_else(|| "gpt-4o".to_string());
-    let prompt = std::env::args().nth(4).unwrap_or_else(|| {
-        "北京和上海今天的天气怎么样？".to_string()
-    });
+    let api_key = std::env::var("AZURE_OPENAI_API_KEY").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("azure_openai")
         .expect("Preset should exist")
-        .with_base_url(&endpoint)
-        .with_api_key(&api_key)
+        .with_api_key(api_key)
         .build();
 
-    println!("========================================");
-    println!("  Azure OpenAI 工具调用");
-    println!("========================================\n");
-    println!("Endpoint: {}", endpoint);
-    println!("Deployment: {}", deployment);
-    println!("用户: {}\n", prompt);
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
 
     let mut req = PrimitiveRequest::single_user_message(&prompt)
-        .with_model(&deployment);
+        .with_model("unknown");
 
-    req.tools = vec![
-        PrimitiveTool {
-            name: "get_weather".to_string(),
-            description: Some("获取指定城市的当前天气信息".to_string()),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "city": {
-                        "type": "string",
-                        "description": "城市名称"
-                    }
-                },
-                "required": ["city"]
-            }),
-        },
-    ];
+    use serde_json::json;
+    req.tools = vec![nl_llm_v2::primitive::tool::PrimitiveTool {
+        name: "get_weather".to_string(),
+        description: Some("Get current weather".to_string()),
+        input_schema: json!({"type": "object", "properties": {"location": {"type": "string"}}}),
+    }];
+    println!("用户: {}\n", prompt);
+    println!("AI (Tools):");
 
-    println!("可用工具:");
-    for tool in &req.tools {
-        println!("  • {} — {}", tool.name, tool.description.as_deref().unwrap_or(""));
-    }
-    println!();
-
-    match client.complete(&req).await {
-        Ok(resp) => {
-            println!("AI 响应:");
-            println!("{}", resp.content);
-
-            if let Some(usage) = &resp.usage {
-                println!("\n[Token 用量: prompt={}, completion={}, total={}]",
-                    usage.prompt_tokens, usage.completion_tokens, usage.total_tokens);
-            }
-        }
-        Err(e) => {
-            eprintln!("请求失败: {}", e);
-            std::process::exit(1);
-        }
-    }
+    let resp = client.complete(&req).await?;
+    println!("{:?}", resp.content);
 
     Ok(())
 }

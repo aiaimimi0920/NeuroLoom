@@ -1,7 +1,6 @@
 //! vertex 平台测试 - chat
 //!
-//! 运行方式:
-//!   cargo run --example vertex_chat -- path/to/sa.json [prompt]
+//! 运行方式: cargo run --example vertex_chat
 //! 或直接运行: test.bat
 
 use nl_llm_v2::{LlmClient, PrimitiveRequest};
@@ -11,17 +10,19 @@ use anyhow::Result;
 async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
 
-    let sa_json = load_sa_json(&args)?;
+    let api_key = std::env::var("GOOGLE_APPLICATION_CREDENTIALS_JSON").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("vertex")
         .expect("Preset should exist")
-        .with_service_account_json(&sa_json)
+        .with_service_account_json(api_key)
         .build();
 
     let prompt = args.get(2).cloned()
-        .unwrap_or_else(|| "Hello! Please introduce yourself briefly.".to_string());
+        .unwrap_or_else(|| "Hello!".to_string());
 
-    let req = PrimitiveRequest::single_user_message(&prompt)
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
         .with_model("gemini-2.5-flash");
 
     println!("用户: {}\n", prompt);
@@ -31,25 +32,4 @@ async fn main() -> Result<()> {
     println!("{}", resp.content);
 
     Ok(())
-}
-
-/// 加载 SA JSON：支持环境变量、文件路径、直接 JSON 字符串
-fn load_sa_json(args: &[String]) -> Result<String> {
-    if let Ok(json) = std::env::var("GOOGLE_APPLICATION_CREDENTIALS_JSON") {
-        if !json.is_empty() { return Ok(json); }
-    }
-    if let Some(arg) = args.get(1) {
-        if !arg.is_empty() {
-            let path = std::path::Path::new(arg);
-            if path.exists() && path.is_file() {
-                return Ok(std::fs::read_to_string(path)?);
-            }
-            if arg.trim().starts_with('{') {
-                return Ok(arg.clone());
-            }
-            let fallback = std::path::Path::new("crates/nl_llm_v2/examples/vertex").join(arg);
-            if fallback.exists() { return Ok(std::fs::read_to_string(fallback)?); }
-        }
-    }
-    Err(anyhow::anyhow!("请提供 SA JSON: 文件路径或 JSON 字符串"))
 }

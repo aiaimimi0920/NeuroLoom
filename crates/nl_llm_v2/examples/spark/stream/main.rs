@@ -1,49 +1,41 @@
-//! 讯飞星火 流式输出
+//! spark 平台测试 - stream
 //!
-//! 运行方式: cargo run -p nl_llm_v2 --example spark_stream -- <api_password|api_key:api_secret> [prompt]
+//! 运行方式: cargo run --example spark_stream
+//! 或直接运行: test.bat
 
-use futures::StreamExt;
 use nl_llm_v2::{LlmClient, PrimitiveRequest};
+use anyhow::Result;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let api_key = std::env::var("SPARK_API_KEY")
-        .or_else(|_| std::env::args().nth(1).ok_or(()))
-        .unwrap_or_else(|_| {
-            eprintln!("需要提供 SPARK_API_KEY");
-            std::process::exit(1);
-        });
+async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
 
-    let prompt = std::env::args()
-        .nth(2)
-        .unwrap_or_else(|| "写一首关于人工智能的五言绝句。".to_string());
+    let api_key = std::env::var("SPARK_API_KEY").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
-    println!("========================================");
-    println!("  讯飞星火 流式输出");
-    println!("========================================\n");
-
-    let client = LlmClient::from_preset("spark_x")
+    let client = LlmClient::from_preset("spark")
         .expect("Preset should exist")
-        .with_spark_auth(&api_key)
+        .with_api_key(api_key)
         .build();
 
-    println!("模型: {}", client.resolve_model("ultra"));
-    println!("用户: {}\n", prompt);
-    print!("AI: ");
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
 
-    let req = PrimitiveRequest::single_user_message(&prompt);
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("unknown");
+    req.stream = true;
+
+    println!("用户: {}\n", prompt);
+    println!("AI (Stream):");
 
     let mut stream = client.stream(&req).await?;
+    use tokio_stream::StreamExt;
     while let Some(chunk) = stream.next().await {
-        match chunk {
-            Ok(c) => print!("{}", c.content),
-            Err(e) => {
-                eprintln!("\n流式错误: {}", e);
-                break;
-            }
+        if let Ok(c) = chunk {
+            print!("{}", c.content);
         }
     }
-    println!("\n");
-
+    println!();
     Ok(())
 }

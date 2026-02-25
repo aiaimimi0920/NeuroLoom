@@ -1,20 +1,35 @@
 @echo off
-setlocal
+REM kimi_coding 平台测试 - chat
+REM 用法: test.bat [api_key] [prompt]
+
 cd /d "%~dp0"
 
-for /f "tokens=1,* delims==" %%a in ('type ..\..\..\..\..\.env.local 2^>nul ^| findstr /B "KIMI_API_KEY="') do set KIMI_API_KEY=%%b
-
-if "%KIMI_API_KEY%"=="" (
-    echo [INFO] KIMI_API_KEY not found in .env.local, using a blank fallback to trigger code generator's auth diagnostic test.
-    set KIMI_API_KEY=blank
+if "%KIMI_CODING_API_KEY%"=="" (
+    if "%1"=="" (
+        echo Warning: No KIMI_CODING_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
 ) else (
-    echo [INFO] KIMI_API_KEY loaded
+    set API_KEY=%KIMI_CODING_API_KEY%
 )
 
-if "%~1"=="" (
-    cargo run -p nl_llm_v2 --example kimi_coding_chat -- %KIMI_API_KEY%
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
 ) else (
-    cargo run -p nl_llm_v2 --example kimi_coding_chat -- %KIMI_API_KEY% "%~1"
+    set PROMPT=%1
 )
 
-endlocal
+echo ========================================
+echo   kimi_coding chat Test
+echo ========================================
+echo.
+
+cargo run --example kimi_coding_chat -- %API_KEY% "%PROMPT%"
+
+echo.
+echo ========================================
+echo   Test Complete
+echo ========================================

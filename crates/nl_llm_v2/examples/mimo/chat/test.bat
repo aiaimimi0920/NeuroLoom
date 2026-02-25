@@ -1,23 +1,35 @@
 @echo off
-cd /d "%~dp0"
-echo ========================================
-echo   MiMo Chat Test
-echo ========================================
+REM mimo 平台测试 - chat
+REM 用法: test.bat [api_key] [prompt]
 
-if exist "%~dp0..\..\.env.local" (
-    for /f "usebackq tokens=1,* delims==" %%a in ("%~dp0..\..\.env.local") do (
-        if "%%a"=="MIMO_API_KEY" set "MIMO_API_KEY=%%b"
-    )
-)
+cd /d "%~dp0"
 
 if "%MIMO_API_KEY%"=="" (
-    echo [INFO] MIMO_API_KEY not found in .env.local
-    echo [INFO] Please set MIMO_API_KEY in .env.local or pass as argument
-    set MIMO_API_KEY=YOUR_API_KEY_HERE
+    if "%1"=="" (
+        echo Warning: No MIMO_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
+) else (
+    set API_KEY=%MIMO_API_KEY%
 )
 
-cargo run -p nl_llm_v2 --example mimo_chat -- "%MIMO_API_KEY%"
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
+)
+
+echo ========================================
+echo   mimo chat Test
+echo ========================================
+echo.
+
+cargo run --example mimo_chat -- %API_KEY% "%PROMPT%"
+
+echo.
 echo ========================================
 echo   Test Complete
 echo ========================================
-pause

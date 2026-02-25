@@ -1,21 +1,35 @@
 @echo off
-cd /d "%~dp0"
-echo ========================================
-echo   AIGoCode Chat Test
-echo ========================================
+REM aigocode 平台测试 - chat
+REM 用法: test.bat [api_key] [prompt]
 
-if exist "%~dp0..\..\.env.local" (
-    for /f "usebackq tokens=1,* delims==" %%a in ("%~dp0..\..\.env.local") do (
-        if "%%a"=="AIGOCODE_API_KEY" set "AIGOCODE_API_KEY=%%b"
-    )
-)
+cd /d "%~dp0"
 
 if "%AIGOCODE_API_KEY%"=="" (
-    set AIGOCODE_API_KEY=YOUR_API_KEY_HERE
+    if "%1"=="" (
+        echo Warning: No AIGOCODE_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
+) else (
+    set API_KEY=%AIGOCODE_API_KEY%
 )
 
-cargo run -p nl_llm_v2 --example aigocode_chat -- "%AIGOCODE_API_KEY%"
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
+)
+
+echo ========================================
+echo   aigocode chat Test
+echo ========================================
+echo.
+
+cargo run --example aigocode_chat -- %API_KEY% "%PROMPT%"
+
+echo.
 echo ========================================
 echo   Test Complete
 echo ========================================
-pause

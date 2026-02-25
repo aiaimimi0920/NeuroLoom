@@ -1,49 +1,35 @@
-//! AWS Claude (Amazon Bedrock) 模型列表
+//! aws_claude 平台测试 - models
+//!
+//! 运行方式: cargo run --example aws_claude_models
+//! 或直接运行: test.bat
 
-use nl_llm_v2::LlmClient;
+use nl_llm_v2::{LlmClient, PrimitiveRequest};
+use anyhow::Result;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    println!("========================================");
-    println!("  AWS Claude (Bedrock) 模型列表");
-    println!("========================================\n");
+async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+
+    let api_key = std::env::var("AWS_CLAUDE_API_KEY").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("aws_claude")
         .expect("Preset should exist")
-        .with_api_key("placeholder")
+        .with_api_key(api_key)
         .build();
 
-    match client.list_models().await {
-        Ok(models) => {
-            println!("Bedrock 上可用的 Claude 模型 (共 {} 个):\n", models.len());
-            for (i, m) in models.iter().enumerate() {
-                println!("  {}. {}\n     {}\n", i + 1, m.id, m.description);
-            }
-        }
-        Err(e) => { println!("获取失败: {}", e); }
-    }
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
 
-    println!("----------------------------------------");
-    println!("  常用别名");
-    println!("----------------------------------------\n");
-    let aliases = [
-        ("aws / sonnet / claude", "anthropic.claude-sonnet-4-6-20250514-v1:0"),
-        ("opus", "anthropic.claude-opus-4-6-20250514-v1:0"),
-        ("sonnet-4.5", "anthropic.claude-sonnet-4-5-20250929-v1:0"),
-        ("3.5", "anthropic.claude-3-5-sonnet-20241022-v2:0"),
-        ("haiku", "anthropic.claude-3-5-haiku-20241022-v1:0"),
-    ];
-    for (a, t) in aliases { println!("  '{}' -> '{}'", a, t); }
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("unknown");
 
-    println!("\n----------------------------------------");
-    println!("  认证配置说明");
-    println!("----------------------------------------\n");
-    println!("  AK/SK 模式:");
-    println!("    AWS_ACCESS_KEY_ID=AKIA...");
-    println!("    AWS_SECRET_ACCESS_KEY=xxxxx");
-    println!("    AWS_REGION=us-east-1\n");
-    println!("  API Key 模式:");
-    println!("    AWS_BEDROCK_API_KEY=xxx");
+    println!("用户: {}\n", prompt);
+    println!("AI:");
+
+    let resp = client.complete(&req).await?;
+    println!("{}", resp.content);
 
     Ok(())
 }

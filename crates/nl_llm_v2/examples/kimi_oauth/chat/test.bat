@@ -1,10 +1,35 @@
 @echo off
-setlocal
+REM kimi_oauth 平台测试 - chat
+REM 用法: test.bat [api_key] [prompt]
+
 cd /d "%~dp0"
 
-echo [INFO] Kimi OAuth 测试无需配置 KIMI_API_KEY。
-echo [INFO] 将触发 Device Authorization 授权。请准备好在浏览器中确认。
+if "%KIMI_OAUTH_API_KEY%"=="" (
+    if "%1"=="" (
+        echo Warning: No KIMI_OAUTH_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
+) else (
+    set API_KEY=%KIMI_OAUTH_API_KEY%
+)
 
-cargo run -p nl_llm_v2 --example kimi_oauth_chat
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
+)
 
-endlocal
+echo ========================================
+echo   kimi_oauth chat Test
+echo ========================================
+echo.
+
+cargo run --example kimi_oauth_chat -- %API_KEY% "%PROMPT%"
+
+echo.
+echo ========================================
+echo   Test Complete
+echo ========================================

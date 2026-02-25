@@ -1,23 +1,35 @@
 @echo off
-cd /d "%~dp0"
-echo ========================================
-echo   AiHubMix Models Test
-echo ========================================
+REM aihubmix 平台测试 - models
+REM 用法: test.bat [api_key] [prompt]
 
-if exist "%~dp0..\..\.env.local" (
-    for /f "usebackq tokens=1,* delims==" %%a in ("%~dp0..\..\.env.local") do (
-        if "%%a"=="AIHUBMIX_API_KEY" set "AIHUBMIX_API_KEY=%%b"
-    )
-)
+cd /d "%~dp0"
 
 if "%AIHUBMIX_API_KEY%"=="" (
-    echo [INFO] AIHUBMIX_API_KEY not found in .env.local
-    echo [INFO] Please set AIHUBMIX_API_KEY in .env.local or pass as argument
-    set AIHUBMIX_API_KEY=YOUR_API_KEY_HERE
+    if "%1"=="" (
+        echo Warning: No AIHUBMIX_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
+) else (
+    set API_KEY=%AIHUBMIX_API_KEY%
 )
 
-cargo run -p nl_llm_v2 --example aihubmix_models -- "%AIHUBMIX_API_KEY%"
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
+)
+
+echo ========================================
+echo   aihubmix models Test
+echo ========================================
+echo.
+
+cargo run --example aihubmix_models -- %API_KEY% "%PROMPT%"
+
+echo.
 echo ========================================
 echo   Test Complete
 echo ========================================
-pause

@@ -1,43 +1,35 @@
 //! openai 平台测试 - models
 //!
-//! 本例展示 OpenAiModelResolver 对各模型的 alias 和 capability 解析
+//! 运行方式: cargo run --example openai_models
+//! 或直接运行: test.bat
 
-use nl_llm_v2::model::resolver::Capability;
+use nl_llm_v2::{LlmClient, PrimitiveRequest};
+use anyhow::Result;
 
-fn main() {
-    println!("========================================");
-    println!("  OpenAI API Models Test");
-    println!("========================================\n");
+#[tokio::main]
+async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
 
-    // 使用 OpenAI 预设的 OpenAiModelResolver
-    let client = nl_llm_v2::presets::openai::builder()
-        .with_api_key("dummy_key")
+    let api_key = std::env::var("OPENAI_API_KEY").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
+
+    let client = LlmClient::from_preset("openai")
+        .expect("Preset should exist")
+        .with_api_key(api_key)
         .build();
 
-    let test_models = vec![
-        "gpt-4o",
-        "gpt-4-turbo",
-        "gpt3", // Alias for gpt-3.5-turbo
-        "o1",
-        "o1-mini",
-        "o3-mini",
-        "unknown-model",
-    ];
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
 
-    for model in test_models {
-        let resolved = client.resolve_model(model);
-        let (ctx, _) = client.context_window_hint(model);
-        
-        let mut caps = Vec::new();
-        if client.has_capability(model, Capability::CHAT) { caps.push("CHAT"); }
-        if client.has_capability(model, Capability::VISION) { caps.push("VISION"); }
-        if client.has_capability(model, Capability::TOOLS) { caps.push("TOOLS"); }
-        if client.has_capability(model, Capability::STREAMING) { caps.push("STREAMING"); }
-        if client.has_capability(model, Capability::THINKING) { caps.push("THINKING"); }
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("gpt-4o");
 
-        println!("Alias '{}' -> Resolved: '{}'", model, resolved);
-        println!("  Context Limits: {}", ctx);
-        println!("  Capabilities: [{}]", caps.join(", "));
-        println!();
-    }
+    println!("用户: {}\n", prompt);
+    println!("AI:");
+
+    let resp = client.complete(&req).await?;
+    println!("{}", resp.content);
+
+    Ok(())
 }

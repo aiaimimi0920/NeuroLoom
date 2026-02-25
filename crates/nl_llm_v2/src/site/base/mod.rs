@@ -13,6 +13,9 @@ pub mod proxy;
 pub mod amp;
 pub mod azure;
 pub mod bedrock;
+pub mod hunyuan;
+pub mod dify;
+pub mod jina;
 
 pub use openai::OpenAiSite;
 pub use gemini::GeminiSite;

@@ -1,65 +1,37 @@
-//! iFlow 平台测试 - Thinking 模式
+//! iflow 平台测试 - thinking
 //!
-//! IflowThinkingHook 会根据模型自动注入 enable_thinking 参数
-//!
-//! 运行方式: cargo run -p nl_llm_v2 --example iflow_thinking
+//! 运行方式: cargo run --example iflow_thinking
+//! 或直接运行: test.bat
 
 use nl_llm_v2::{LlmClient, PrimitiveRequest};
 use anyhow::Result;
-use std::path::Path;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
 
-    let cookie = args.get(1).cloned()
-        .or_else(|| std::env::var("IFLOW_COOKIE").ok())
-        .or_else(|| read_cookie_from_config())
-        .expect("请提供 iFlow Cookie");
-
-    let prompt = args.get(2).cloned()
-        .unwrap_or_else(|| "1+1等于几？请一步一步推理".to_string());
-
-    let model = args.get(3).cloned()
-        .unwrap_or_else(|| "qwen3-max".to_string());
+    let api_key = std::env::var("IFLOW_COOKIE").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("iflow")
-        .expect("iflow preset should exist")
-        .with_cookie(&cookie)
+        .expect("Preset should exist")
+        .with_cookie(api_key)
         .build();
 
-    let req = PrimitiveRequest::single_user_message(&prompt)
-        .with_model(&model);
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
 
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("qwen3-max");
+
+    use serde_json::json;
+    req.extra.insert("chat_template_kwargs".to_string(), json!({"enable_thinking": true}));
     println!("用户: {}\n", prompt);
-    println!("AI ({}, thinking mode):", model);
+    println!("AI (Thinking):");
 
     let resp = client.complete(&req).await?;
     println!("{}", resp.content);
 
     Ok(())
-}
-
-fn read_cookie_from_config() -> Option<String> {
-    let paths = [
-        "crates/nl_llm_v2/examples/iflow/iflow_config.txt",
-        "examples/iflow/iflow_config.txt",
-    ];
-    for p in &paths {
-        if let Some(cookie) = try_read_config(Path::new(p)) {
-            return Some(cookie);
-        }
-    }
-    None
-}
-
-fn try_read_config(path: &Path) -> Option<String> {
-    let content = std::fs::read_to_string(path).ok()?;
-    for line in content.lines() {
-        let line = line.trim();
-        if line.starts_with("BXAuth=") {
-            return Some(line.to_string());
-        }
-    }
-    None
 }

@@ -1,16 +1,35 @@
 @echo off
-setlocal
+REM claude 平台测试 - models
+REM 用法: test.bat [api_key] [prompt]
 
-cd /d "%~dp0\..\.."
+cd /d "%~dp0"
+
+if "%CLAUDE_API_KEY%"=="" (
+    if "%1"=="" (
+        echo Warning: No CLAUDE_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
+) else (
+    set API_KEY=%CLAUDE_API_KEY%
+)
+
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
+)
+
 echo ========================================
-echo   Claude Models Test
+echo   claude models Test
 echo ========================================
 echo.
 
-cargo run -p nl_llm_v2 --example claude_models
+cargo run --example claude_models -- %API_KEY% "%PROMPT%"
 
 echo.
 echo ========================================
 echo   Test Complete
 echo ========================================
-pause

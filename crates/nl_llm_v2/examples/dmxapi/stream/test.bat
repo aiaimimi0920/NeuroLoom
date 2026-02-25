@@ -1,30 +1,35 @@
 @echo off
-cd /d "%~dp0"
-echo ========================================
-echo   DMXAPI Stream Test
-echo ========================================
+REM dmxapi 平台测试 - stream
+REM 用法: test.bat [api_key] [prompt]
 
-REM 从 .env.local 加载环境变量
-if exist "%~dp0..\..\.env.local" (
-    for /f "usebackq tokens=1,* delims==" %%a in ("%~dp0..\..\.env.local") do (
-        if "%%a"=="DMXAPI_API_KEY" set "DMXAPI_API_KEY=%%b"
-    )
-)
+cd /d "%~dp0"
 
 if "%DMXAPI_API_KEY%"=="" (
-    echo 错误: 未设置 DMXAPI_API_KEY 环境变量
-    echo.
-    echo 请通过以下方式之一设置:
-    echo   1. 设置环境变量: set DMXAPI_API_KEY=your-key
-    echo   2. 在 examples/.env.local 文件中添加: DMXAPI_API_KEY=your-key
-    echo.
-    echo 获取密钥: https://www.dmxapi.cn
-    pause
-    exit /b 1
+    if "%1"=="" (
+        echo Warning: No DMXAPI_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
+) else (
+    set API_KEY=%DMXAPI_API_KEY%
 )
 
-cargo run -p nl_llm_v2 --example dmxapi_stream -- "%DMXAPI_API_KEY%"
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
+)
+
+echo ========================================
+echo   dmxapi stream Test
+echo ========================================
+echo.
+
+cargo run --example dmxapi_stream -- %API_KEY% "%PROMPT%"
+
+echo.
 echo ========================================
 echo   Test Complete
 echo ========================================
-pause

@@ -1,70 +1,35 @@
-//! Xiaomi MiMo 模型列表与能力检测
+//! mimo 平台测试 - models
+//!
+//! 运行方式: cargo run --example mimo_models
+//! 或直接运行: test.bat
 
-use nl_llm_v2::{LlmClient, model::Capability};
+use nl_llm_v2::{LlmClient, PrimitiveRequest};
+use anyhow::Result;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let api_key = std::env::var("MIMO_API_KEY")
-        .or_else(|_| std::env::args().nth(1).ok_or(()))
-        .unwrap_or_else(|_| {
-            eprintln!("用法: mimo_models <API_KEY>");
-            eprintln!("或设置 MIMO_API_KEY 环境变量");
-            std::process::exit(1);
-        });
+async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+
+    let api_key = std::env::var("MIMO_API_KEY").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("mimo")
         .expect("Preset should exist")
-        .with_api_key(&api_key)
+        .with_api_key(api_key)
         .build();
 
-    println!("========================================");
-    println!("  Xiaomi MiMo 模型列表与能力检测");
-    println!("========================================\n");
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
 
-    // 获取模型列表
-    match client.list_models().await {
-        Ok(models) => {
-            println!("共 {} 个模型:\n", models.len());
-            for (i, m) in models.iter().enumerate() {
-                println!("  {}. {} — {}", i + 1, m.id, m.description);
-            }
-        }
-        Err(e) => { println!("❌ 获取失败: {}", e); std::process::exit(1); }
-    }
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("unknown");
 
-    // 能力检测
-    println!("\n----------------------------------------");
-    println!("  能力检测演示");
-    println!("----------------------------------------\n");
+    println!("用户: {}\n", prompt);
+    println!("AI:");
 
-    let resolver = client.model_resolver();
-    let model = "mimo-v2-flash";
-
-    println!("模型: {}", model);
-    println!("  上下文长度: {} tokens", resolver.max_context(model));
-
-    let caps = [
-        (Capability::CHAT, "CHAT"),
-        (Capability::STREAMING, "STREAMING"),
-        (Capability::TOOLS, "TOOLS"),
-        (Capability::THINKING, "THINKING"),
-        (Capability::VISION, "VISION"),
-    ];
-
-    for (cap, name) in caps {
-        let status = if resolver.has_capability(model, cap) { "✓" } else { "✗" };
-        println!("  {} {}", status, name);
-    }
-
-    // 别名解析
-    println!("\n----------------------------------------");
-    println!("  别名解析演示");
-    println!("----------------------------------------\n");
-
-    let aliases = ["mimo", "flash", "mimo-v2-flash"];
-    for alias in aliases {
-        println!("  '{}' -> '{}'", alias, resolver.resolve(alias));
-    }
+    let resp = client.complete(&req).await?;
+    println!("{}", resp.content);
 
     Ok(())
 }

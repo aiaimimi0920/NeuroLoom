@@ -1,23 +1,35 @@
 @echo off
+REM cloudflare 平台测试 - auth
+REM 用法: test.bat [api_key] [prompt]
+
 cd /d "%~dp0"
-echo ========================================
-echo   Cloudflare Auth Test
-echo ========================================
 
-if exist "%~dp0..\..\.env.local" (
-    for /f "usebackq tokens=1,* delims==" %%a in ("%~dp0..\..\.env.local") do (
-        if "%%a"=="CLOUDFLARE_API_TOKEN" set "CLOUDFLARE_API_TOKEN=%%b"
+if "%CLOUDFLARE_API_KEY%"=="" (
+    if "%1"=="" (
+        echo Warning: No CLOUDFLARE_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
     )
+) else (
+    set API_KEY=%CLOUDFLARE_API_KEY%
 )
 
-if "%CLOUDFLARE_API_TOKEN%"=="" (
-    echo 请设置 CLOUDFLARE_API_TOKEN 环境变量或在 .env.local 中配置
-    pause
-    exit /b 1
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
 )
 
-cargo run -p nl_llm_v2 --example cloudflare_auth -- "%CLOUDFLARE_API_TOKEN%"
+echo ========================================
+echo   cloudflare auth Test
+echo ========================================
+echo.
+
+cargo run --example cloudflare_auth -- %API_KEY% "%PROMPT%"
+
+echo.
 echo ========================================
 echo   Test Complete
 echo ========================================
-pause

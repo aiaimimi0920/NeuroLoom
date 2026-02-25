@@ -1,24 +1,35 @@
 @echo off
-cd /d "%~dp0"
-echo ========================================
-echo   DouBaoSeed Stream Test
-echo ========================================
+REM doubaoseed 平台测试 - stream
+REM 用法: test.bat [api_key] [prompt]
 
-REM 从 .env.local 读取密钥（examples 目录下，上两级）
-if exist "%~dp0..\..\.env.local" (
-    for /f "usebackq tokens=1,* delims==" %%a in ("%~dp0..\..\.env.local") do (
-        if "%%a"=="DOUBAOSEED_API_KEY" set "DOUBAOSEED_API_KEY=%%b"
-    )
-)
+cd /d "%~dp0"
 
 if "%DOUBAOSEED_API_KEY%"=="" (
-    echo 请设置 DOUBAOSEED_API_KEY 环境变量
-    pause
-    exit /b 1
+    if "%1"=="" (
+        echo Warning: No DOUBAOSEED_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
+) else (
+    set API_KEY=%DOUBAOSEED_API_KEY%
 )
 
-cargo run -p nl_llm_v2 --example doubaoseed_stream
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
+)
+
+echo ========================================
+echo   doubaoseed stream Test
+echo ========================================
+echo.
+
+cargo run --example doubaoseed_stream -- %API_KEY% "%PROMPT%"
+
+echo.
 echo ========================================
 echo   Test Complete
 echo ========================================
-pause

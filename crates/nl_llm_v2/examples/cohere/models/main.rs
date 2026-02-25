@@ -1,50 +1,35 @@
-//! Cohere 模型列表
+//! cohere 平台测试 - models
+//!
+//! 运行方式: cargo run --example cohere_models
+//! 或直接运行: test.bat
 
-use nl_llm_v2::LlmClient;
+use nl_llm_v2::{LlmClient, PrimitiveRequest};
+use anyhow::Result;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    println!("========================================");
-    println!("  Cohere 模型列表");
-    println!("========================================\n");
+async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+
+    let api_key = std::env::var("COHERE_API_KEY").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("cohere")
         .expect("Preset should exist")
-        .with_api_key("placeholder")
+        .with_api_key(api_key)
         .build();
 
-    match client.list_models().await {
-        Ok(models) => {
-            println!("共 {} 个模型:\n", models.len());
-            for (i, m) in models.iter().enumerate() {
-                println!("  {}. {} — {}", i + 1, m.id, m.description);
-            }
-        }
-        Err(e) => { println!("获取失败: {}", e); }
-    }
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
 
-    println!("\n----------------------------------------");
-    println!("  常用别名");
-    println!("----------------------------------------\n");
-    let aliases = [
-        ("cohere / command / command-a", "command-a-03-2025"),
-        ("vision", "command-a-vision-07-2025"),
-        ("reasoning", "command-a-reasoning-08-2025"),
-        ("translate", "command-a-translate-08-2025"),
-        ("r+", "command-r-plus-08-2024"),
-        ("r", "command-r-08-2024"),
-        ("r7b", "command-r7b-12-2024"),
-    ];
-    for (a, t) in aliases { println!("  '{}' -> '{}'", a, t); }
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("unknown");
 
-    println!("\n----------------------------------------");
-    println!("  认证配置说明");
-    println!("----------------------------------------\n");
-    println!("  环境变量: COHERE_API_KEY=xxx");
-    println!("\n  密钥类型:");
-    println!("    - 生产密钥: 付费使用，无速率限制");
-    println!("    - 试用密钥: 免费，20 RPM 限制");
-    println!("\n  获取密钥: https://dashboard.cohere.com/api-keys");
+    println!("用户: {}\n", prompt);
+    println!("AI:");
+
+    let resp = client.complete(&req).await?;
+    println!("{}", resp.content);
 
     Ok(())
 }

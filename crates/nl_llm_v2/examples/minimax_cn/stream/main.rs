@@ -1,38 +1,41 @@
-//! MiniMax 中国站流式输出
+//! minimax_cn 平台测试 - stream
+//!
+//! 运行方式: cargo run --example minimax_cn_stream
+//! 或直接运行: test.bat
 
-use futures::StreamExt;
 use nl_llm_v2::{LlmClient, PrimitiveRequest};
-use std::io::Write;
+use anyhow::Result;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let api_key = std::env::var("MINIMAX_CN_API_KEY")
-        .or_else(|_| std::env::args().nth(1).ok_or(()))
-        .unwrap_or_else(|_| "invalid_dummy_key_for_testing".to_string());
+async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+
+    let api_key = std::env::var("MINIMAX_CN_API_KEY").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("minimax_cn")
         .expect("Preset should exist")
         .with_api_key(api_key)
         .build();
 
-    let prompt = std::env::args().nth(2).unwrap_or_else(|| "写一段简单的快速排序，不要解释".to_string());
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
 
-    println!("========================================");
-    println!("  MiniMax 中国站流式输出");
-    println!("========================================\n");
-    println!("网关: https://api.minimaxi.com/v1");
-    println!("模型: MiniMax-M2.5 (200K context)");
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("unknown");
+    req.stream = true;
+
     println!("用户: {}\n", prompt);
-    print!("AI: \n");
+    println!("AI (Stream):");
 
-    let req = PrimitiveRequest::single_user_message(&prompt);
     let mut stream = client.stream(&req).await?;
+    use tokio_stream::StreamExt;
     while let Some(chunk) = stream.next().await {
-        match chunk {
-            Ok(c) => { print!("{}", c.content); std::io::stdout().flush()?; }
-            Err(e) => { eprintln!("\n读取流错误: {}", e); break; }
+        if let Ok(c) = chunk {
+            print!("{}", c.content);
         }
     }
-    println!("\n");
+    println!();
     Ok(())
 }

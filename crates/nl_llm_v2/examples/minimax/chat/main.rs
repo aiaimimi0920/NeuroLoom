@@ -1,36 +1,35 @@
-//! MiniMax (en) 基础对话示例
+//! minimax 平台测试 - chat
+//!
+//! 运行方式: cargo run --example minimax_chat
+//! 或直接运行: test.bat
 
 use nl_llm_v2::{LlmClient, PrimitiveRequest};
+use anyhow::Result;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let api_key = std::env::var("MINIMAX_API_KEY")
-        .or_else(|_| std::env::args().nth(1).ok_or(()))
-        .unwrap_or_else(|_| "invalid_dummy_key_for_testing".to_string());
+async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+
+    let api_key = std::env::var("MINIMAX_API_KEY").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("minimax")
         .expect("Preset should exist")
         .with_api_key(api_key)
         .build();
 
-    let prompt = std::env::args().nth(2).unwrap_or_else(|| "用一句话介绍一下MiniMax。".to_string());
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
 
-    println!("========================================");
-    println!("  MiniMax 基础对话");
-    println!("========================================\n");
-    println!("模型: MiniMax-M2.5 (别名: minimax, m2.5)");
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("unknown");
+
     println!("用户: {}\n", prompt);
+    println!("AI:");
 
-    let req = PrimitiveRequest::single_user_message(&prompt);
-    match client.complete(&req).await {
-        Ok(resp) => {
-            println!("AI: {}", resp.content);
-            if let Some(usage) = resp.usage {
-                println!("\n[Token 用量: prompt={}, completion={}, total={}]",
-                    usage.prompt_tokens, usage.completion_tokens, usage.total_tokens);
-            }
-        }
-        Err(e) => { eprintln!("请求失败: {}", e); std::process::exit(1); }
-    }
+    let resp = client.complete(&req).await?;
+    println!("{}", resp.content);
+
     Ok(())
 }

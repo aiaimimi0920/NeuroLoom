@@ -1,23 +1,35 @@
 @echo off
-cd /d "%~dp0"
-echo ========================================
-echo   SiliconFlow Chat Test
-echo ========================================
+REM siliconflow 平台测试 - chat
+REM 用法: test.bat [api_key] [prompt]
 
-if exist "%~dp0..\..\.env.local" (
-    for /f "usebackq tokens=1,* delims==" %%a in ("%~dp0..\..\.env.local") do (
-        if "%%a"=="SILICONFLOW_API_KEY" set "SILICONFLOW_API_KEY=%%b"
-    )
-)
+cd /d "%~dp0"
 
 if "%SILICONFLOW_API_KEY%"=="" (
-    echo [INFO] SILICONFLOW_API_KEY not found in .env.local
-    echo [INFO] Please set SILICONFLOW_API_KEY in .env.local or pass as argument
-    set SILICONFLOW_API_KEY=YOUR_API_KEY_HERE
+    if "%1"=="" (
+        echo Warning: No SILICONFLOW_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
+) else (
+    set API_KEY=%SILICONFLOW_API_KEY%
 )
 
-cargo run -p nl_llm_v2 --example siliconflow_chat -- "%SILICONFLOW_API_KEY%"
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
+)
+
+echo ========================================
+echo   siliconflow chat Test
+echo ========================================
+echo.
+
+cargo run --example siliconflow_chat -- %API_KEY% "%PROMPT%"
+
+echo.
 echo ========================================
 echo   Test Complete
 echo ========================================
-pause

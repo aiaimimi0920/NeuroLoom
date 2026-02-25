@@ -1,10 +1,35 @@
 @echo off
-setlocal
+REM qwen_oauth 平台测试 - chat
+REM 用法: test.bat [api_key] [prompt]
+
 cd /d "%~dp0"
 
-echo [INFO] Qwen OAuth 测试无需配置 QWEN_API_KEY。
-echo [INFO] 将触发 portal.qwen.ai 交互式授权流程，如果这是你第一次运行，请留意弹出的网页或控制台中显示的 User Code。
+if "%QWEN_OAUTH_API_KEY%"=="" (
+    if "%1"=="" (
+        echo Warning: No QWEN_OAUTH_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
+) else (
+    set API_KEY=%QWEN_OAUTH_API_KEY%
+)
 
-cargo run -p nl_llm_v2 --example qwen_oauth_chat
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
+)
 
-endlocal
+echo ========================================
+echo   qwen_oauth chat Test
+echo ========================================
+echo.
+
+cargo run --example qwen_oauth_chat -- %API_KEY% "%PROMPT%"
+
+echo.
+echo ========================================
+echo   Test Complete
+echo ========================================

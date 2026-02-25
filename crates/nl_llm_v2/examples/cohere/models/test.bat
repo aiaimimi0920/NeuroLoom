@@ -1,10 +1,35 @@
 @echo off
+REM cohere 平台测试 - models
+REM 用法: test.bat [api_key] [prompt]
+
 cd /d "%~dp0"
+
+if "%COHERE_API_KEY%"=="" (
+    if "%1"=="" (
+        echo Warning: No COHERE_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
+) else (
+    set API_KEY=%COHERE_API_KEY%
+)
+
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
+)
+
 echo ========================================
-echo   Cohere Models
+echo   cohere models Test
 echo ========================================
-cargo run -p nl_llm_v2 --example cohere_models
+echo.
+
+cargo run --example cohere_models -- %API_KEY% "%PROMPT%"
+
+echo.
 echo ========================================
 echo   Test Complete
 echo ========================================
-pause

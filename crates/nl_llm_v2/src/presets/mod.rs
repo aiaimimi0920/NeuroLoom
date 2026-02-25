@@ -46,8 +46,11 @@ pub mod aws_claude;
 pub mod cohere;
 pub mod cloudflare;
 pub mod qianfan;
+pub mod hunyuan;
 pub mod perplexity;
 pub mod kat_coder;
 pub mod spark;
+pub mod dify;
+pub mod jina;
 
 pub use registry::{PresetRegistry, REGISTRY};

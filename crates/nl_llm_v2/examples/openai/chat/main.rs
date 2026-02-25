@@ -22,8 +22,7 @@ async fn main() -> Result<()> {
     let prompt = args.get(2).cloned()
         .unwrap_or_else(|| "Hello!".to_string());
 
-    // [修复] 移除未使用的 mut
-    let req = PrimitiveRequest::single_user_message(&prompt)
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
         .with_model("gpt-4o");
 
     println!("用户: {}\n", prompt);

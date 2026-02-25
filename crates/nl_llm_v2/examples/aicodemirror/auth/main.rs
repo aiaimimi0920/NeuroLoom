@@ -1,63 +1,35 @@
-//! AICodeMirror 认证验证测试
+//! aicodemirror 平台测试 - auth
 //!
-//! 演示如何验证 API 密钥和获取模型列表
+//! 运行方式: cargo run --example aicodemirror_auth
+//! 或直接运行: test.bat
 
 use nl_llm_v2::{LlmClient, PrimitiveRequest};
+use anyhow::Result;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let api_key = std::env::var("AICODEMIRROR_API_KEY")
-        .or_else(|_| std::env::args().nth(1).ok_or(()))
-        .unwrap_or_else(|_| {
-            eprintln!("用法: aicodemirror_auth <API_KEY>");
-            std::process::exit(1);
-        });
+async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
 
-    println!("========================================");
-    println!("  AICodeMirror 认证验证");
-    println!("========================================\n");
-    println!("网关: https://api.aicodemirror.com/api/claudecode/v1");
-    println!("国内: https://api.claudecode.net.cn/api/claudecode/v1");
+    let api_key = std::env::var("AICODEMIRROR_API_KEY").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("aicodemirror")
         .expect("Preset should exist")
-        .with_api_key(&api_key)
+        .with_api_key(api_key)
         .build();
 
-    println!("\n可用模型:");
-    match client.list_models().await {
-        Ok(models) => {
-            for m in &models {
-                println!("  • {} — {}", m.id, m.description);
-            }
-        }
-        Err(e) => println!("  获取失败: {}", e),
-    }
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
 
-    println!("\n尝试基础通信 (claude-sonnet-4-5-20250929)...");
-    let req = PrimitiveRequest::single_user_message("Say 'auth ok' in exactly 2 words");
-    match client.complete(&req).await {
-        Ok(resp) => {
-            println!("\n认证通讯成功!");
-            println!("模型响应: {}", resp.content);
-        }
-        Err(e) => {
-            println!("\n认证通讯失败: {}", e);
-        }
-    }
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("unknown");
 
-    // 测试模型别名
-    println!("\n测试模型别名 'sonnet-4.6'...");
-    let req = PrimitiveRequest::single_user_message("Say '4.6 ok'")
-        .with_model("sonnet-4.6");
-    match client.complete(&req).await {
-        Ok(resp) => {
-            println!("Claude 4.6 Sonnet 响应: {}", resp.content);
-        }
-        Err(e) => {
-            println!("Claude 4.6 请求失败: {}", e);
-        }
-    }
+    println!("用户: {}\n", prompt);
+    println!("AI:");
+
+    let resp = client.complete(&req).await?;
+    println!("{}", resp.content);
 
     Ok(())
 }

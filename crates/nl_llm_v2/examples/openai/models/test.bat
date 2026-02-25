@@ -1,12 +1,35 @@
 @echo off
+REM openai 平台测试 - models
+REM 用法: test.bat [api_key] [prompt]
+
 cd /d "%~dp0"
+
+if "%OPENAI_API_KEY%"=="" (
+    if "%1"=="" (
+        echo Warning: No OPENAI_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
+) else (
+    set API_KEY=%OPENAI_API_KEY%
+)
+
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
+)
+
 echo ========================================
-echo   OpenAI Models Test
+echo   openai models Test
 echo ========================================
-echo 本测试不需要 API Key，仅演示 ModelResolver 功能
-echo ========================================
-cargo run -p nl_llm_v2 --example openai_models
+echo.
+
+cargo run --example openai_models -- %API_KEY% "%PROMPT%"
+
+echo.
 echo ========================================
 echo   Test Complete
 echo ========================================
-pause

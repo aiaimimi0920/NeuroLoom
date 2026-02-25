@@ -54,6 +54,7 @@ impl Site for IFlowSite {
     fn extra_headers(&self) -> HashMap<&str, &str> {
         let mut headers = HashMap::new();
         headers.insert("Content-Type", "application/json");
+        // 伪装成真实的 iFlow CLI
         headers.insert("User-Agent", "iFlow-Cli");
         headers
     }

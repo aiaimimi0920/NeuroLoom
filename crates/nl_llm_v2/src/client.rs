@@ -355,6 +355,11 @@ impl ClientBuilder {
         self.auth(IFlowAuth::new(cookie))
     }
 
+    /// iFlow 专用认证（支持缓存以避免风控封禁）
+    pub fn with_iflow_cookie(self, cookie: impl Into<String>, cache_path: impl AsRef<std::path::Path>) -> Self {
+        self.auth(IFlowAuth::new(cookie).with_cache(cache_path))
+    }
+
     /// 启用并发控制（使用 Extension 中的默认配置或默认值）
     pub fn with_concurrency(mut self) -> Self {
         // 如果有 Extension，使用其并发配置；否则使用默认配置

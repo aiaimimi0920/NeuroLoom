@@ -1,61 +1,35 @@
-//! 讯飞星火 模型列表查看器
+//! spark 平台测试 - models
 //!
-//! 运行方式: cargo run -p nl_llm_v2 --example spark_models
+//! 运行方式: cargo run --example spark_models
+//! 或直接运行: test.bat
 
-use nl_llm_v2::LlmClient;
-use nl_llm_v2::model::resolver::Capability;
+use nl_llm_v2::{LlmClient, PrimitiveRequest};
+use anyhow::Result;
 
-fn main() -> anyhow::Result<()> {
-    println!("========================================");
-    println!("  讯飞星火 可用模型列表");
-    println!("========================================\n");
+#[tokio::main]
+async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+
+    let api_key = std::env::var("SPARK_API_KEY").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("spark")
         .expect("Preset should exist")
+        .with_api_key(api_key)
         .build();
 
-    let models = vec![
-        ("4.0Ultra", "旗舰模型"),
-        ("max-32k", "长文本"),
-        ("generalv3.5", "Spark Max"),
-        ("pro-128k", "长上下文"),
-        ("generalv3", "Spark Pro"),
-        ("lite", "免费轻量"),
-    ];
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
 
-    for (i, (model, desc)) in models.iter().enumerate() {
-        println!("  {}. {} — {}", i + 1, model, desc);
-    }
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("unknown");
 
-    println!("\n----------------------------------------");
-    println!("别名速查表:");
+    println!("用户: {}\n", prompt);
+    println!("AI:");
 
-    let aliases = vec![
-        ("spark", "4.0Ultra"),
-        ("ultra", "4.0Ultra"),
-        ("max", "generalv3.5"),
-        ("max32k", "max-32k"),
-        ("pro", "generalv3"),
-        ("pro128k", "pro-128k"),
-        ("lite", "lite"),
-    ];
-
-    for (alias, _) in &aliases {
-        let resolved = client.resolve_model(alias);
-        println!("  {:>10} → {}", alias, resolved);
-    }
-
-    println!("\n----------------------------------------");
-    println!("能力对比:\n");
-
-    for (model, _) in &models {
-        let chat = if client.has_capability(model, Capability::CHAT) { "✅" } else { "❌" };
-        let tools = if client.has_capability(model, Capability::TOOLS) { "✅" } else { "❌" };
-        let stream = if client.has_capability(model, Capability::STREAMING) { "✅" } else { "❌" };
-        let ctx = client.max_context(model);
-        println!("  {:>15}: Chat {} | Tools {} | Stream {} | {}K ctx",
-            model, chat, tools, stream, ctx / 1000);
-    }
+    let resp = client.complete(&req).await?;
+    println!("{}", resp.content);
 
     Ok(())
 }

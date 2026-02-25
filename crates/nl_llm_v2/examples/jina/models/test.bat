@@ -1,0 +1,4 @@
+@echo off
+set JINA_API_KEY=jina_81b9408d7c0840d4a12c78ee7806e9e2fq0ocfabErmkfiKFTdj4N9zUfK0e
+cargo run --example jina_models
+pause

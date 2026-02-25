@@ -1,37 +1,35 @@
-//! AWS Claude AK/SK 模式 — 模型列表
+//! aws_claude_ak 平台测试 - models
+//!
+//! 运行方式: cargo run --example aws_claude_ak_models
+//! 或直接运行: test.bat
 
-use nl_llm_v2::LlmClient;
+use nl_llm_v2::{LlmClient, PrimitiveRequest};
+use anyhow::Result;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    println!("========================================");
-    println!("  AWS Claude AK/SK 模式 — 模型列表");
-    println!("========================================\n");
+async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+
+    let api_key = std::env::var("AWS_CLAUDE_AK_API_KEY").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("aws_claude_ak")
         .expect("Preset should exist")
-        .with_api_key("placeholder")
+        .with_api_key(api_key)
         .build();
 
-    match client.list_models().await {
-        Ok(models) => {
-            println!("Bedrock Claude 模型 (共 {} 个):\n", models.len());
-            for (i, m) in models.iter().enumerate() {
-                println!("  {}. {}\n     {}\n", i + 1, m.id, m.description);
-            }
-        }
-        Err(e) => { println!("获取失败: {}", e); }
-    }
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
 
-    println!("----------------------------------------");
-    println!("  AK/SK 认证配置");
-    println!("----------------------------------------\n");
-    println!("  在 examples/.env.local 中配置:");
-    println!("    AWS_ACCESS_KEY_ID=AKIA...");
-    println!("    AWS_SECRET_ACCESS_KEY=xxxxx");
-    println!("    AWS_REGION=us-east-1");
-    println!("\n  URL 格式 (原生 Converse API):");
-    println!("    https://bedrock-runtime.{{region}}.amazonaws.com/model/{{model-id}}/converse");
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("unknown");
+
+    println!("用户: {}\n", prompt);
+    println!("AI:");
+
+    let resp = client.complete(&req).await?;
+    println!("{}", resp.content);
 
     Ok(())
 }

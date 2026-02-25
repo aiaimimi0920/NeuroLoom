@@ -1,43 +1,41 @@
-//! 智谱 BigModel (GLM国内版) 流式输出测试
+//! zhipu 平台测试 - stream
+//!
+//! 运行方式: cargo run --example zhipu_stream
+//! 或直接运行: test.bat
 
 use nl_llm_v2::{LlmClient, PrimitiveRequest};
-use futures::StreamExt;
+use anyhow::Result;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let api_key = std::env::var("ZHIPU_API_KEY")
-        .or_else(|_| std::env::args().nth(1).ok_or(()))
-        .unwrap_or_else(|_| {
-            eprintln!("用法: zhipu_stream <API_KEY> [prompt]");
-            eprintln!("或设置 ZHIPU_API_KEY 环境变量");
-            std::process::exit(1);
-        });
+async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
 
-    let prompt = std::env::args().nth(2)
-        .unwrap_or_else(|| "用三句话介绍一下 Rust 语言。".to_string());
+    let api_key = std::env::var("ZHIPU_API_KEY").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("zhipu")
         .expect("Preset should exist")
-        .with_api_key(&api_key)
+        .with_api_key(api_key)
         .build();
 
-    let req = PrimitiveRequest::single_user_message(&prompt)
-        .with_model("glm-5");
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
+
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("glm-4-plus");
+    req.stream = true;
 
     println!("用户: {}\n", prompt);
-    print!("AI: ");
+    println!("AI (Stream):");
 
     let mut stream = client.stream(&req).await?;
+    use tokio_stream::StreamExt;
     while let Some(chunk) = stream.next().await {
-        match chunk {
-            Ok(c) => print!("{}", c.content),
-            Err(e) => {
-                eprintln!("\n流式错误: {}", e);
-                break;
-            }
+        if let Ok(c) = chunk {
+            print!("{}", c.content);
         }
     }
-    println!("\n");
-
+    println!();
     Ok(())
 }

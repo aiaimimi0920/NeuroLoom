@@ -1,64 +1,41 @@
-//! AICodeMirror 流式输出
+//! aicodemirror 平台测试 - stream
 //!
-//! 演示流式响应和模型别名使用
+//! 运行方式: cargo run --example aicodemirror_stream
+//! 或直接运行: test.bat
 
-use futures::StreamExt;
 use nl_llm_v2::{LlmClient, PrimitiveRequest};
-use std::io::Write;
+use anyhow::Result;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let api_key = std::env::var("AICODEMIRROR_API_KEY")
-        .or_else(|_| std::env::args().nth(1).ok_or(()))
-        .unwrap_or_else(|_| {
-            eprintln!("用法: aicodemirror_stream <API_KEY>");
-            std::process::exit(1);
-        });
+async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
 
-    let model_alias = std::env::args().nth(2).unwrap_or_else(|| "sonnet".to_string());
-    let prompt = std::env::args().nth(3).unwrap_or_else(|| "Write a simple quicksort, no explanation".to_string());
+    let api_key = std::env::var("AICODEMIRROR_API_KEY").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("aicodemirror")
         .expect("Preset should exist")
-        .with_api_key(&api_key)
+        .with_api_key(api_key)
         .build();
 
-    println!("========================================");
-    println!("  AICodeMirror 流式输出");
-    println!("========================================\n");
-    println!("模型别名: {}", model_alias);
-    println!("用户: {}\n", prompt);
-    print!("AI: ");
-    std::io::stdout().flush()?;
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
 
-    // 使用模型别名进行流式请求
-    let req = PrimitiveRequest::single_user_message(&prompt)
-        .with_model(&model_alias);
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("unknown");
+    req.stream = true;
+
+    println!("用户: {}\n", prompt);
+    println!("AI (Stream):");
 
     let mut stream = client.stream(&req).await?;
+    use tokio_stream::StreamExt;
     while let Some(chunk) = stream.next().await {
-        match chunk {
-            Ok(c) => {
-                print!("{}", c.content);
-                std::io::stdout().flush()?;
-            }
-            Err(e) => {
-                eprintln!("\n读取流错误: {}", e);
-                break;
-            }
+        if let Ok(c) = chunk {
+            print!("{}", c.content);
         }
     }
-    println!("\n");
-
-    // 提示可用别名
-    println!("----------------------------------------");
-    println!("  其他可用模型别名");
-    println!("----------------------------------------");
-    println!("  sonnet      - Claude Sonnet 4.5 (默认)");
-    println!("  sonnet-4.6  - Claude Sonnet 4.6 (最新)");
-    println!("  opus        - Claude Opus 4 (旗舰)");
-    println!("  opus-4.6    - Claude Opus 4.6 (最新旗舰)");
-    println!("  haiku       - Claude Haiku 4.5 (快速)");
-
+    println!();
     Ok(())
 }

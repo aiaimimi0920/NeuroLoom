@@ -63,12 +63,15 @@ impl PresetRegistry {
         self.builders.insert("aws_claude", super::aws_claude::builder);
         self.builders.insert("aws_claude_ak", super::aws_claude::builder_ak);
         self.builders.insert("cohere", super::cohere::builder);
+        self.builders.insert("hunyuan", super::hunyuan::builder);
         self.builders.insert("cloudflare", super::cloudflare::builder);
         self.builders.insert("qianfan", super::qianfan::builder);
         self.builders.insert("perplexity", super::perplexity::builder);
         self.builders.insert("kat_coder", super::kat_coder::builder);
         self.builders.insert("spark", super::spark::builder);
         self.builders.insert("spark_x", super::spark::builder_x);
+        self.builders.insert("dify", super::dify::builder);
+        self.builders.insert("jina", super::jina::builder);
     }
 
     pub fn get_builder(&self, preset_name: &str) -> Option<ClientBuilder> {

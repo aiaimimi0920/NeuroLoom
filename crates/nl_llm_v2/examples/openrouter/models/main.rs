@@ -1,48 +1,35 @@
-//! OpenRouter 模型列表与能力检测
+//! openrouter 平台测试 - models
+//!
+//! 运行方式: cargo run --example openrouter_models
+//! 或直接运行: test.bat
 
-use nl_llm_v2::{LlmClient, model::Capability};
+use nl_llm_v2::{LlmClient, PrimitiveRequest};
+use anyhow::Result;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let api_key = std::env::var("OPENROUTER_API_KEY")
-        .or_else(|_| std::env::args().nth(1).ok_or(()))
-        .unwrap_or_else(|_| {
-            eprintln!("用法: openrouter_models <API_KEY>");
-            eprintln!("或设置 OPENROUTER_API_KEY 环境变量");
-            std::process::exit(1);
-        });
+async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+
+    let api_key = std::env::var("OPENROUTER_API_KEY").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("openrouter")
         .expect("Preset should exist")
-        .with_api_key(&api_key)
+        .with_api_key(api_key)
         .build();
 
-    println!("========================================");
-    println!("  OpenRouter 模型列表 (动态 API)");
-    println!("========================================\n");
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
 
-    match client.list_models().await {
-        Ok(models) => {
-            println!("共 {} 个模型 (显示前 20 个):\n", models.len());
-            for (i, m) in models.iter().take(20).enumerate() {
-                println!("  {}. {} — {}", i + 1, m.id, m.description);
-            }
-            if models.len() > 20 {
-                println!("  ... 还有 {} 个模型", models.len() - 20);
-            }
-        }
-        Err(e) => { println!("❌ 获取失败: {}", e); std::process::exit(1); }
-    }
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("google/gemini-2.5-pro");
 
-    println!("\n----------------------------------------");
-    println!("  别名解析演示");
-    println!("----------------------------------------\n");
+    println!("用户: {}\n", prompt);
+    println!("AI:");
 
-    let resolver = client.model_resolver();
-    let aliases = ["gemini", "gemini-flash", "claude", "gpt4", "deepseek", "llama"];
-    for alias in aliases {
-        println!("  '{}' -> '{}'", alias, resolver.resolve(alias));
-    }
+    let resp = client.complete(&req).await?;
+    println!("{}", resp.content);
 
     Ok(())
 }

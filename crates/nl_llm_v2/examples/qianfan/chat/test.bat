@@ -1,30 +1,35 @@
 @echo off
-cd /d "%~dp0"
-echo ========================================
-echo   百度千帆 Chat Test
-echo ========================================
-echo.
-echo  请设置环境变量: QIANFAN_API_KEY=xxx
-echo  或在 examples\.env.local 中配置:
-echo    QIANFAN_API_KEY=your-api-key
-echo.
-echo  获取密钥: https://qianfan.cloud.baidu.com
-echo.
+REM qianfan 平台测试 - chat
+REM 用法: test.bat [api_key] [prompt]
 
-if exist "%~dp0..\..\.env.local" (
-    for /f "usebackq tokens=1,* delims==" %%a in ("%~dp0..\..\.env.local") do (
-        if "%%a"=="QIANFAN_API_KEY" set "QIANFAN_API_KEY=%%b"
-    )
-)
+cd /d "%~dp0"
 
 if "%QIANFAN_API_KEY%"=="" (
-    echo   [ERROR] 请配置 QIANFAN_API_KEY
-    pause
-    exit /b 1
+    if "%1"=="" (
+        echo Warning: No QIANFAN_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
+) else (
+    set API_KEY=%QIANFAN_API_KEY%
 )
 
-cargo run -p nl_llm_v2 --example qianfan_chat -- "%QIANFAN_API_KEY%"
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
+)
+
+echo ========================================
+echo   qianfan chat Test
+echo ========================================
+echo.
+
+cargo run --example qianfan_chat -- %API_KEY% "%PROMPT%"
+
+echo.
 echo ========================================
 echo   Test Complete
 echo ========================================
-pause

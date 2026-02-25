@@ -1,60 +1,41 @@
-//! Azure OpenAI 流式输出
+//! azure_openai 平台测试 - stream
 //!
-//! 运行方式:
-//!   set AZURE_OPENAI_API_KEY=your-key
-//!   set AZURE_OPENAI_ENDPOINT=https://YOUR-RESOURCE.openai.azure.com
-//!   cargo run -p nl_llm_v2 --example azure_openai_stream
+//! 运行方式: cargo run --example azure_openai_stream
+//! 或直接运行: test.bat
 
-use futures::StreamExt;
 use nl_llm_v2::{LlmClient, PrimitiveRequest};
-use std::io::Write;
+use anyhow::Result;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let api_key = std::env::var("AZURE_OPENAI_API_KEY")
-        .or_else(|_| std::env::args().nth(1).ok_or(()))
-        .unwrap_or_else(|_| {
-            eprintln!("用法: azure_openai_stream <API_KEY> <ENDPOINT> <DEPLOYMENT>");
-            eprintln!("或设置环境变量:");
-            eprintln!("  AZURE_OPENAI_API_KEY");
-            eprintln!("  AZURE_OPENAI_ENDPOINT");
-            std::process::exit(1);
-        });
+async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
 
-    let endpoint = std::env::var("AZURE_OPENAI_ENDPOINT")
-        .or_else(|_| std::env::args().nth(2).ok_or(()))
-        .unwrap_or_else(|_| {
-            eprintln!("错误: 需要设置 AZURE_OPENAI_ENDPOINT 环境变量");
-            eprintln!("示例: https://YOUR-RESOURCE.openai.azure.com");
-            std::process::exit(1);
-        });
-
-    let deployment = std::env::args().nth(3).unwrap_or_else(|| "gpt-4o".to_string());
+    let api_key = std::env::var("AZURE_OPENAI_API_KEY").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("azure_openai")
         .expect("Preset should exist")
-        .with_base_url(&endpoint)
-        .with_api_key(&api_key)
+        .with_api_key(api_key)
         .build();
 
-    println!("========================================");
-    println!("  Azure OpenAI 流式输出");
-    println!("========================================\n");
-    println!("Endpoint: {}", endpoint);
-    println!("Deployment: {}", deployment);
-    print!("\nAI: ");
-    std::io::stdout().flush()?;
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
 
-    let req = PrimitiveRequest::single_user_message("写一段简单的快速排序代码")
-        .with_model(&deployment);
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("unknown");
+    req.stream = true;
+
+    println!("用户: {}\n", prompt);
+    println!("AI (Stream):");
 
     let mut stream = client.stream(&req).await?;
+    use tokio_stream::StreamExt;
     while let Some(chunk) = stream.next().await {
-        match chunk {
-            Ok(c) => { print!("{}", c.content); std::io::stdout().flush()?; }
-            Err(e) => { eprintln!("\n读取流错误: {}", e); break; }
+        if let Ok(c) = chunk {
+            print!("{}", c.content);
         }
     }
-    println!("\n");
+    println!();
     Ok(())
 }

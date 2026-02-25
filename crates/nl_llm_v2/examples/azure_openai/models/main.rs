@@ -1,37 +1,35 @@
-//! Azure OpenAI 模型列表
+//! azure_openai 平台测试 - models
+//!
+//! 运行方式: cargo run --example azure_openai_models
+//! 或直接运行: test.bat
 
-use nl_llm_v2::LlmClient;
+use nl_llm_v2::{LlmClient, PrimitiveRequest};
+use anyhow::Result;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    println!("========================================");
-    println!("  Azure OpenAI 可部署模型");
-    println!("========================================\n");
+async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+
+    let api_key = std::env::var("AZURE_OPENAI_API_KEY").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("azure_openai")
         .expect("Preset should exist")
-        .with_api_key("placeholder")
+        .with_api_key(api_key)
         .build();
 
-    match client.list_models().await {
-        Ok(models) => {
-            println!("Azure 上常见的可部署模型 (共 {} 个):\n", models.len());
-            for (i, m) in models.iter().enumerate() {
-                println!("  {}. {} — {}", i + 1, m.id, m.description);
-            }
-        }
-        Err(e) => { println!("获取失败: {}", e); }
-    }
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
 
-    println!("\n----------------------------------------");
-    println!("  使用说明");
-    println!("----------------------------------------\n");
-    println!("  Azure OpenAI 需要你先在 Azure Portal 中部署模型。");
-    println!("  \"模型名\" 实际上就是你的 deployment 名称。\n");
-    println!("  配置 examples/.env.local:");
-    println!("    AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com");
-    println!("    AZURE_OPENAI_KEY=your-api-key");
-    println!("    AZURE_DEPLOYMENT=your-deployment-name");
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("unknown");
+
+    println!("用户: {}\n", prompt);
+    println!("AI:");
+
+    let resp = client.complete(&req).await?;
+    println!("{}", resp.content);
 
     Ok(())
 }

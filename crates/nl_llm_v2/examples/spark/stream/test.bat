@@ -1,18 +1,35 @@
 @echo off
-setlocal enabledelayedexpansion
-chcp 65001 >nul
+REM spark 平台测试 - stream
+REM 用法: test.bat [api_key] [prompt]
 
-for /f "tokens=1,* delims==" %%a in ('type ..\..\..\..\..\..\..\.env.local 2^>nul ^| findstr /B "SPARK_API_KEY="') do set SPARK_API_KEY=%%b
+cd /d "%~dp0"
 
 if "%SPARK_API_KEY%"=="" (
-    echo [INFO] SPARK_API_KEY not found in .env.local, using hardcoded APIPassword.
-    set SPARK_API_KEY=YOUR_API_PASSWORD_HERE
-)
-
-if "%~1"=="" (
-    cargo run -p nl_llm_v2 --example spark_stream -- "%SPARK_API_KEY%" "写一首关于人工智能的五言绝句。"
+    if "%1"=="" (
+        echo Warning: No SPARK_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
 ) else (
-    cargo run -p nl_llm_v2 --example spark_stream -- "%SPARK_API_KEY%" %*
+    set API_KEY=%SPARK_API_KEY%
 )
 
-endlocal
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
+)
+
+echo ========================================
+echo   spark stream Test
+echo ========================================
+echo.
+
+cargo run --example spark_stream -- %API_KEY% "%PROMPT%"
+
+echo.
+echo ========================================
+echo   Test Complete
+echo ========================================

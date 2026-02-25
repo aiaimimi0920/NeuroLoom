@@ -1,18 +1,35 @@
 @echo off
-setlocal enabledelayedexpansion
-chcp 65001 >nul
+REM longcat 平台测试 - models
+REM 用法: test.bat [api_key] [prompt]
 
-for /f "tokens=1,* delims==" %%a in ('type ..\..\..\..\..\..\.env.local 2^>nul ^| findstr /B "LONGCAT_API_KEY="') do set LONGCAT_API_KEY=%%b
+cd /d "%~dp0"
 
 if "%LONGCAT_API_KEY%"=="" (
-    echo [INFO] LONGCAT_API_KEY not found in .env.local, using hardcoded key for testing.
-    set LONGCAT_API_KEY=YOUR_API_KEY_HERE
+    if "%1"=="" (
+        echo Warning: No LONGCAT_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
 ) else (
-    echo [INFO] LONGCAT_API_KEY loaded
+    set API_KEY=%LONGCAT_API_KEY%
 )
 
-if "%~1"=="" (
-    cargo run -p nl_llm_v2 --example longcat_models -- "%LONGCAT_API_KEY%"
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
 ) else (
-    cargo run -p nl_llm_v2 --example longcat_models -- "%~1"
+    set PROMPT=%1
 )
+
+echo ========================================
+echo   longcat models Test
+echo ========================================
+echo.
+
+cargo run --example longcat_models -- %API_KEY% "%PROMPT%"
+
+echo.
+echo ========================================
+echo   Test Complete
+echo ========================================

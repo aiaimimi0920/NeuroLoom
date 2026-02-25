@@ -1,21 +1,33 @@
 @echo off
-REM Kimi 余额查询测试
-REM 用法: test.bat
+REM kimi 平台测试 - balance
+REM 用法: test.bat [api_key] [prompt]
 
 cd /d "%~dp0"
 
-REM 检查环境变量
 if "%KIMI_API_KEY%"=="" (
-    echo 错误: 请设置 KIMI_API_KEY 环境变量
-    exit /b 1
+    if "%1"=="" (
+        echo Warning: No KIMI_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
+) else (
+    set API_KEY=%KIMI_API_KEY%
+)
+
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
 )
 
 echo ========================================
-echo   Kimi Balance Query Test
+echo   kimi balance Test
 echo ========================================
 echo.
 
-cargo run -p nl_llm_v2 --example kimi_balance
+cargo run --example kimi_balance -- %API_KEY% "%PROMPT%"
 
 echo.
 echo ========================================

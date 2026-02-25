@@ -1,21 +1,35 @@
 @echo off
-cd /d "%~dp0"
-echo ========================================
-echo   AICodeMirror Stream Test
-echo ========================================
+REM aicodemirror 平台测试 - stream
+REM 用法: test.bat [api_key] [prompt]
 
-if exist "%~dp0..\..\.env.local" (
-    for /f "usebackq tokens=1,* delims==" %%a in ("%~dp0..\..\.env.local") do (
-        if "%%a"=="AICODEMIRROR_API_KEY" set "AICODEMIRROR_API_KEY=%%b"
-    )
-)
+cd /d "%~dp0"
 
 if "%AICODEMIRROR_API_KEY%"=="" (
-    set AICODEMIRROR_API_KEY=YOUR_API_KEY_HERE
+    if "%1"=="" (
+        echo Warning: No AICODEMIRROR_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
+) else (
+    set API_KEY=%AICODEMIRROR_API_KEY%
 )
 
-cargo run -p nl_llm_v2 --example aicodemirror_stream -- "%AICODEMIRROR_API_KEY%"
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
+)
+
+echo ========================================
+echo   aicodemirror stream Test
+echo ========================================
+echo.
+
+cargo run --example aicodemirror_stream -- %API_KEY% "%PROMPT%"
+
+echo.
 echo ========================================
 echo   Test Complete
 echo ========================================
-pause

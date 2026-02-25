@@ -1,14 +1,35 @@
 @echo off
-chcp 65001 >nul
+REM openai 平台测试 - auth
+REM 用法: test.bat [api_key] [prompt]
+
 cd /d "%~dp0"
+
+if "%OPENAI_API_KEY%"=="" (
+    if "%1"=="" (
+        echo Warning: No OPENAI_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
+) else (
+    set API_KEY=%OPENAI_API_KEY%
+)
+
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
+)
+
 echo ========================================
-echo   OpenAI API Auth Test
+echo   openai auth Test
 echo ========================================
-echo 请设置 OPENAI_API_KEY 环境变量
-echo Usage: set OPENAI_API_KEY=your_key && test.bat
-echo ========================================
-cargo run -p nl_llm_v2 --example openai_auth
+echo.
+
+cargo run --example openai_auth -- %API_KEY% "%PROMPT%"
+
+echo.
 echo ========================================
 echo   Test Complete
 echo ========================================
-pause

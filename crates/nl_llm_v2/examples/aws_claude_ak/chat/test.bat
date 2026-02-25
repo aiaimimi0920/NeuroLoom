@@ -1,37 +1,35 @@
 @echo off
+REM aws_claude_ak 平台测试 - chat
+REM 用法: test.bat [api_key] [prompt]
+
 cd /d "%~dp0"
-echo ========================================
-echo   AWS Claude AK/SK Chat Test
-echo ========================================
-echo.
-echo  请设置以下环境变量:
-echo    AWS_ACCESS_KEY_ID=AKIA...
-echo    AWS_SECRET_ACCESS_KEY=xxxxx
-echo    AWS_REGION=us-east-1  (可选)
-echo.
 
-if exist "%~dp0..\..\.env.local" (
-    for /f "usebackq tokens=1,* delims==" %%a in ("%~dp0..\..\.env.local") do (
-        if "%%a"=="AWS_ACCESS_KEY_ID" set "AWS_ACCESS_KEY_ID=%%b"
-        if "%%a"=="AWS_SECRET_ACCESS_KEY" set "AWS_SECRET_ACCESS_KEY=%%b"
-        if "%%a"=="AWS_REGION" set "AWS_REGION=%%b"
+if "%AWS_CLAUDE_AK_API_KEY%"=="" (
+    if "%1"=="" (
+        echo Warning: No AWS_CLAUDE_AK_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
     )
+) else (
+    set API_KEY=%AWS_CLAUDE_AK_API_KEY%
 )
 
-if "%AWS_ACCESS_KEY_ID%"=="" (
-    echo   [ERROR] 请在 examples\.env.local 中配置 AWS_ACCESS_KEY_ID
-    pause
-    exit /b 1
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
 )
-if "%AWS_SECRET_ACCESS_KEY%"=="" (
-    echo   [ERROR] 请在 examples\.env.local 中配置 AWS_SECRET_ACCESS_KEY
-    pause
-    exit /b 1
-)
-if "%AWS_REGION%"=="" set AWS_REGION=us-east-1
 
-cargo run -p nl_llm_v2 --example aws_claude_ak_chat -- "%AWS_ACCESS_KEY_ID%" "%AWS_SECRET_ACCESS_KEY%" "%AWS_REGION%"
+echo ========================================
+echo   aws_claude_ak chat Test
+echo ========================================
+echo.
+
+cargo run --example aws_claude_ak_chat -- %API_KEY% "%PROMPT%"
+
+echo.
 echo ========================================
 echo   Test Complete
 echo ========================================
-pause

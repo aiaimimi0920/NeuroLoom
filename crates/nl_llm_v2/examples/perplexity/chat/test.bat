@@ -1,28 +1,35 @@
 @echo off
-cd /d "%~dp0"
-echo ========================================
-echo   Perplexity AI Chat Test
-echo ========================================
-echo.
-echo  请设置环境变量: PERPLEXITY_API_KEY=pplx-xxxx
-echo  或在 examples\.env.local 中配置
-echo  获取密钥: https://www.perplexity.ai (Settings -^> API)
-echo.
+REM perplexity 平台测试 - chat
+REM 用法: test.bat [api_key] [prompt]
 
-if exist "%~dp0..\..\.env.local" (
-    for /f "usebackq tokens=1,* delims==" %%a in ("%~dp0..\..\.env.local") do (
-        if "%%a"=="PERPLEXITY_API_KEY" set "PERPLEXITY_API_KEY=%%b"
-    )
-)
+cd /d "%~dp0"
 
 if "%PERPLEXITY_API_KEY%"=="" (
-    echo   [ERROR] 请配置 PERPLEXITY_API_KEY
-    pause
-    exit /b 1
+    if "%1"=="" (
+        echo Warning: No PERPLEXITY_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
+) else (
+    set API_KEY=%PERPLEXITY_API_KEY%
 )
 
-cargo run -p nl_llm_v2 --example perplexity_chat -- "%PERPLEXITY_API_KEY%"
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
+)
+
+echo ========================================
+echo   perplexity chat Test
+echo ========================================
+echo.
+
+cargo run --example perplexity_chat -- %API_KEY% "%PROMPT%"
+
+echo.
 echo ========================================
 echo   Test Complete
 echo ========================================
-pause

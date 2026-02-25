@@ -1,62 +1,35 @@
-//! Kimi (Moonshot) 模型列表查询
+//! kimi 平台测试 - models
 //!
-//! ## 特性演示
-//!
-//! - Kimi/Moonshot 静态精选模型列表
-//! - 模型别名解析速查表
-//!
-//! 运行方式: cargo run -p nl_llm_v2 --example kimi_models
+//! 运行方式: cargo run --example kimi_models
+//! 或直接运行: test.bat
 
-use nl_llm_v2::LlmClient;
-use nl_llm_v2::Capability;
+use nl_llm_v2::{LlmClient, PrimitiveRequest};
+use anyhow::Result;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let api_key = std::env::var("KIMI_API_KEY")
-        .or_else(|_| std::env::args().nth(1).ok_or(()))
-        .unwrap_or_else(|_| {
-            "placeholder".to_string()
-        });
+async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
 
-    println!("========================================");
-    println!("  Kimi (Moonshot) 可用模型列表");
-    println!("========================================\n");
+    let api_key = std::env::var("KIMI_API_KEY").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("kimi")
         .expect("Preset should exist")
-        .with_api_key(&api_key)
+        .with_api_key(api_key)
         .build();
 
-    // 获取模型列表
-    let models = client.list_models().await?;
-    for (i, model) in models.iter().enumerate() {
-        println!("  {}. {} — {}", i + 1, model.id, model.description);
-    }
-    println!("\n共 {} 个模型", models.len());
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
 
-    // ========== 演示模型别名解析 ==========
-    println!("\n----------------------------------------");
-    println!("模型别名速查表:");
-    println!("  kimi / k2.5   → {} (最新旗舰大模型)", client.resolve_model("k2.5"));
-    println!("  moonshot-32k  → {} (前代稳定版)", client.resolve_model("moonshot-32k"));
-    println!("  coding        → {} (专门优化代码生成的版本)", client.resolve_model("coding"));
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("unknown");
 
-    // ========== 演示能力对比 ==========
-    println!("\n----------------------------------------");
-    println!("能力对比:");
+    println!("用户: {}\n", prompt);
+    println!("AI:");
 
-    let coding_model = "kimi-for-coding";
-    let base_model = "kimi-k2.5";
-
-    println!("\n[{}]", coding_model);
-    println!("  Chat: {}", if client.has_capability(coding_model, Capability::CHAT) { "✅" } else { "❌" });
-    println!("  Tools: {}", if client.has_capability(coding_model, Capability::TOOLS) { "✅" } else { "❌" });
-
-    println!("\n[{}]", base_model);
-    println!("  Chat: {}", if client.has_capability(base_model, Capability::CHAT) { "✅" } else { "❌" });
-    println!("  Tools: {}", if client.has_capability(base_model, Capability::TOOLS) { "✅" } else { "❌" });
-
-    println!("\n上下文长度: {} tokens (kimi-k2.5)", client.max_context("k2.5"));
+    let resp = client.complete(&req).await?;
+    println!("{}", resp.content);
 
     Ok(())
 }

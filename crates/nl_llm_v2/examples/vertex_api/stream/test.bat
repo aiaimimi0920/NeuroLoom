@@ -1,17 +1,35 @@
 @echo off
-setlocal
+REM vertex_api 平台测试 - stream
+REM 用法: test.bat [api_key] [prompt]
 
-cd /d "%~dp0\..\..\.."
+cd /d "%~dp0"
+
+if "%VERTEX_API_API_KEY%"=="" (
+    if "%1"=="" (
+        echo Warning: No VERTEX_API_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
+) else (
+    set API_KEY=%VERTEX_API_API_KEY%
+)
+
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
+)
+
 echo ========================================
 echo   vertex_api stream Test
 echo ========================================
 echo.
-echo   Prompt: Hello! Tell me a short story.
+
+cargo run --example vertex_api_stream -- %API_KEY% "%PROMPT%"
+
 echo.
-
-cargo run -p nl_llm_v2 --example vertex_api_stream -- "" "Hello! Tell me a short story."
-
 echo ========================================
 echo   Test Complete
 echo ========================================
-pause

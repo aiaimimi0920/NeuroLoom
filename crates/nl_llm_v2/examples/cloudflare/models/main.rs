@@ -1,52 +1,35 @@
-//! Cloudflare Workers AI 模型列表
+//! cloudflare 平台测试 - models
+//!
+//! 运行方式: cargo run --example cloudflare_models
+//! 或直接运行: test.bat
 
-use nl_llm_v2::LlmClient;
+use nl_llm_v2::{LlmClient, PrimitiveRequest};
+use anyhow::Result;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    println!("========================================");
-    println!("  Cloudflare Workers AI 模型列表");
-    println!("========================================\n");
+async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+
+    let api_key = std::env::var("CLOUDFLARE_API_KEY").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("cloudflare")
         .expect("Preset should exist")
-        .with_api_key("placeholder")
+        .with_api_key(api_key)
         .build();
 
-    match client.list_models().await {
-        Ok(models) => {
-            println!("共 {} 个模型:\n", models.len());
-            for (i, m) in models.iter().enumerate() {
-                println!("  {}. {} — {}", i + 1, m.id, m.description);
-            }
-        }
-        Err(e) => { println!("获取失败: {}", e); }
-    }
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
 
-    println!("\n----------------------------------------");
-    println!("  常用别名");
-    println!("----------------------------------------\n");
-    let aliases = [
-        ("cloudflare / llama / llama-3.3", "@cf/meta/llama-3.3-70b-instruct-fp8-fast"),
-        ("llama-70b", "@cf/meta/llama-3.1-70b-instruct"),
-        ("llama-8b", "@cf/meta/llama-3.1-8b-instruct"),
-        ("deepseek / r1", "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b"),
-        ("mistral", "@cf/mistral/mistral-7b-instruct-v0.2-lora"),
-        ("qwen", "@cf/qwen/qwen1.5-14b-chat-awq"),
-        ("gemma", "@hf/google/gemma-7b-it"),
-    ];
-    for (a, t) in aliases { println!("  '{}' -> '{}'", a, t); }
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("unknown");
 
-    println!("\n----------------------------------------");
-    println!("  认证配置说明");
-    println!("----------------------------------------\n");
-    println!("  环境变量: CLOUDFLARE_API_TOKEN=xxx");
-    println!("\n  获取凭据:");
-    println!("    1. Account ID: Cloudflare Dashboard 右侧");
-    println!("    2. API Token: https://dash.cloudflare.com/profile/api-tokens");
-    println!("\n  免费额度:");
-    println!("    - 每日 10,000 神经元免费");
-    println!("    - Llama 3.1 8B 几乎免费可用");
+    println!("用户: {}\n", prompt);
+    println!("AI:");
+
+    let resp = client.complete(&req).await?;
+    println!("{}", resp.content);
 
     Ok(())
 }

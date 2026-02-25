@@ -1,46 +1,35 @@
-//! Perplexity AI 模型列表
+//! perplexity 平台测试 - models
+//!
+//! 运行方式: cargo run --example perplexity_models
+//! 或直接运行: test.bat
 
-use nl_llm_v2::LlmClient;
+use nl_llm_v2::{LlmClient, PrimitiveRequest};
+use anyhow::Result;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    println!("========================================");
-    println!("  Perplexity AI 模型列表");
-    println!("========================================\n");
+async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+
+    let api_key = std::env::var("PERPLEXITY_API_KEY").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("perplexity")
         .expect("Preset should exist")
-        .with_api_key("placeholder")
+        .with_api_key(api_key)
         .build();
 
-    match client.list_models().await {
-        Ok(models) => {
-            println!("共 {} 个模型:\n", models.len());
-            for (i, m) in models.iter().enumerate() {
-                println!("  {}. {} — {}", i + 1, m.id, m.description);
-            }
-        }
-        Err(e) => { println!("获取失败: {}", e); }
-    }
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
 
-    println!("\n----------------------------------------");
-    println!("  常用别名");
-    println!("----------------------------------------\n");
-    let aliases = [
-        ("perplexity / pplx", "sonar-pro"),
-        ("sonar", "sonar"),
-        ("reasoning", "sonar-reasoning-pro"),
-        ("research", "sonar-deep-research"),
-        ("r1", "r1-1776"),
-    ];
-    for (a, t) in aliases { println!("  '{}' -> '{}'", a, t); }
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("unknown");
 
-    println!("\n----------------------------------------");
-    println!("  认证配置说明");
-    println!("----------------------------------------\n");
-    println!("  环境变量: PERPLEXITY_API_KEY=pplx-xxxx");
-    println!("\n  获取密钥:");
-    println!("    https://www.perplexity.ai → Settings → API");
+    println!("用户: {}\n", prompt);
+    println!("AI:");
+
+    let resp = client.complete(&req).await?;
+    println!("{}", resp.content);
 
     Ok(())
 }

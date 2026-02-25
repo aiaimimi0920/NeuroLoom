@@ -1,36 +1,35 @@
 @echo off
+REM azure_openai 平台测试 - stream
+REM 用法: test.bat [api_key] [prompt]
+
 cd /d "%~dp0"
-echo ========================================
-echo   Azure OpenAI Stream Test
-echo ========================================
 
 if "%AZURE_OPENAI_API_KEY%"=="" (
-    echo 错误: 未设置 AZURE_OPENAI_API_KEY 环境变量
-    echo.
-    echo 请设置:
-    echo   set AZURE_OPENAI_API_KEY=your-key
-    echo   set AZURE_OPENAI_ENDPOINT=https://YOUR-RESOURCE.openai.azure.com
-    pause
-    exit /b 1
+    if "%1"=="" (
+        echo Warning: No AZURE_OPENAI_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
+) else (
+    set API_KEY=%AZURE_OPENAI_API_KEY%
 )
 
-if "%AZURE_OPENAI_ENDPOINT%"=="" (
-    echo 错误: 未设置 AZURE_OPENAI_ENDPOINT 环境变量
-    echo.
-    echo 示例: https://YOUR-RESOURCE.openai.azure.com
-    pause
-    exit /b 1
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
 )
 
-set "DEPLOYMENT=%~1"
-if "%DEPLOYMENT%"=="" set "DEPLOYMENT=gpt-4o"
-
-echo Endpoint: %AZURE_OPENAI_ENDPOINT%
-echo Deployment: %DEPLOYMENT%
+echo ========================================
+echo   azure_openai stream Test
+echo ========================================
 echo.
 
-cargo run -p nl_llm_v2 --example azure_openai_stream -- "%AZURE_OPENAI_API_KEY%" "%AZURE_OPENAI_ENDPOINT%" "%DEPLOYMENT%"
+cargo run --example azure_openai_stream -- %API_KEY% "%PROMPT%"
+
+echo.
 echo ========================================
 echo   Test Complete
 echo ========================================
-pause

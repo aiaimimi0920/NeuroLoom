@@ -1,81 +1,41 @@
-//! 百度千帆 流式输出
+//! qianfan 平台测试 - stream
 //!
-//! ## 特性演示
-//!
-//! - 流式输出
-//! - 并发控制
-//! - 运行时指标收集
-//!
-//! 运行方式:
-//!   方式1: cargo run -p nl_llm_v2 --example qianfan_stream -- <api_key> [prompt]
-//!   方式2: 设置 QIANFAN_API_KEY 环境变量
+//! 运行方式: cargo run --example qianfan_stream
+//! 或直接运行: test.bat
 
-use futures::StreamExt;
-use nl_llm_v2::{LlmClient, PrimitiveRequest, ConcurrencyConfig};
-use std::io::Write;
+use nl_llm_v2::{LlmClient, PrimitiveRequest};
+use anyhow::Result;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let api_key = std::env::var("QIANFAN_API_KEY")
-        .or_else(|_| std::env::args().nth(1).ok_or(()))
-        .unwrap_or_else(|_| {
-            eprintln!("用法: qianfan_stream <API_KEY> [prompt]");
-            eprintln!("或设置 QIANFAN_API_KEY 环境变量");
-            std::process::exit(1);
-        });
-    let prompt = std::env::args().nth(2).unwrap_or_else(|| "用三句话介绍一下 Rust 语言".to_string());
+async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
 
-    println!("========================================");
-    println!("  百度千帆 流式输出 + 并发控制演示");
-    println!("========================================\n");
+    let api_key = std::env::var("QIANFAN_API_KEY").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("qianfan")
         .expect("Preset should exist")
-        .with_api_key(&api_key)
-        .with_concurrency_config(ConcurrencyConfig::new(5)
-            .with_initial_limit(3))
+        .with_api_key(api_key)
         .build();
 
-    // 检查并发控制器状态
-    if let Some(snapshot) = client.concurrency_snapshot() {
-        println!("并发配置: {}/{} (初始/官方最大)", snapshot.current_limit, snapshot.official_max);
-    }
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
 
-    let model_alias = "ernie";
-    println!("\n模型: {} ({})", model_alias, client.resolve_model(model_alias));
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("unknown");
+    req.stream = true;
+
     println!("用户: {}\n", prompt);
-    print!("AI: ");
-    std::io::stdout().flush()?;
+    println!("AI (Stream):");
 
-    let req = PrimitiveRequest::single_user_message(&prompt)
-        .with_model(model_alias);
     let mut stream = client.stream(&req).await?;
+    use tokio_stream::StreamExt;
     while let Some(chunk) = stream.next().await {
-        match chunk {
-            Ok(c) => { print!("{}", c.content); std::io::stdout().flush()?; }
-            Err(e) => { eprintln!("\n读取流错误: {}", e); break; }
+        if let Ok(c) = chunk {
+            print!("{}", c.content);
         }
     }
-    println!("\n");
-
-    // 显示运行时指标
-    println!("----------------------------------------");
-    println!("运行时指标:");
-    let summary = client.metrics_summary();
-    println!("  总请求数: {}", summary.total_requests);
-    println!("  平均延迟: {}ms", summary.avg_latency_ms);
-    println!("  成功率: {:.1}%", summary.success_rate * 100.0);
-
-    // 显示并发控制器最终状态
-    if let Some(snapshot) = client.concurrency_snapshot() {
-        println!("\n并发状态:");
-        println!("  当前限制: {}", snapshot.current_limit);
-        println!("  活跃请求: {}", snapshot.active_requests);
-        println!("  成功/失败: {}/{}", snapshot.success_count, snapshot.failure_count);
-        if let Some(latency) = snapshot.avg_latency_ms {
-            println!("  平均延迟: {}ms", latency);
-        }
-    }
-
+    println!();
     Ok(())
 }

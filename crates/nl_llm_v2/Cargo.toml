@@ -721,3 +721,36 @@ path = "examples/perplexity/chat/main.rs"
 [[example]]
 name = "perplexity_models"
 path = "examples/perplexity/models/main.rs"
+
+[[example]]
+name = "hunyuan_chat"
+path = "examples/hunyuan/chat/main.rs"
+
+[[example]]
+name = "hunyuan_stream"
+path = "examples/hunyuan/stream/main.rs"
+
+[[example]]
+name = "hunyuan_models"
+path = "examples/hunyuan/models/main.rs"
+
+[[example]]
+name = "dify_chat"
+path = "examples/dify/chat/main.rs"
+
+[[example]]
+name = "dify_stream"
+path = "examples/dify/stream/main.rs"
+
+[[example]]
+name = "jina_chat"
+path = "examples/jina/chat/main.rs"
+
+[[example]]
+name = "jina_stream"
+path = "examples/jina/stream/main.rs"
+
+[[example]]
+name = "jina_models"
+path = "examples/jina/models/main.rs"
+

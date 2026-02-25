@@ -1,15 +1,35 @@
 @echo off
-setlocal
+REM qwen 平台测试 - auth
+REM 用法: test.bat [api_key] [prompt]
+
 cd /d "%~dp0"
 
-for /f "tokens=1,* delims==" %%a in ('type ..\..\..\..\..\.env.local ^| findstr /B "QWEN_API_KEY="') do set QWEN_API_KEY=%%b
-
 if "%QWEN_API_KEY%"=="" (
-    echo [ERROR] QWEN_API_KEY not found in .env.local
-    exit /b 1
+    if "%1"=="" (
+        echo Warning: No QWEN_API_KEY provided.
+        set API_KEY=dummy_credential
+    ) else (
+        set API_KEY=%1
+        shift
+    )
+) else (
+    set API_KEY=%QWEN_API_KEY%
 )
 
-echo [INFO] QWEN_API_KEY loaded
-cargo run -p nl_llm_v2 --example qwen_auth -- %QWEN_API_KEY%
+if "%1"=="" (
+    set PROMPT=你好！请简单介绍一下你自己。
+) else (
+    set PROMPT=%1
+)
 
-endlocal
+echo ========================================
+echo   qwen auth Test
+echo ========================================
+echo.
+
+cargo run --example qwen_auth -- %API_KEY% "%PROMPT%"
+
+echo.
+echo ========================================
+echo   Test Complete
+echo ========================================

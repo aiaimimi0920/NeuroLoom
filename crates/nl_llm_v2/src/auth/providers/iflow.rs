@@ -37,6 +37,7 @@ pub struct IFlowAuth {
     cookie_str: String,
     http: Client,
     cache_path: Option<PathBuf>,
+    session_id: String,
 }
 
 impl IFlowAuth {
@@ -46,6 +47,7 @@ impl IFlowAuth {
             cookie_str: Self::extract_bx_auth(&cookie.into()),
             http: Client::new(),
             cache_path: None,
+            session_id: format!("session-{}", uuid::Uuid::new_v4()),
         }
     }
 
@@ -55,6 +57,9 @@ impl IFlowAuth {
             if p.exists() {
                 if let Ok(content) = std::fs::read_to_string(p) {
                     if let Ok(token) = serde_json::from_str::<TokenStorage>(&content) {
+                        if let Some(sid) = token.extra.get("session_id").and_then(|v| v.as_str()) {
+                            self.session_id = sid.to_string();
+                        }
                         self.token = Some(token);
                     }
                 }
@@ -90,6 +95,7 @@ impl IFlowAuth {
             reqwest::header::COOKIE,
             reqwest::header::HeaderValue::from_str(&cookie_val).unwrap(),
         );
+        // GET/POST 获取 ApiKey 时，模拟桌面浏览器避免风控
         headers.insert(
             reqwest::header::USER_AGENT,
             reqwest::header::HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
@@ -148,6 +154,12 @@ impl Authenticator for IFlowAuth {
         }
 
         let text = get_resp.text().await?;
+        
+        // 检查是否被重定向到了包含 HTML 的登录页（Cookie 失效）
+        if text.trim().starts_with('<') {
+            return Err(anyhow::anyhow!("iFlow Cookie has expired or is invalid. Server returned HTML (redirected to login). Please update your BXAuth cookie."));
+        }
+
         let get_data: IFlowApiKeyResponse = match serde_json::from_str(&text) {
             Ok(j) => j,
             Err(e) => return Err(anyhow::anyhow!("Failed to parse GET apikey JSON: {}\nRaw: {}", e, text)),
@@ -176,13 +188,16 @@ impl Authenticator for IFlowAuth {
 
         let post_data = json_post.data.ok_or_else(|| anyhow::anyhow!("Missing POST response payload"))?;
 
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("session_id".to_string(), serde_json::json!(self.session_id));
+
         let token_info = TokenStorage {
             access_token: post_data.api_key,
             refresh_token: None,
             expires_at: Some(chrono::Utc::now() + chrono::Duration::days(7)),
             email: None,
             provider: "IFlow".to_string(),
-            extra: std::collections::HashMap::new(),
+            extra,
         };
 
         if let Some(path) = &self.cache_path {
@@ -199,9 +214,7 @@ impl Authenticator for IFlowAuth {
     fn inject(&self, req: RequestBuilder) -> anyhow::Result<RequestBuilder> {
         if let Some(t) = &self.token {
             let api_key = &t.access_token;
-
-            // 生成 session-id
-            let session_id = format!("session-{}", uuid::Uuid::new_v4());
+            let session_id = self.session_id.as_str();
 
             // 生成时间戳（毫秒）
             let timestamp = SystemTime::now()
@@ -209,16 +222,21 @@ impl Authenticator for IFlowAuth {
                 .unwrap_or_default()
                 .as_millis() as u64;
 
-            // 生成 HMAC-SHA256 签名
+            // 原始配置：iFlow CLI 确实在代码中硬编码了 "iFlow-Cli" 作为 User-Agent 和签名的 payload
             let user_agent = "iFlow-Cli";
-            let signature = Self::create_signature(api_key, user_agent, &session_id, timestamp);
+            let signature = Self::create_signature(api_key, user_agent, session_id, timestamp);
 
             let mut req = req.bearer_auth(api_key);
-            req = req.header("session-id", &session_id);
+            req = req.header("session-id", session_id);
             req = req.header("x-iflow-timestamp", format!("{}", timestamp));
             if !signature.is_empty() {
                 req = req.header("x-iflow-signature", &signature);
             }
+
+            // 直接注入官方要求的 User-Agent
+            req = req.header("User-Agent", user_agent);
+            // 增加 conversation-id 以贴合官方 headers 格式
+            req = req.header("conversation-id", "");
 
             Ok(req)
         } else {

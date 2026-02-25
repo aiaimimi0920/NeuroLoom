@@ -12,12 +12,11 @@ async fn main() -> Result<()> {
 
     let api_key = std::env::var("GEMINI_API_KEY").ok()
         .or_else(|| args.get(1).cloned())
-        .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("gemini")
         .expect("Preset should exist")
-        .with_gemini_api_key(api_key)
+        .with_api_key(api_key)
         .build();
 
     let prompt = args.get(2).cloned()

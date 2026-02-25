@@ -1,34 +1,35 @@
-//! Claude OAuth 认证示例
+//! claude_oauth 平台测试 - auth
 //!
-//! 通过浏览器完成 Claude OAuth (Authorization Code + PKCE)。
-//! 首次运行会打开浏览器进行授权。
+//! 运行方式: cargo run --example claude_oauth_auth
+//! 或直接运行: test.bat
 
 use nl_llm_v2::{LlmClient, PrimitiveRequest};
 use anyhow::Result;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cache_path = dirs::config_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("anthropic")
-        .join("token.json");
+    let args: Vec<String> = std::env::args().collect();
 
-    println!("=== Claude OAuth 认证测试 ===");
-    println!("Token 缓存: {}\n", cache_path.display());
+    let api_key = std::env::var("CLAUDE_OAUTH_API_KEY").ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("claude_oauth")
         .expect("Preset should exist")
-        .with_claude_oauth(&cache_path)
+        .with_api_key(api_key)
         .build();
 
-    let req = PrimitiveRequest::single_user_message("Hello! Say 'auth ok' if you can read this.")
-        .with_model("claude-sonnet");
+    let prompt = args.get(2).cloned()
+        .unwrap_or_else(|| "Hello!".to_string());
 
-    println!("发送测试请求...\n");
+    let mut req = PrimitiveRequest::single_user_message(&prompt)
+        .with_model("unknown");
+
+    println!("用户: {}\n", prompt);
+    println!("AI:");
 
     let resp = client.complete(&req).await?;
-    println!("AI: {}", resp.content);
-    println!("\n✅ Claude OAuth 认证成功！");
+    println!("{}", resp.content);
 
     Ok(())
 }
