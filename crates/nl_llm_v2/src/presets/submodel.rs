@@ -15,5 +15,5 @@ pub fn builder() -> ClientBuilder {
         .site(OpenAiSite::new().with_base_url(SUBMODEL_BASE_URL))
         .protocol(OpenAiProtocol {})
         .model_resolver(SubModelModelResolver::new())
-        .default_model("submodel")  // 占位默认名称
+        .default_model("qwen-thinking")
 }
