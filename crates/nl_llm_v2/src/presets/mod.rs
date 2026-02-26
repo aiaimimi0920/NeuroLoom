@@ -1,3 +1,4 @@
+pub mod groq;
 pub mod doubao;
 pub mod jimeng;
 pub mod registry;
@@ -64,6 +65,8 @@ pub mod spark;
 pub mod vertex;
 pub mod vertex_api;
 pub mod xai;
+
+pub mod xfyun_maas;
 pub mod zai;
 pub mod zhipu;
 pub use registry::{PresetRegistry, REGISTRY};

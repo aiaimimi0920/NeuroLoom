@@ -1,0 +1,2 @@
+﻿use crate::client::ClientBuilder; use crate::model::xfyun_maas::XfyunMaasModelResolver; use crate::protocol::base::openai::OpenAiProtocol; use crate::provider::xfyun_maas::XfyunMaasExtension; use crate::site::base::openai::OpenAiSite; use std::sync::Arc;
+pub fn builder() -> ClientBuilder { ClientBuilder::new().site(OpenAiSite::new().with_base_url("https://maas-api.cn-huabei-1.xf-yun.com/v2")).protocol(OpenAiProtocol {}).model_resolver(XfyunMaasModelResolver::new()).with_extension(Arc::new(XfyunMaasExtension::new())).default_model("xopglm5") }

@@ -1,0 +1,5 @@
+﻿use crate::model::{Capability, DefaultModelResolver, ModelResolver};
+pub struct XfyunMaasModelResolver { inner: DefaultModelResolver }
+impl XfyunMaasModelResolver { pub fn new() -> Self { let mut inner = DefaultModelResolver::new(); inner.extend_aliases(vec![("glm", "xopglm5"), ("GLM-5-5", "xopglm5"), ("xopglm5", "xopglm5")]); let c = Capability::CHAT | Capability::TOOLS | Capability::STREAMING; inner.extend_capabilities(vec![("xopglm5", c)]); inner.extend_context_lengths(vec![("xopglm5", 128_000)]); Self { inner } } }
+impl Default for XfyunMaasModelResolver { fn default() -> Self { Self::new() } }
+impl ModelResolver for XfyunMaasModelResolver { fn resolve(&self, m: &str)->String{self.inner.resolve(m)} fn has_capability(&self, m: &str, c: Capability)->bool{self.inner.has_capability(m, c)} fn max_context(&self, m: &str)->usize{self.inner.max_context(m)} fn context_window_hint(&self, m: &str)->(usize, usize){self.inner.context_window_hint(m)} fn intelligence_and_modality(&self, _m: &str)->Option<(f32, crate::model::resolver::Modality)>{None} }

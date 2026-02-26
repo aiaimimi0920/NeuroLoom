@@ -866,3 +866,21 @@ path = "examples/sora/video/main.rs"
 [[example]]
 name = "replicate_video"
 path = "examples/replicate/video/main.rs"
+
+[[example]]
+name = "groq_chat"
+path = "examples/groq/chat/main.rs"
+
+[[example]]
+name = "xfyun_maas_chat"
+path = "examples/xfyun_maas/chat/main.rs"
+[[example]]
+name = "xfyun_maas_stream"
+path = "examples/xfyun_maas/stream/main.rs"
+[[example]]
+name = "xfyun_maas_models"
+path = "examples/xfyun_maas/models/main.rs"
+[[example]]
+name = "xfyun_maas_auth"
+path = "examples/xfyun_maas/auth/main.rs"
+

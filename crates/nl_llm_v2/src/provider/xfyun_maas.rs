@@ -1,0 +1,5 @@
+﻿use crate::auth::traits::Authenticator; use crate::concurrency::ConcurrencyConfig; use crate::provider::extension::{ModelInfo, ProviderExtension}; use reqwest::Client;
+pub struct XfyunMaasExtension { base_url: String }
+impl XfyunMaasExtension { pub fn new() -> Self { Self { base_url: "https://maas-api.cn-huabei-1.xf-yun.com/v2".to_string() } } pub fn with_base_url(mut self, url: impl Into<String>) -> Self { self.base_url = url.into().trim_end_matches('/').to_string(); self } }
+impl Default for XfyunMaasExtension { fn default() -> Self { Self::new() } }
+#[async_trait::async_trait] impl ProviderExtension for XfyunMaasExtension { fn id(&self)->&str{"xfyun_maas"} async fn list_models(&self, _h: &Client, _a: &mut dyn Authenticator)->anyhow::Result<Vec<ModelInfo>>{Ok(vec![ModelInfo{id:"xopglm5".to_string(),description:"GLM-5".to_string()}])} async fn get_balance(&self, _h: &Client, _a: &mut dyn Authenticator)->anyhow::Result<Option<crate::provider::balance::BalanceStatus>>{Ok(None)} fn concurrency_config(&self)->ConcurrencyConfig{ConcurrencyConfig{official_max:10, initial_limit:3, min_limit:1, max_limit:15, ..Default::default()}} }

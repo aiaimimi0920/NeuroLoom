@@ -391,6 +391,7 @@ impl ClientBuilder {
         self.auth(SparkAuth::new(token))
     }
 
+
     pub fn with_cookie(self, cookie: impl Into<String>) -> Self {
         self.auth(IFlowAuth::new(cookie))
     }

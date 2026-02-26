@@ -47,6 +47,8 @@ pub mod submodel;
 pub mod vertex;
 pub mod vidu;
 pub mod xai;
+
+pub mod xfyun_maas;
 pub mod zai;
 pub mod zhipu;
 
@@ -93,5 +95,7 @@ pub use spark::SparkModelResolver;
 pub use vertex::VertexModelResolver;
 pub use vidu::ViduModelResolver;
 pub use xai::XaiModelResolver;
+
+pub use xfyun_maas::XfyunMaasModelResolver;
 pub use zai::ZaiModelResolver;
 pub use zhipu::ZhipuModelResolver;

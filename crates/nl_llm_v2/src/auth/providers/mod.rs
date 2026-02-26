@@ -14,6 +14,7 @@ pub mod qwen;
 pub mod service_account;
 pub mod spark;
 pub mod vidu;
+pub mod xfyun_maas;
 
 pub use anthropic::AnthropicApiKeyAuth;
 pub use anthropic_oauth::AnthropicOAuth;
@@ -29,3 +30,4 @@ pub use qwen::QwenOAuth;
 pub use service_account::ServiceAccountAuth;
 pub use spark::SparkAuth;
 pub use vidu::ViduApiKeyAuth;
+pub use xfyun_maas::XfyunMaasAuth;
