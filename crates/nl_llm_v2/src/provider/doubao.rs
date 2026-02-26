@@ -35,6 +35,12 @@ struct DoubaoFetchResponse {
     model: String,
     status: String,
     content: Option<DoubaoVideoOutput>,
+    error: Option<DoubaoErrorInfo>,
+}
+
+#[derive(Deserialize, Debug)]
+struct DoubaoErrorInfo {
+    message: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -84,7 +90,7 @@ impl ProviderExtension for DoubaoExtension {
         req: &crate::primitive::PrimitiveRequest,
     ) -> Result<String> {
         let endpoint = format!("{}/api/v3/contents/generations/tasks", DOUBAO_API_URL);
-        
+
         // Extract prompt
         let mut prompt = String::new();
         for msg in &req.messages {
@@ -108,9 +114,14 @@ impl ProviderExtension for DoubaoExtension {
 
         let mut builder = http.post(&endpoint).json(&request_body);
         builder = auth.inject(builder)?;
-        let req_obj = builder.build().map_err(|e| anyhow!("Failed to build Doubao submit request: {}", e))?;
+        let req_obj = builder
+            .build()
+            .map_err(|e| anyhow!("Failed to build Doubao submit request: {}", e))?;
 
-        let response = http.execute(req_obj).await.map_err(|e| anyhow!("Network error: {}", e))?;
+        let response = http
+            .execute(req_obj)
+            .await
+            .map_err(|e| anyhow!("Network error: {}", e))?;
         let status = response.status();
         let res_text = response.text().await.unwrap_or_default();
 
@@ -134,18 +145,30 @@ impl ProviderExtension for DoubaoExtension {
         auth: &mut dyn Authenticator,
         task_id: &str,
     ) -> Result<VideoTaskStatus> {
-        let endpoint = format!("{}/api/v3/contents/generations/tasks/{}", DOUBAO_API_URL, task_id);
+        let endpoint = format!(
+            "{}/api/v3/contents/generations/tasks/{}",
+            DOUBAO_API_URL, task_id
+        );
 
         let mut builder = http.get(&endpoint);
         builder = auth.inject(builder)?;
-        let req_obj = builder.build().map_err(|e| anyhow!("Failed to build Doubao fetch request: {}", e))?;
+        let req_obj = builder
+            .build()
+            .map_err(|e| anyhow!("Failed to build Doubao fetch request: {}", e))?;
 
-        let response = http.execute(req_obj).await.map_err(|e| anyhow!("Network error: {}", e))?;
+        let response = http
+            .execute(req_obj)
+            .await
+            .map_err(|e| anyhow!("Network error: {}", e))?;
         let status = response.status();
         let res_text = response.text().await.unwrap_or_default();
 
         if !status.is_success() {
-            return Err(anyhow!("Doubao API HTTP fetch error ({}): {}", status, res_text));
+            return Err(anyhow!(
+                "Doubao API HTTP fetch error ({}): {}",
+                status,
+                res_text
+            ));
         }
 
         let task_resp: DoubaoFetchResponse = serde_json::from_str(&res_text)
@@ -165,10 +188,16 @@ impl ProviderExtension for DoubaoExtension {
             }
         }
 
+        let message = if state == VideoTaskState::Failed {
+            task_resp.error.and_then(|e| e.message)
+        } else {
+            None
+        };
+
         Ok(VideoTaskStatus {
             id: task_id.to_string(),
             state,
-            message: None,
+            message,
             video_urls: urls,
         })
     }
