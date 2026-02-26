@@ -23,7 +23,7 @@ impl ReplicateSite {
 
 impl Site for ReplicateSite {
     fn id(&self) -> &str {
-        "replicate_video"
+        "replicate"
     }
 
     fn base_url(&self) -> &str {
