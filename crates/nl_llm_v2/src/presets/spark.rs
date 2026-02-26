@@ -49,6 +49,8 @@ pub fn builder_x() -> ClientBuilder {
         .site(OpenAiSite::new().with_base_url(SPARK_X_BASE_URL))
         .protocol(OpenAiProtocol {})
         .model_resolver(SparkModelResolver::new())
-        .with_extension(Arc::new(SparkExtension::new()))
+        .with_extension(Arc::new(
+            SparkExtension::new().with_base_url(SPARK_X_BASE_URL),
+        ))
         .default_model("spark-x")
 }
