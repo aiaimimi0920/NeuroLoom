@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::auth::traits::Authenticator;
 use crate::provider::extension::{ProviderExtension, VideoTaskState, VideoTaskStatus, ModelInfo};
@@ -44,9 +45,11 @@ struct KlingTaskResult {
 
 #[derive(Debug, Deserialize)]
 struct KlingVideoObj {
-    id: String,
+    #[serde(rename = "id")]
+    _id: String,
     url: String,
-    duration: String,
+    #[serde(rename = "duration")]
+    _duration: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -122,11 +125,12 @@ impl ProviderExtension for KlingExtension {
             prompt = "A cinematic view".to_string(); // fallback
         }
 
+        let base_url = kling_base_url(req);
         let is_image2video = image_url.is_some();
         let endpoint = if is_image2video {
-            "https://api-beijing.klingai.com/v1/videos/image2video"
+            format!("{}/v1/videos/image2video", base_url)
         } else {
-            "https://api-beijing.klingai.com/v1/videos/text2video"
+            format!("{}/v1/videos/text2video", base_url)
         };
 
         let request_body = KlingVideoRequest {
@@ -136,7 +140,7 @@ impl ProviderExtension for KlingExtension {
         };
 
         // 注入 Auth (Kling 内部其实就是 JWT Bearer)
-        let mut req_builder = http.post(endpoint).json(&request_body);
+        let mut req_builder = http.post(&endpoint).json(&request_body);
         req_builder = auth.inject(req_builder)?;
         
         // 伪装 UA 被要求的情况（按照 new-api 适配器中的参考值）
@@ -221,4 +225,13 @@ impl ProviderExtension for KlingExtension {
             video_urls,
         })
     }
+}
+
+fn kling_base_url(req: &PrimitiveRequest) -> String {
+    req.extra
+        .get("kling_base_url")
+        .and_then(Value::as_str)
+        .unwrap_or("https://api-beijing.klingai.com")
+        .trim_end_matches('/')
+        .to_string()
 }
