@@ -858,3 +858,7 @@ path = "examples/doubao/video/main.rs"
 [[example]]
 name = "sora_video"
 path = "examples/sora/video/main.rs"
+
+[[example]]
+name = "replicate_video"
+path = "examples/replicate/video/main.rs"

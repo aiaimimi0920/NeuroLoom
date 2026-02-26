@@ -84,6 +84,7 @@ impl PresetRegistry {
         self.builders.insert("submodel", super::submodel::builder);
         self.builders.insert("doubao", super::doubao::builder);
         self.builders.insert("sora", super::sora::builder);
+        self.builders.insert("replicate", super::replicate::builder);
     }
 
     pub fn get_builder(&self, preset_name: &str) -> Option<ClientBuilder> {

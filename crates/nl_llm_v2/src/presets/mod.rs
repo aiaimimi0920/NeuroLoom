@@ -1,3 +1,4 @@
+pub mod replicate;
 pub mod sora;
 pub mod doubao;
 pub mod submodel;
