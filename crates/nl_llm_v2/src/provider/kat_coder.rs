@@ -1,9 +1,9 @@
+use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
+use crate::provider::balance::BalanceStatus;
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 use async_trait::async_trait;
 use reqwest::Client;
-use crate::auth::traits::Authenticator;
-use crate::provider::extension::{ProviderExtension, ModelInfo};
-use crate::provider::balance::BalanceStatus;
-use crate::concurrency::ConcurrencyConfig;
 use std::sync::Arc;
 
 /// KAT-Coder 默认 Vanchin 网关基础 URL
@@ -84,7 +84,8 @@ fn kat_coder_models() -> Vec<ModelInfo> {
     vec![
         ModelInfo {
             id: "kat-coder-pro".to_string(),
-            description: "KAT-Coder Pro — 旗舰代码大模型，128K 上下文，支持代码生成与编程辅助".to_string(),
+            description: "KAT-Coder Pro — 旗舰代码大模型，128K 上下文，支持代码生成与编程辅助"
+                .to_string(),
         },
         ModelInfo {
             id: "kat-coder-pro-v1".to_string(),

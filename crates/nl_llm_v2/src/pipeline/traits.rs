@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::primitive::PrimitiveRequest;
-use crate::provider::{LlmResponse, BoxLlmStream};
+use crate::provider::{BoxLlmStream, LlmResponse};
 use crate::site::context::UrlContext;
 
 #[async_trait]
@@ -11,10 +11,7 @@ pub trait Stage: Send + Sync {
     fn name(&self) -> &str;
 
     /// 处理数据
-    async fn process(
-        &self,
-        context: &mut PipelineContext<'_>,
-    ) -> anyhow::Result<()>;
+    async fn process(&self, context: &mut PipelineContext<'_>) -> anyhow::Result<()>;
 }
 
 pub enum PipelineInput {
@@ -83,14 +80,18 @@ impl<'a> PipelineContext<'a> {
     pub fn take_response(&mut self) -> anyhow::Result<LlmResponse> {
         match self.output.take() {
             Some(PipelineOutput::Response(resp)) => Ok(resp),
-            _ => Err(anyhow::anyhow!("Expected Response output, got something else or none")),
+            _ => Err(anyhow::anyhow!(
+                "Expected Response output, got something else or none"
+            )),
         }
     }
 
     pub fn take_stream(&mut self) -> anyhow::Result<BoxLlmStream> {
         match self.output.take() {
             Some(PipelineOutput::Stream(stream)) => Ok(stream),
-            _ => Err(anyhow::anyhow!("Expected Stream output, got something else or none")),
+            _ => Err(anyhow::anyhow!(
+                "Expected Stream output, got something else or none"
+            )),
         }
     }
 }

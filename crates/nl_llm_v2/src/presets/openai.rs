@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use crate::client::ClientBuilder;
-use crate::site::base::openai::OpenAiSite;
-use crate::protocol::base::openai::OpenAiProtocol;
 use crate::model::OpenAiModelResolver;
+use crate::protocol::base::openai::OpenAiProtocol;
 use crate::provider::openai::OpenAiExtension;
+use crate::site::base::openai::OpenAiSite;
+use std::sync::Arc;
 
 /// OpenAI API 预设
 ///

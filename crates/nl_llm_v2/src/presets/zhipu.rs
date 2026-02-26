@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use crate::client::ClientBuilder;
-use crate::site::base::openai::OpenAiSite;
-use crate::protocol::base::openai::OpenAiProtocol;
 use crate::model::ZhipuModelResolver;
+use crate::protocol::base::openai::OpenAiProtocol;
 use crate::provider::zhipu::ZhipuExtension;
+use crate::site::base::openai::OpenAiSite;
+use std::sync::Arc;
 
 /// 智谱 AI (Zhipu) API 预设
 ///
@@ -23,6 +23,8 @@ pub fn builder() -> ClientBuilder {
         .site(OpenAiSite::new().with_base_url(ZHIPU_BASE_URL))
         .protocol(OpenAiProtocol {})
         .model_resolver(ZhipuModelResolver::new())
-        .with_extension(Arc::new(ZhipuExtension::new().with_base_url(ZHIPU_BASE_URL)))
+        .with_extension(Arc::new(
+            ZhipuExtension::new().with_base_url(ZHIPU_BASE_URL),
+        ))
         .default_model("glm-5")
 }

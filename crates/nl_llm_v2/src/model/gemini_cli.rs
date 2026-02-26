@@ -1,5 +1,5 @@
 use super::default::DefaultModelResolver;
-use super::resolver::{ModelResolver, Capability};
+use super::resolver::{Capability, ModelResolver};
 
 /// Gemini CLI 专属模型解析器
 ///
@@ -28,23 +28,62 @@ impl GeminiCliModelResolver {
         // === 能力配置 ===
         // Gemini 2.5 系列
         inner.extend_capabilities(vec![
-            ("gemini-2.5-pro", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("gemini-2.5-flash", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING),
+            (
+                "gemini-2.5-pro",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
+            (
+                "gemini-2.5-flash",
+                Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+            ),
         ]);
 
         // Gemini 2.0 系列
         inner.extend_capabilities(vec![
-            ("gemini-2.0-flash", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING),
-            ("gemini-2.0-pro-exp-02-05", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("gemini-2.0-flash-thinking-exp-01-21", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
+            (
+                "gemini-2.0-flash",
+                Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "gemini-2.0-pro-exp-02-05",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
+            (
+                "gemini-2.0-flash-thinking-exp-01-21",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
         ]);
 
         // Gemini 1.5 系列
         inner.extend_capabilities(vec![
-            ("gemini-1.5-pro", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING),
-            ("gemini-1.5-flash", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING),
-            ("gemini-1.5-pro-002", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING),
-            ("gemini-1.5-flash-002", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING),
+            (
+                "gemini-1.5-pro",
+                Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "gemini-1.5-flash",
+                Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "gemini-1.5-pro-002",
+                Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "gemini-1.5-flash-002",
+                Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+            ),
         ]);
 
         // === 上下文长度 ===
@@ -95,6 +134,10 @@ impl ModelResolver for GeminiCliModelResolver {
     fn context_window_hint(&self, model: &str) -> (usize, usize) {
         self.inner.context_window_hint(model)
     }
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
-
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
+        None
+    }
 }

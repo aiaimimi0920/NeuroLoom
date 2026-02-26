@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use crate::site::context::{Action, UrlContext};
 use crate::site::traits::Site;
-use crate::site::context::{UrlContext, Action};
 
 /// Amazon Bedrock 站点配置
 ///
@@ -105,7 +105,8 @@ impl Site for BedrockSite {
     }
 
     fn extra_headers(&self) -> HashMap<&str, &str> {
-        self.extra_headers.iter()
+        self.extra_headers
+            .iter()
             .map(|(k, v)| (k.as_str(), v.as_str()))
             .collect()
     }

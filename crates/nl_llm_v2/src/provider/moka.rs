@@ -43,7 +43,10 @@ impl ModelResolver for MokaModelResolver {
         (max * 3 / 4, max / 4)
     }
 
-    fn intelligence_and_modality(&self, model: &str) -> Option<(f32, crate::model::resolver::Modality)> {
+    fn intelligence_and_modality(
+        &self,
+        model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
         if model.starts_with("m3e") {
             Some((3.0, crate::model::resolver::Modality::Embedding))
         } else {

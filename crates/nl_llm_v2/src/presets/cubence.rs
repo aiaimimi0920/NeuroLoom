@@ -53,6 +53,8 @@ pub fn builder() -> ClientBuilder {
         .site(OpenAiSite::new().with_base_url(CUBENCE_BASE_URL))
         .protocol(OpenAiProtocol {})
         .model_resolver(CubenceModelResolver::new())
-        .with_extension(Arc::new(CubenceExtension::new().with_base_url(CUBENCE_BASE_URL)))
+        .with_extension(Arc::new(
+            CubenceExtension::new().with_base_url(CUBENCE_BASE_URL),
+        ))
         .default_model("claude-sonnet-4-5-20250929")
 }

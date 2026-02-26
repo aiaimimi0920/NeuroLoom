@@ -1,8 +1,8 @@
-use async_trait::async_trait;
-use crate::auth::traits::Authenticator;
-use super::extension::{ProviderExtension, ModelInfo};
 use super::balance::BalanceStatus;
+use super::extension::{ModelInfo, ProviderExtension};
+use crate::auth::traits::Authenticator;
 use crate::concurrency::ConcurrencyConfig;
+use async_trait::async_trait;
 
 /// Gemini 官方 API 扩展
 ///
@@ -14,7 +14,9 @@ pub struct GeminiExtension {
 
 impl GeminiExtension {
     pub fn new() -> Self {
-        Self { api_key: String::new() }
+        Self {
+            api_key: String::new(),
+        }
     }
 
     /// 设置 API Key（由 ClientBuilder::with_gemini_api_key 调用）
@@ -41,7 +43,9 @@ impl ProviderExtension for GeminiExtension {
         _auth: &mut dyn Authenticator,
     ) -> anyhow::Result<Vec<ModelInfo>> {
         if self.api_key.is_empty() {
-            return Err(anyhow::anyhow!("Gemini API Key not set. Use with_gemini_api_key() to configure."));
+            return Err(anyhow::anyhow!(
+                "Gemini API Key not set. Use with_gemini_api_key() to configure."
+            ));
         }
 
         let url = format!(
@@ -49,7 +53,8 @@ impl ProviderExtension for GeminiExtension {
             self.api_key
         );
 
-        let res = http.get(&url)
+        let res = http
+            .get(&url)
             .header("Content-Type", "application/json")
             .send()
             .await
@@ -58,41 +63,53 @@ impl ProviderExtension for GeminiExtension {
         if !res.status().is_success() {
             let status = res.status();
             let body = res.text().await.unwrap_or_default();
-            return Err(anyhow::anyhow!("list_models failed with status {}: {}", status, body));
+            return Err(anyhow::anyhow!(
+                "list_models failed with status {}: {}",
+                status,
+                body
+            ));
         }
 
-        let json: serde_json::Value = res.json().await
+        let json: serde_json::Value = res
+            .json()
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to parse models response: {}", e))?;
 
-        let models = json.get("models")
+        let models = json
+            .get("models")
             .and_then(|m| m.as_array())
             .map(|arr| {
-                arr.iter().filter_map(|m| {
-                    let name = m.get("name")
-                        .and_then(|n| n.as_str())
-                        .unwrap_or_default();
-                    // API 返回格式为 "models/gemini-2.5-flash" → 只取 "gemini-2.5-flash"
-                    let id = name.strip_prefix("models/").unwrap_or(name).to_string();
-                    let description = m.get("displayName")
-                        .and_then(|d| d.as_str())
-                        .unwrap_or_default()
-                        .to_string();
+                arr.iter()
+                    .filter_map(|m| {
+                        let name = m.get("name").and_then(|n| n.as_str()).unwrap_or_default();
+                        // API 返回格式为 "models/gemini-2.5-flash" → 只取 "gemini-2.5-flash"
+                        let id = name.strip_prefix("models/").unwrap_or(name).to_string();
+                        let description = m
+                            .get("displayName")
+                            .and_then(|d| d.as_str())
+                            .unwrap_or_default()
+                            .to_string();
 
-                    // 过滤掉不支持生成的模型（如仅支持 embedding 的模型）
-                    let methods = m.get("supportedGenerationMethods")
-                        .and_then(|s| s.as_array());
-                    let supports_generate = methods.map(|arr| {
-                        arr.iter().any(|m| {
-                            m.as_str() == Some("generateContent") || m.as_str() == Some("streamGenerateContent")
-                        })
-                    }).unwrap_or(false);
+                        // 过滤掉不支持生成的模型（如仅支持 embedding 的模型）
+                        let methods = m
+                            .get("supportedGenerationMethods")
+                            .and_then(|s| s.as_array());
+                        let supports_generate = methods
+                            .map(|arr| {
+                                arr.iter().any(|m| {
+                                    m.as_str() == Some("generateContent")
+                                        || m.as_str() == Some("streamGenerateContent")
+                                })
+                            })
+                            .unwrap_or(false);
 
-                    if supports_generate && !id.is_empty() {
-                        Some(ModelInfo { id, description })
-                    } else {
-                        None
-                    }
-                }).collect::<Vec<_>>()
+                        if supports_generate && !id.is_empty() {
+                            Some(ModelInfo { id, description })
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
             })
             .unwrap_or_default();
 

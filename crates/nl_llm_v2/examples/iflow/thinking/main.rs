@@ -3,14 +3,15 @@
 //! 运行方式: cargo run --example iflow_thinking
 //! 或直接运行: test.bat
 
-use nl_llm_v2::{LlmClient, PrimitiveRequest};
 use anyhow::Result;
+use nl_llm_v2::{LlmClient, PrimitiveRequest};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
 
-    let api_key = std::env::var("IFLOW_COOKIE").ok()
+    let api_key = std::env::var("IFLOW_COOKIE")
+        .ok()
         .or_else(|| args.get(1).cloned())
         .unwrap_or_else(|| "dummy_credential".to_string());
 
@@ -19,14 +20,15 @@ async fn main() -> Result<()> {
         .with_cookie(api_key)
         .build();
 
-    let prompt = args.get(2).cloned()
-        .unwrap_or_else(|| "Hello!".to_string());
+    let prompt = args.get(2).cloned().unwrap_or_else(|| "Hello!".to_string());
 
-    let mut req = PrimitiveRequest::single_user_message(&prompt)
-        .with_model("qwen3-max");
+    let mut req = PrimitiveRequest::single_user_message(&prompt).with_model("qwen3-max");
 
     use serde_json::json;
-    req.extra.insert("chat_template_kwargs".to_string(), json!({"enable_thinking": true}));
+    req.extra.insert(
+        "chat_template_kwargs".to_string(),
+        json!({"enable_thinking": true}),
+    );
     println!("用户: {}\n", prompt);
     println!("AI (Thinking):");
 

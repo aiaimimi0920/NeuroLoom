@@ -1,4 +1,4 @@
-use super::resolver::{ModelResolver, Capability};
+use super::resolver::{Capability, ModelResolver};
 use std::collections::HashMap;
 
 /// 默认模型解析器
@@ -46,10 +46,16 @@ impl DefaultModelResolver {
     pub fn set_context_length(&mut self, model: impl Into<String>, length: usize) {
         self.context_lengths.insert(model.into(), length);
     }
-    
+
     /// 设置模型智能等级与模态
-    pub fn set_intelligence_profile(&mut self, model: impl Into<String>, score: f32, modality: crate::model::resolver::Modality) {
-        self.intelligence_profiles.insert(model.into(), (score, modality));
+    pub fn set_intelligence_profile(
+        &mut self,
+        model: impl Into<String>,
+        score: f32,
+        modality: crate::model::resolver::Modality,
+    ) {
+        self.intelligence_profiles
+            .insert(model.into(), (score, modality));
     }
 
     /// 批量设置别名
@@ -72,11 +78,15 @@ impl DefaultModelResolver {
             self.context_lengths.insert(model.into(), length);
         }
     }
-    
+
     /// 批量设置智能剖析
-    pub fn extend_intelligence_profiles(&mut self, profiles: Vec<(impl Into<String>, f32, crate::model::resolver::Modality)>) {
+    pub fn extend_intelligence_profiles(
+        &mut self,
+        profiles: Vec<(impl Into<String>, f32, crate::model::resolver::Modality)>,
+    ) {
         for (model, score, modality) in profiles {
-            self.intelligence_profiles.insert(model.into(), (score, modality));
+            self.intelligence_profiles
+                .insert(model.into(), (score, modality));
         }
     }
 }
@@ -89,12 +99,16 @@ impl Default for DefaultModelResolver {
 
 impl ModelResolver for DefaultModelResolver {
     fn resolve(&self, model: &str) -> String {
-        self.aliases.get(model).cloned().unwrap_or_else(|| model.to_string())
+        self.aliases
+            .get(model)
+            .cloned()
+            .unwrap_or_else(|| model.to_string())
     }
 
     fn has_capability(&self, model: &str, cap: Capability) -> bool {
         let resolved = self.resolve(model);
-        self.capabilities.get(&resolved)
+        self.capabilities
+            .get(&resolved)
             .map(|c| c.contains(cap))
             .unwrap_or(false)
     }
@@ -110,7 +124,10 @@ impl ModelResolver for DefaultModelResolver {
         (max * 3 / 4, max / 4)
     }
 
-    fn intelligence_and_modality(&self, model: &str) -> Option<(f32, crate::model::resolver::Modality)> {
+    fn intelligence_and_modality(
+        &self,
+        model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
         let resolved = self.resolve(model);
         self.intelligence_profiles.get(&resolved).cloned()
     }

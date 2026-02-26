@@ -1,10 +1,10 @@
 use serde_json::{json, Value};
 use tokio_stream::StreamExt;
 
+use crate::primitive::{PrimitiveMessage, PrimitiveRequest};
+use crate::protocol::error::{ErrorKind, StandardError};
 use crate::protocol::traits::ProtocolFormat;
-use crate::protocol::error::{StandardError, ErrorKind};
-use crate::primitive::{PrimitiveRequest, PrimitiveMessage};
-use crate::provider::{LlmResponse, BoxLlmStream, LlmChunk};
+use crate::provider::{BoxLlmStream, LlmChunk, LlmResponse};
 
 /// Gemini 标准协议封包与解包
 pub struct GeminiProtocol;
@@ -15,7 +15,7 @@ impl ProtocolFormat for GeminiProtocol {
     }
 
     fn pack(&self, primitive: &PrimitiveRequest, _is_stream: bool) -> Value {
-        // Gemini 的基础结构为: 
+        // Gemini 的基础结构为:
         // { "contents": [ ... ], "systemInstruction": { "parts": [ {"text": "..."} ] } }
         let mut body = json!({
             "contents": primitive.messages.iter().map(Self::pack_message).collect::<Vec<_>>(),
@@ -30,7 +30,7 @@ impl ProtocolFormat for GeminiProtocol {
         // Apply generation config parameters
         let params = &primitive.parameters;
         let mut gen_config = json!({});
-        
+
         if let Some(temp) = params.temperature {
             gen_config["temperature"] = json!(temp);
         }
@@ -53,7 +53,8 @@ impl ProtocolFormat for GeminiProtocol {
             .map_err(|e| anyhow::anyhow!("Failed to parse Gemini JSON: {}\nRaw: {}", e, raw))?;
 
         // [修复] 处理可能包含一层 "response" 包装的格式 (例如 CloudCode)
-        let candidates = v.get("response")
+        let candidates = v
+            .get("response")
             .and_then(|r| r.get("candidates"))
             .or_else(|| v.get("candidates"));
 
@@ -68,18 +69,26 @@ impl ProtocolFormat for GeminiProtocol {
             .to_string();
 
         // [修复] 正确解析 model（Gemini 响应中可能没有，使用默认值）
-        let model = v.get("model")
+        let model = v
+            .get("model")
             .and_then(|m| m.as_str())
             .unwrap_or("gemini")
             .to_string();
 
         // [修复] 正确解析 usageMetadata
-        let usage = v.get("usageMetadata").map(|u| {
-            crate::provider::Usage {
-                prompt_tokens: u.get("promptTokenCount").and_then(|t| t.as_u64()).unwrap_or(0) as u32,
-                completion_tokens: u.get("candidatesTokenCount").and_then(|t| t.as_u64()).unwrap_or(0) as u32,
-                total_tokens: u.get("totalTokenCount").and_then(|t| t.as_u64()).unwrap_or(0) as u32,
-            }
+        let usage = v.get("usageMetadata").map(|u| crate::provider::Usage {
+            prompt_tokens: u
+                .get("promptTokenCount")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0) as u32,
+            completion_tokens: u
+                .get("candidatesTokenCount")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0) as u32,
+            total_tokens: u
+                .get("totalTokenCount")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0) as u32,
         });
 
         Ok(LlmResponse {
@@ -102,7 +111,7 @@ impl ProtocolFormat for GeminiProtocol {
                         continue;
                     }
                 };
-                
+
                 let s = String::from_utf8_lossy(&bytes);
                 buffer.push_str(&s);
 
@@ -141,7 +150,7 @@ impl ProtocolFormat for GeminiProtocol {
                         if data == "[DONE]" || data.is_empty() {
                             continue;
                         }
-                        
+
                         if let Ok(json) = serde_json::from_str::<Value>(data) {
                             let candidates = json.get("response")
                                 .and_then(|r| r.get("candidates"))
@@ -153,7 +162,7 @@ impl ProtocolFormat for GeminiProtocol {
                                 .and_then(|c| c.get("parts"))
                                 .and_then(|p| p.get(0))
                                 .and_then(|p| p.get("text"))
-                                .and_then(|t| t.as_str()) 
+                                .and_then(|t| t.as_str())
                             {
                                 if !text.is_empty() {
                                     yield Ok(LlmChunk {
@@ -188,19 +197,26 @@ impl ProtocolFormat for GeminiProtocol {
                 Some("INVALID_ARGUMENT") => ErrorKind::ContextLengthExceeded,
                 Some("NOT_FOUND") => ErrorKind::ModelUnavailable,
                 _ => ErrorKind::Other,
-            }
+            },
         };
 
-        let message = error.get("message")
+        let message = error
+            .get("message")
             .and_then(|m| m.as_str())
             .unwrap_or(raw)
             .to_string();
 
         // [修复] 正确处理 code 字段
-        let code = error.get("status")
+        let code = error
+            .get("status")
             .and_then(|s| s.as_str())
             .map(|s| s.to_string())
-            .or_else(|| error.get("code").and_then(|c| c.as_u64()).map(|n| n.to_string()));
+            .or_else(|| {
+                error
+                    .get("code")
+                    .and_then(|c| c.as_u64())
+                    .map(|n| n.to_string())
+            });
 
         Ok(StandardError {
             kind,
@@ -223,13 +239,18 @@ impl GeminiProtocol {
             "assistant" => "model",
             other => other,
         };
-        let content_str = msg.content.iter().filter_map(|c| {
-            if let crate::primitive::message::PrimitiveContent::Text { text } = c {
-                Some(text.clone())
-            } else {
-                None
-            }
-        }).collect::<Vec<_>>().join("\n");
+        let content_str = msg
+            .content
+            .iter()
+            .filter_map(|c| {
+                if let crate::primitive::message::PrimitiveContent::Text { text } = c {
+                    Some(text.clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
         json!({
             "role": role,
             "parts": [{ "text": content_str }]

@@ -26,7 +26,7 @@ struct KlingJwtClaims {
 impl KlingAuth {
     pub fn new(credentials: impl Into<String>) -> Self {
         let creds = credentials.into();
-        
+
         let access_key;
         let mut secret_key = String::new();
 

@@ -1,6 +1,6 @@
-use std::time::Duration;
-use crate::site::traits::Site;
 use crate::site::context::UrlContext;
+use crate::site::traits::Site;
+use std::time::Duration;
 
 pub struct DoubaoSite {
     timeout: Duration,
@@ -24,7 +24,7 @@ impl Site for DoubaoSite {
     }
 
     fn build_url(&self, _context: &UrlContext) -> String {
-        // Only accessed if used via protocol layout directly rather than extensions. 
+        // Only accessed if used via protocol layout directly rather than extensions.
         // For video, ProviderExtension takes priority.
         format!("{}/api/v3/contents/generations/tasks", self.base_url())
     }

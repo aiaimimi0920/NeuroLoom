@@ -1,9 +1,9 @@
 use serde_json::Value;
 
-use crate::primitive::PrimitiveRequest;
-use crate::provider::{LlmResponse, BoxLlmStream};
-use crate::protocol::error::StandardError;
 use crate::pipeline::traits::PipelineContext;
+use crate::primitive::PrimitiveRequest;
+use crate::protocol::error::StandardError;
+use crate::provider::{BoxLlmStream, LlmResponse};
 
 /// 协议格式定义
 pub trait ProtocolFormat: Send + Sync {
@@ -18,10 +18,7 @@ pub trait ProtocolFormat: Send + Sync {
     fn unpack_response(&self, raw: &str) -> anyhow::Result<LlmResponse>;
 
     /// 解包流式响应
-    fn unpack_stream(
-        &self,
-        response: reqwest::Response,
-    ) -> anyhow::Result<BoxLlmStream>;
+    fn unpack_stream(&self, response: reqwest::Response) -> anyhow::Result<BoxLlmStream>;
 
     /// 检测格式是否匹配（用于直通优化）
     fn matches_format(&self, data: &Value) -> bool;

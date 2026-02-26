@@ -3,14 +3,15 @@
 //! 运行方式: cargo run --example azure_openai_models
 //! 或直接运行: test.bat
 
-use nl_llm_v2::{LlmClient, PrimitiveRequest};
 use anyhow::Result;
+use nl_llm_v2::{LlmClient, PrimitiveRequest};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
 
-    let api_key = std::env::var("AZURE_OPENAI_API_KEY").ok()
+    let api_key = std::env::var("AZURE_OPENAI_API_KEY")
+        .ok()
         .or_else(|| args.get(1).cloned())
         .unwrap_or_else(|| "dummy_credential".to_string());
 
@@ -19,11 +20,9 @@ async fn main() -> Result<()> {
         .with_api_key(api_key)
         .build();
 
-    let prompt = args.get(2).cloned()
-        .unwrap_or_else(|| "Hello!".to_string());
+    let prompt = args.get(2).cloned().unwrap_or_else(|| "Hello!".to_string());
 
-    let mut req = PrimitiveRequest::single_user_message(&prompt)
-        .with_model("unknown");
+    let mut req = PrimitiveRequest::single_user_message(&prompt).with_model("unknown");
 
     println!("用户: {}\n", prompt);
     println!("AI:");

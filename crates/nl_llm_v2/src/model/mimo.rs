@@ -48,19 +48,13 @@ impl MiMoModelResolver {
     pub fn new() -> Self {
         let mut inner = DefaultModelResolver::new();
 
-        inner.extend_aliases(vec![
-            ("mimo", "mimo-v2-flash"),
-            ("flash", "mimo-v2-flash"),
-        ]);
+        inner.extend_aliases(vec![("mimo", "mimo-v2-flash"), ("flash", "mimo-v2-flash")]);
 
-        let full_caps = Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::THINKING;
-        inner.extend_capabilities(vec![
-            ("mimo-v2-flash", full_caps),
-        ]);
+        let full_caps =
+            Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::THINKING;
+        inner.extend_capabilities(vec![("mimo-v2-flash", full_caps)]);
 
-        inner.extend_context_lengths(vec![
-            ("mimo-v2-flash", 128_000),
-        ]);
+        inner.extend_context_lengths(vec![("mimo-v2-flash", 128_000)]);
 
         Self { inner }
     }
@@ -88,6 +82,10 @@ impl ModelResolver for MiMoModelResolver {
     fn context_window_hint(&self, model: &str) -> (usize, usize) {
         self.inner.context_window_hint(model)
     }
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
-
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
+        None
+    }
 }

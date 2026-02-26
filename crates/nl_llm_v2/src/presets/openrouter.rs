@@ -1,8 +1,8 @@
 use crate::client::ClientBuilder;
-use crate::site::base::openai::OpenAiSite;
-use crate::protocol::base::openai::OpenAiProtocol;
 use crate::model::openrouter::OpenRouterModelResolver;
+use crate::protocol::base::openai::OpenAiProtocol;
 use crate::provider::openrouter;
+use crate::site::base::openai::OpenAiSite;
 
 /// OpenRouter 聚合平台预设
 ///

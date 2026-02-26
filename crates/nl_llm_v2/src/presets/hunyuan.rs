@@ -1,8 +1,8 @@
-use std::sync::Arc;
 use crate::client::ClientBuilder;
-use crate::provider::hunyuan::{HunyuanHook, HunyuanModelResolver};
 use crate::protocol::base::openai::OpenAiProtocol;
+use crate::provider::hunyuan::{HunyuanHook, HunyuanModelResolver};
 use crate::site::base::hunyuan::HunyuanSite;
+use std::sync::Arc;
 
 pub fn builder() -> ClientBuilder {
     let hook = Arc::new(HunyuanHook {});

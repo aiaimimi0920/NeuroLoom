@@ -1,8 +1,8 @@
-use async_trait::async_trait;
-use crate::auth::traits::Authenticator;
-use super::extension::{ProviderExtension, ModelInfo};
 use super::balance::BalanceStatus;
+use super::extension::{ModelInfo, ProviderExtension};
+use crate::auth::traits::Authenticator;
 use crate::concurrency::ConcurrencyConfig;
+use async_trait::async_trait;
 use std::sync::Arc;
 
 /// Vertex AI 扩展
@@ -47,13 +47,14 @@ impl ProviderExtension for VertexExtension {
             self.location
         );
 
-        let req = http.get(&url)
-            .header("Content-Type", "application/json");
+        let req = http.get(&url).header("Content-Type", "application/json");
 
         // 注入 Bearer Token
         let req = auth.inject(req)?;
 
-        let res = req.send().await
+        let res = req
+            .send()
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to fetch models: {}", e))?;
 
         if !res.status().is_success() {
@@ -62,36 +63,40 @@ impl ProviderExtension for VertexExtension {
             return Err(anyhow::anyhow!("list_models failed ({}): {}", status, body));
         }
 
-        let json: serde_json::Value = res.json().await
+        let json: serde_json::Value = res
+            .json()
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to parse models response: {}", e))?;
 
-        let models = json.get("models")
+        let models = json
+            .get("models")
             .or_else(|| json.get("publisherModels"))
             .and_then(|m| m.as_array())
             .map(|arr| {
-                arr.iter().filter_map(|m| {
-                    // Vertex API 返回格式可能是:
-                    // "name": "publishers/google/models/gemini-2.5-flash"
-                    let name = m.get("name")
-                        .and_then(|n| n.as_str())
-                        .unwrap_or_default();
+                arr.iter()
+                    .filter_map(|m| {
+                        // Vertex API 返回格式可能是:
+                        // "name": "publishers/google/models/gemini-2.5-flash"
+                        let name = m.get("name").and_then(|n| n.as_str()).unwrap_or_default();
 
-                    // 提取模型短名
-                    let id = name.rsplit('/').next().unwrap_or(name).to_string();
+                        // 提取模型短名
+                        let id = name.rsplit('/').next().unwrap_or(name).to_string();
 
-                    let description = m.get("displayName")
-                        .or_else(|| m.get("openSourceCategory"))
-                        .and_then(|d| d.as_str())
-                        .unwrap_or_default()
-                        .to_string();
+                        let description = m
+                            .get("displayName")
+                            .or_else(|| m.get("openSourceCategory"))
+                            .and_then(|d| d.as_str())
+                            .unwrap_or_default()
+                            .to_string();
 
-                    // 过滤掉空 ID
-                    if !id.is_empty() {
-                        Some(ModelInfo { id, description })
-                    } else {
-                        None
-                    }
-                }).collect::<Vec<_>>()
+                        // 过滤掉空 ID
+                        if !id.is_empty() {
+                            Some(ModelInfo { id, description })
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
             })
             .unwrap_or_default();
 
@@ -112,6 +117,9 @@ impl ProviderExtension for VertexExtension {
     }
 }
 
-pub fn extension(project_id: impl Into<String>, location: impl Into<String>) -> Arc<VertexExtension> {
+pub fn extension(
+    project_id: impl Into<String>,
+    location: impl Into<String>,
+) -> Arc<VertexExtension> {
     Arc::new(VertexExtension::new(project_id, location))
 }

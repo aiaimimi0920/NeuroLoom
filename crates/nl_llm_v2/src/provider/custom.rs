@@ -41,7 +41,10 @@ impl ModelResolver for CustomModelResolver {
         (max * 3 / 4, max / 4)
     }
 
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> {
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
         Some((3.5, crate::model::resolver::Modality::Text))
     }
 }

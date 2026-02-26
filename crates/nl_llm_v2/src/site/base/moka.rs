@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use crate::site::context::{Action, UrlContext};
 use crate::site::traits::Site;
-use crate::site::context::{UrlContext, Action};
 
 /// MokaAI 服务网关
 /// 这是专门针对 https://api.moka.ai 配置的基础站点，其路口格式与 OpenAI 有所不同。
@@ -65,7 +65,8 @@ impl Site for MokaSite {
     }
 
     fn extra_headers(&self) -> HashMap<&str, &str> {
-        self.extra_headers.iter()
+        self.extra_headers
+            .iter()
             .map(|(k, v)| (k.as_str(), v.as_str()))
             .collect()
     }

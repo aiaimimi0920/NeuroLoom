@@ -1,5 +1,5 @@
 use crate::model::default::DefaultModelResolver;
-use crate::model::resolver::{ModelResolver, Capability};
+use crate::model::resolver::{Capability, ModelResolver};
 
 /// Sourcegraph Amp 模型解析器
 ///
@@ -71,8 +71,14 @@ impl AmpModelResolver {
 
         // ========== 能力配置 ==========
         // GPT-4o 系列：支持 Chat、Vision、Tools、Streaming
-        inner.set_capability("gpt-4o", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING);
-        inner.set_capability("gpt-4o-mini", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING);
+        inner.set_capability(
+            "gpt-4o",
+            Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+        );
+        inner.set_capability(
+            "gpt-4o-mini",
+            Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+        );
 
         // o1 系列：
         // - o1: 支持 Chat，不支持 Streaming 和 Vision
@@ -83,12 +89,32 @@ impl AmpModelResolver {
         inner.set_capability("o3-mini", Capability::CHAT | Capability::STREAMING);
 
         // Claude 系列：支持 Chat、Vision、Tools、Streaming
-        inner.set_capability("claude-sonnet-4-20250514", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING);
-        inner.set_capability("claude-opus-4-20250514", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING);
+        inner.set_capability(
+            "claude-sonnet-4-20250514",
+            Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+        );
+        inner.set_capability(
+            "claude-opus-4-20250514",
+            Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+        );
 
         // Gemini 系列：支持全部能力（包括 Thinking）
-        inner.set_capability("gemini-2.5-pro", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING);
-        inner.set_capability("gemini-2.5-flash", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING);
+        inner.set_capability(
+            "gemini-2.5-pro",
+            Capability::CHAT
+                | Capability::VISION
+                | Capability::TOOLS
+                | Capability::STREAMING
+                | Capability::THINKING,
+        );
+        inner.set_capability(
+            "gemini-2.5-flash",
+            Capability::CHAT
+                | Capability::VISION
+                | Capability::TOOLS
+                | Capability::STREAMING
+                | Capability::THINKING,
+        );
 
         // ========== 上下文长度配置 ==========
         // GPT-4o 系列: 128K
@@ -134,6 +160,10 @@ impl ModelResolver for AmpModelResolver {
     fn context_window_hint(&self, model: &str) -> (usize, usize) {
         self.inner.context_window_hint(model)
     }
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
-
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
+        None
+    }
 }

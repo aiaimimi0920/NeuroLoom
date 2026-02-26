@@ -1,4 +1,4 @@
-use super::resolver::{ModelResolver, Capability, Modality};
+use super::resolver::{Capability, Modality, ModelResolver};
 
 /// Replicate 模型解析器
 pub struct ReplicateModelResolver {}

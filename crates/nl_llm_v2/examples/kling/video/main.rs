@@ -4,7 +4,8 @@ use tokio::time::{sleep, Duration};
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // 从环境变量中获取可灵的 AccessKey 和 SecretKey (用 '|' 拼接)
-    let token = std::env::var("KLING_CREDENTIALS").expect("KLING_CREDENTIALS 环境变量未设置, 格式: AccessKey|SecretKey");
+    let token = std::env::var("KLING_CREDENTIALS")
+        .expect("KLING_CREDENTIALS 环境变量未设置, 格式: AccessKey|SecretKey");
 
     // 1. 使用预设构建 Client，并注入 Auth
     let client = LlmClient::from_preset("kling")
@@ -19,7 +20,7 @@ async fn main() -> anyhow::Result<()> {
 
     println!("============ 提交可灵视频生成任务 ============");
     println!("提示词: {}", req.messages[0].content[0].as_text().unwrap());
-    
+
     // 3. 提交任务
     let task_id = client.submit_video_task(&req).await?;
     println!(">> 任务提交成功！Task ID: {}", task_id);
@@ -28,11 +29,11 @@ async fn main() -> anyhow::Result<()> {
     loop {
         sleep(Duration::from_secs(10)).await;
         print!(">> 正在查询状态... ");
-        
+
         match client.fetch_video_task(&task_id).await {
             Ok(status) => {
                 println!("{:?}", status.state);
-                
+
                 match status.state {
                     nl_llm_v2::provider::extension::VideoTaskState::Succeed => {
                         println!("\n============ 视频生成完成 ============");

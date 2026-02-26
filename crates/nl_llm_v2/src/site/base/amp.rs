@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-use std::time::Duration;
-use std::sync::Arc;
+use crate::site::context::{Action, UrlContext};
 use crate::site::traits::Site;
-use crate::site::context::{UrlContext, Action};
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
 
 /// Amp 平台共享配置
 ///
@@ -25,7 +25,8 @@ impl AmpConfig {
 
     /// 构建 chat completions URL
     pub fn build_chat_url(&self) -> String {
-        format!("{}/api/provider/{}/v1/chat/completions",
+        format!(
+            "{}/api/provider/{}/v1/chat/completions",
             self.base_url.trim_end_matches('/'),
             self.provider
         )
@@ -33,7 +34,8 @@ impl AmpConfig {
 
     /// 构建 models URL
     pub fn build_models_url(&self) -> String {
-        format!("{}/api/provider/{}/v1/models",
+        format!(
+            "{}/api/provider/{}/v1/models",
             self.base_url.trim_end_matches('/'),
             self.provider
         )
@@ -41,7 +43,8 @@ impl AmpConfig {
 
     /// 构建 embeddings URL
     pub fn build_embeddings_url(&self) -> String {
-        format!("{}/api/provider/{}/v1/embeddings",
+        format!(
+            "{}/api/provider/{}/v1/embeddings",
             self.base_url.trim_end_matches('/'),
             self.provider
         )
@@ -49,7 +52,8 @@ impl AmpConfig {
 
     /// 构建 images URL
     pub fn build_images_url(&self) -> String {
-        format!("{}/api/provider/{}/v1/images/generations",
+        format!(
+            "{}/api/provider/{}/v1/images/generations",
             self.base_url.trim_end_matches('/'),
             self.provider
         )

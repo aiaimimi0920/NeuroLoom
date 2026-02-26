@@ -1,7 +1,7 @@
-use crate::concurrency::ConcurrencyConfig;
-use crate::provider::extension::{ProviderExtension, ModelInfo};
-use crate::provider::balance::BalanceStatus;
 use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
+use crate::provider::balance::BalanceStatus;
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 use reqwest::Client;
 use std::sync::Arc;
 
@@ -59,33 +59,68 @@ impl Default for AiGoCodeExtension {
 fn aigocode_models() -> Vec<ModelInfo> {
     vec![
         // === Claude 系列 ===
-        ModelInfo { id: "claude-sonnet-4-5-20250929".to_string(), description: "Claude Sonnet 4.5，200K context".to_string() },
-        ModelInfo { id: "claude-3-5-sonnet-20241022".to_string(), description: "Claude 3.5 Sonnet，200K context".to_string() },
+        ModelInfo {
+            id: "claude-sonnet-4-5-20250929".to_string(),
+            description: "Claude Sonnet 4.5，200K context".to_string(),
+        },
+        ModelInfo {
+            id: "claude-3-5-sonnet-20241022".to_string(),
+            description: "Claude 3.5 Sonnet，200K context".to_string(),
+        },
         // === OpenAI 系列 ===
-        ModelInfo { id: "gpt-4o".to_string(), description: "GPT-4o，128K context".to_string() },
-        ModelInfo { id: "gpt-4o-mini".to_string(), description: "GPT-4o Mini，128K context".to_string() },
+        ModelInfo {
+            id: "gpt-4o".to_string(),
+            description: "GPT-4o，128K context".to_string(),
+        },
+        ModelInfo {
+            id: "gpt-4o-mini".to_string(),
+            description: "GPT-4o Mini，128K context".to_string(),
+        },
         // === Google 系列 ===
-        ModelInfo { id: "gemini-2.0-flash".to_string(), description: "Gemini 2.0 Flash，1M context".to_string() },
+        ModelInfo {
+            id: "gemini-2.0-flash".to_string(),
+            description: "Gemini 2.0 Flash，1M context".to_string(),
+        },
         // === DeepSeek 系列 ===
-        ModelInfo { id: "deepseek-chat".to_string(), description: "DeepSeek V3 — 对话模型".to_string() },
-        ModelInfo { id: "deepseek-reasoner".to_string(), description: "DeepSeek R1 — 推理模型".to_string() },
+        ModelInfo {
+            id: "deepseek-chat".to_string(),
+            description: "DeepSeek V3 — 对话模型".to_string(),
+        },
+        ModelInfo {
+            id: "deepseek-reasoner".to_string(),
+            description: "DeepSeek R1 — 推理模型".to_string(),
+        },
     ]
 }
 
 #[async_trait::async_trait]
 impl ProviderExtension for AiGoCodeExtension {
-    fn id(&self) -> &str { "aigocode" }
+    fn id(&self) -> &str {
+        "aigocode"
+    }
 
-    async fn list_models(&self, _http: &Client, _auth: &mut dyn Authenticator) -> anyhow::Result<Vec<ModelInfo>> {
+    async fn list_models(
+        &self,
+        _http: &Client,
+        _auth: &mut dyn Authenticator,
+    ) -> anyhow::Result<Vec<ModelInfo>> {
         Ok(aigocode_models())
     }
 
-    async fn get_balance(&self, _http: &Client, _auth: &mut dyn Authenticator) -> anyhow::Result<Option<BalanceStatus>> {
+    async fn get_balance(
+        &self,
+        _http: &Client,
+        _auth: &mut dyn Authenticator,
+    ) -> anyhow::Result<Option<BalanceStatus>> {
         Ok(None)
     }
 
     fn concurrency_config(&self) -> ConcurrencyConfig {
-        ConcurrencyConfig { official_max: 5, initial_limit: 3, ..Default::default() }
+        ConcurrencyConfig {
+            official_max: 5,
+            initial_limit: 3,
+            ..Default::default()
+        }
     }
 }
 

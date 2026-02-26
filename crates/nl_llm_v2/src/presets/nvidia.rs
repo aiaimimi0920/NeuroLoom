@@ -56,6 +56,8 @@ pub fn builder() -> ClientBuilder {
         .site(OpenAiSite::new().with_base_url(NVIDIA_BASE_URL))
         .protocol(OpenAiProtocol {})
         .model_resolver(NvidiaModelResolver::new())
-        .with_extension(Arc::new(NvidiaExtension::new().with_base_url(NVIDIA_BASE_URL)))
+        .with_extension(Arc::new(
+            NvidiaExtension::new().with_base_url(NVIDIA_BASE_URL),
+        ))
         .default_model("meta/llama-3.3-70b-instruct")
 }

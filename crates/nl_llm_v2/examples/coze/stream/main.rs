@@ -1,6 +1,6 @@
 use nl_llm_v2::{client::LlmClient, primitive::PrimitiveRequest};
-use tokio_stream::StreamExt;
 use std::io::Write;
+use tokio_stream::StreamExt;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

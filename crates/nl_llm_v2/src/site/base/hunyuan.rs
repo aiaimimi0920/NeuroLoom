@@ -1,5 +1,5 @@
-use std::time::Duration;
 use crate::site::Site;
+use std::time::Duration;
 
 /// 腾讯混元大模型站点
 #[derive(Debug, Clone)]

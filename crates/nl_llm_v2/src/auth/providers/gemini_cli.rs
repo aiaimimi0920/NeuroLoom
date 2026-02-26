@@ -1,8 +1,8 @@
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH, Duration};
 use async_trait::async_trait;
 use reqwest::{Client, RequestBuilder};
 use serde::Deserialize;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use url::Url;
 
 use crate::auth::traits::Authenticator;
@@ -49,7 +49,10 @@ impl GeminiCliOAuth {
         Self {
             token: None,
             cache_path: None,
-            http: Client::builder().timeout(Duration::from_secs(30)).build().unwrap(),
+            http: Client::builder()
+                .timeout(Duration::from_secs(30))
+                .build()
+                .unwrap(),
         }
     }
 
@@ -67,25 +70,44 @@ impl GeminiCliOAuth {
         self
     }
 
-    async fn resolve_project_id_extra(&self, access_token: &str, context: &str) -> std::collections::HashMap<String, serde_json::Value> {
+    async fn resolve_project_id_extra(
+        &self,
+        access_token: &str,
+        context: &str,
+    ) -> std::collections::HashMap<String, serde_json::Value> {
         let mut extra = std::collections::HashMap::new();
         match self.fetch_project_id(access_token).await {
             Ok(Some(pid)) => {
                 extra.insert("project_id".to_string(), serde_json::Value::String(pid));
             }
             Ok(None) => {
-                eprintln!("[GeminiCliOAuth] fetch_project_id returned None during {}", context);
+                eprintln!(
+                    "[GeminiCliOAuth] fetch_project_id returned None during {}",
+                    context
+                );
             }
             Err(e) => {
-                eprintln!("[GeminiCliOAuth] fetch_project_id error during {}: {}", context, e);
+                eprintln!(
+                    "[GeminiCliOAuth] fetch_project_id error during {}: {}",
+                    context, e
+                );
             }
         }
         extra
     }
 
     async fn do_login(&self) -> anyhow::Result<TokenStorage> {
-        let state = format!("{}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos());
-        let redirect_uri = format!("http://127.0.0.1:{}/oauth2callback", GEMINI_CLI_OAUTH_CONFIG.redirect_port);
+        let state = format!(
+            "{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let redirect_uri = format!(
+            "http://127.0.0.1:{}/oauth2callback",
+            GEMINI_CLI_OAUTH_CONFIG.redirect_port
+        );
         let auth_url = Url::parse_with_params(
             GEMINI_CLI_OAUTH_CONFIG.auth_url,
             &[
@@ -97,10 +119,14 @@ impl GeminiCliOAuth {
                 ("scope", &GEMINI_CLI_OAUTH_CONFIG.scopes.join(" ")),
                 ("state", &state),
             ],
-        ).unwrap();
+        )
+        .unwrap();
 
         println!("=== Gemini CLI OAuth Login ===");
-        println!("Please open the following URL in your browser:\n{}\n", auth_url);
+        println!(
+            "Please open the following URL in your browser:\n{}\n",
+            auth_url
+        );
 
         #[cfg(target_os = "windows")]
         let _ = std::process::Command::new("powershell")
@@ -108,29 +134,57 @@ impl GeminiCliOAuth {
             .spawn();
 
         let (tx, rx) = std::sync::mpsc::channel();
-        let server = tiny_http::Server::http(format!("127.0.0.1:{}", GEMINI_CLI_OAUTH_CONFIG.redirect_port))
-            .map_err(|e| anyhow::anyhow!("Failed to start callback server: {}", e))?;
+        let server = tiny_http::Server::http(format!(
+            "127.0.0.1:{}",
+            GEMINI_CLI_OAUTH_CONFIG.redirect_port
+        ))
+        .map_err(|e| anyhow::anyhow!("Failed to start callback server: {}", e))?;
 
         std::thread::spawn(move || {
             for request in server.incoming_requests() {
                 let url = request.url().to_string();
                 if url.contains("code=") {
-                    let code = url.split("code=").nth(1).unwrap_or("").split('&').next().unwrap_or("").to_string();
-                    let response = tiny_http::Response::from_string("<h1>Login successful</h1><p>You can close this window.</p>")
-                        .with_header("Content-Type: text/html".parse::<tiny_http::Header>().unwrap());
+                    let code = url
+                        .split("code=")
+                        .nth(1)
+                        .unwrap_or("")
+                        .split('&')
+                        .next()
+                        .unwrap_or("")
+                        .to_string();
+                    let response = tiny_http::Response::from_string(
+                        "<h1>Login successful</h1><p>You can close this window.</p>",
+                    )
+                    .with_header(
+                        "Content-Type: text/html"
+                            .parse::<tiny_http::Header>()
+                            .unwrap(),
+                    );
                     let _ = request.respond(response);
                     let _ = tx.send(Ok(code));
                     break;
                 } else if url.contains("error=") {
-                    let err = url.split("error=").nth(1).unwrap_or("unknown").split('&').next().unwrap_or("unknown").to_string();
-                    let _ = request.respond(tiny_http::Response::from_string("<h1>Login failed</h1><p>Please check the CLI output.</p>"));
+                    let err = url
+                        .split("error=")
+                        .nth(1)
+                        .unwrap_or("unknown")
+                        .split('&')
+                        .next()
+                        .unwrap_or("unknown")
+                        .to_string();
+                    let _ = request.respond(tiny_http::Response::from_string(
+                        "<h1>Login failed</h1><p>Please check the CLI output.</p>",
+                    ));
                     let _ = tx.send(Err(err));
                     break;
                 }
             }
         });
 
-        println!("正在等待回调 (端口: {})...", GEMINI_CLI_OAUTH_CONFIG.redirect_port);
+        println!(
+            "正在等待回调 (端口: {})...",
+            GEMINI_CLI_OAUTH_CONFIG.redirect_port
+        );
         let code: String = match rx.recv() {
             Ok(Ok(code)) => code,
             Ok(Err(e)) => return Err(anyhow::anyhow!("OAuth Error: {}", e)),
@@ -145,7 +199,12 @@ impl GeminiCliOAuth {
             ("grant_type", "authorization_code"),
         ];
 
-        let res = self.http.post(GEMINI_CLI_OAUTH_CONFIG.token_url).form(&params).send().await?;
+        let res = self
+            .http
+            .post(GEMINI_CLI_OAUTH_CONFIG.token_url)
+            .form(&params)
+            .send()
+            .await?;
         if !res.status().is_success() {
             let body = res.text().await.unwrap_or_default();
             return Err(anyhow::anyhow!("Token exchange failed: {}", body));
@@ -154,7 +213,9 @@ impl GeminiCliOAuth {
         let token_resp: OAuthTokenResponse = res.json().await?;
         let expires_at = chrono::Utc::now() + chrono::Duration::seconds(token_resp.expires_in);
 
-        let extra = self.resolve_project_id_extra(&token_resp.access_token, "login").await;
+        let extra = self
+            .resolve_project_id_extra(&token_resp.access_token, "login")
+            .await;
 
         Ok(TokenStorage {
             access_token: token_resp.access_token,
@@ -174,7 +235,12 @@ impl GeminiCliOAuth {
             ("grant_type", "refresh_token"),
         ];
 
-        let res = self.http.post(GEMINI_CLI_OAUTH_CONFIG.token_url).form(&params).send().await?;
+        let res = self
+            .http
+            .post(GEMINI_CLI_OAUTH_CONFIG.token_url)
+            .form(&params)
+            .send()
+            .await?;
         if !res.status().is_success() {
             let body = res.text().await.unwrap_or_default();
             return Err(anyhow::anyhow!("Token refresh failed: {}", body));
@@ -183,11 +249,17 @@ impl GeminiCliOAuth {
         let token_resp: OAuthTokenResponse = res.json().await?;
         let expires_at = chrono::Utc::now() + chrono::Duration::seconds(token_resp.expires_in);
 
-        let extra = self.resolve_project_id_extra(&token_resp.access_token, "refresh").await;
+        let extra = self
+            .resolve_project_id_extra(&token_resp.access_token, "refresh")
+            .await;
 
         Ok(TokenStorage {
             access_token: token_resp.access_token,
-            refresh_token: Some(token_resp.refresh_token.unwrap_or_else(|| refresh_token.to_string())),
+            refresh_token: Some(
+                token_resp
+                    .refresh_token
+                    .unwrap_or_else(|| refresh_token.to_string()),
+            ),
             expires_at: Some(expires_at),
             email: None,
             provider: "GeminiCLI".to_string(),
@@ -219,17 +291,25 @@ impl GeminiCliOAuth {
         if !res.status().is_success() {
             let status = res.status();
             let body = res.text().await.unwrap_or_default();
-            eprintln!("[GeminiCliOAuth] loadCodeAssist failed with status {}: {}", status, body);
+            eprintln!(
+                "[GeminiCliOAuth] loadCodeAssist failed with status {}: {}",
+                status, body
+            );
             return Ok(None);
         }
 
-        let json = res.json::<serde_json::Value>().await
+        let json = res
+            .json::<serde_json::Value>()
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to parse JSON response: {}", e))?;
 
         let mut project_id = String::new();
         if let Some(id) = json.get("cloudaicompanionProject").and_then(|v| v.as_str()) {
             project_id = id.trim().to_string();
-        } else if let Some(obj) = json.get("cloudaicompanionProject").and_then(|v| v.as_object()) {
+        } else if let Some(obj) = json
+            .get("cloudaicompanionProject")
+            .and_then(|v| v.as_object())
+        {
             if let Some(id) = obj.get("id").and_then(|v| v.as_str()) {
                 project_id = id.trim().to_string();
             }
@@ -239,11 +319,15 @@ impl GeminiCliOAuth {
             return Ok(Some(project_id));
         }
 
-        let tier_id = json.get("allowedTiers")
+        let tier_id = json
+            .get("allowedTiers")
             .and_then(|v| v.as_array())
             .and_then(|tiers| {
                 tiers.iter().find_map(|t| {
-                    if t.get("isDefault").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    if t.get("isDefault")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false)
+                    {
                         t.get("id").and_then(|v| v.as_str()).map(|s| s.to_string())
                     } else {
                         None
@@ -262,7 +346,11 @@ impl GeminiCliOAuth {
         }
     }
 
-    async fn onboard_user(&self, access_token: &str, tier_id: &str) -> anyhow::Result<Option<String>> {
+    async fn onboard_user(
+        &self,
+        access_token: &str,
+        tier_id: &str,
+    ) -> anyhow::Result<Option<String>> {
         let url = "https://cloudcode-pa.googleapis.com/v1internal:onboardUser";
         let body = serde_json::json!({
             "tierId": tier_id,
@@ -289,14 +377,21 @@ impl GeminiCliOAuth {
                 if let Ok(json) = res.json::<serde_json::Value>().await {
                     if let Some(id) = json.get("cloudaicompanionProject").and_then(|v| v.as_str()) {
                         return Ok(Some(id.trim().to_string()));
-                    } else if let Some(obj) = json.get("cloudaicompanionProject").and_then(|v| v.as_object()) {
+                    } else if let Some(obj) = json
+                        .get("cloudaicompanionProject")
+                        .and_then(|v| v.as_object())
+                    {
                         if let Some(id) = obj.get("id").and_then(|v| v.as_str()) {
                             return Ok(Some(id.trim().to_string()));
                         }
                     }
                 }
             } else {
-                eprintln!("[GeminiCliOAuth] onboardUser attempt {} failed with status {}", attempt + 1, res.status());
+                eprintln!(
+                    "[GeminiCliOAuth] onboardUser attempt {} failed with status {}",
+                    attempt + 1,
+                    res.status()
+                );
             }
             tokio::time::sleep(Duration::from_millis(1000)).await;
         }
@@ -317,7 +412,10 @@ impl Authenticator for GeminiCliOAuth {
 
     fn needs_refresh(&self) -> bool {
         self.token.as_ref().map_or(true, |t| {
-            matches!(t.status(300), TokenStatus::Expired | TokenStatus::ExpiringSoon) || !t.extra.contains_key("project_id")
+            matches!(
+                t.status(300),
+                TokenStatus::Expired | TokenStatus::ExpiringSoon
+            ) || !t.extra.contains_key("project_id")
         })
     }
 

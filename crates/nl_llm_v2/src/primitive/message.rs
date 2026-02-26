@@ -30,8 +30,20 @@ pub struct PrimitiveMessage {
 /// 原语内容块
 #[derive(Debug, Clone)]
 pub enum PrimitiveContent {
-    Text { text: String },
-    Image { url: String, mime_type: Option<String> },
-    ToolUse { id: String, name: String, input: Value },
-    ToolResult { tool_use_id: String, content: String },
+    Text {
+        text: String,
+    },
+    Image {
+        url: String,
+        mime_type: Option<String>,
+    },
+    ToolUse {
+        id: String,
+        name: String,
+        input: Value,
+    },
+    ToolResult {
+        tool_use_id: String,
+        content: String,
+    },
 }

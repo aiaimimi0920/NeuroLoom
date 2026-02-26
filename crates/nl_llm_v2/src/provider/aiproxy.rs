@@ -50,7 +50,10 @@ impl ModelResolver for AiProxyModelResolver {
         (100_000, 28_000)
     }
 
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> {
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
         Some((3.5, crate::model::resolver::Modality::Text))
     }
 }

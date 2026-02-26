@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use crate::site::context::{Action, UrlContext};
 use crate::site::traits::Site;
-use crate::site::context::{UrlContext, Action};
 
 /// OpenAI 平台默认网关配置
 pub struct OpenAiSite {
@@ -66,7 +66,8 @@ impl Site for OpenAiSite {
     // [修复] 正确返回 extra_headers
     // 原因：之前返回空 HashMap，导致 with_header 设置的 headers 丢失
     fn extra_headers(&self) -> HashMap<&str, &str> {
-        self.extra_headers.iter()
+        self.extra_headers
+            .iter()
             .map(|(k, v)| (k.as_str(), v.as_str()))
             .collect()
     }

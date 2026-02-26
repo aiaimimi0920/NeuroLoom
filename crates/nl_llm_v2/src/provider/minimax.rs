@@ -1,7 +1,7 @@
-use crate::concurrency::ConcurrencyConfig;
-use crate::provider::extension::{ProviderExtension, ModelInfo};
-use crate::provider::balance::BalanceStatus;
 use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
+use crate::provider::balance::BalanceStatus;
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 use reqwest::Client;
 
 /// MiniMax 英文站默认基础 URL

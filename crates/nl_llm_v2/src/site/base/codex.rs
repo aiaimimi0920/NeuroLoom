@@ -1,7 +1,7 @@
+use crate::site::context::{Action, UrlContext};
+use crate::site::traits::Site;
 use std::collections::HashMap;
 use std::time::Duration;
-use crate::site::traits::Site;
-use crate::site::context::{UrlContext, Action};
 
 /// Codex CLI 版本（参考 CLIProxyAPI）
 const CODEX_CLIENT_VERSION: &str = "0.101.0";

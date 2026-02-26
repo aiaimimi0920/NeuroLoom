@@ -1,11 +1,11 @@
+use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
+use crate::provider::balance::{BalanceStatus, BillingUnit, QuotaStatus, QuotaType};
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 use async_trait::async_trait;
 use reqwest::Client;
-use crate::auth::traits::Authenticator;
-use crate::provider::extension::{ProviderExtension, ModelInfo};
-use crate::provider::balance::{BalanceStatus, QuotaStatus, QuotaType, BillingUnit};
-use crate::concurrency::ConcurrencyConfig;
-use std::sync::Arc;
 use serde::Deserialize;
+use std::sync::Arc;
 
 /// Kimi/Moonshot 默认 API 基础 URL
 const DEFAULT_BASE_URL: &str = "https://api.moonshot.cn/v1";
@@ -123,7 +123,6 @@ fn kimi_models() -> Vec<ModelInfo> {
             id: "kimi-k2.5".to_string(),
             description: "Kimi K2.5 — 最新优化版本，支持131072参数的超大杯模型".to_string(),
         },
-
         // === 编程专用模型 ===
         ModelInfo {
             id: "kimi-for-coding".to_string(),
@@ -162,18 +161,23 @@ impl ProviderExtension for KimiExtension {
 
         if !status.is_success() {
             let err = resp.text().await.unwrap_or_default();
-            return Ok(Some(BalanceStatus::error(format!("API 错误 ({}): {}", status, err))));
+            return Ok(Some(BalanceStatus::error(format!(
+                "API 错误 ({}): {}",
+                status, err
+            ))));
         }
 
-        let json: MoonshotBalanceResponse = resp.json().await
+        let json: MoonshotBalanceResponse = resp
+            .json()
+            .await
             .map_err(|e| anyhow::anyhow!("解析Kimi余额响应失败: {}", e))?;
 
         if json.code == 0 {
             if let Some(data) = json.data {
-                let display = format!("可用余额: ¥{:.2} (现金: ¥{:.2}, 代金券: ¥{:.2})",
-                    data.available_balance,
-                    data.cash_balance,
-                    data.voucher_balance);
+                let display = format!(
+                    "可用余额: ¥{:.2} (现金: ¥{:.2}, 代金券: ¥{:.2})",
+                    data.available_balance, data.cash_balance, data.voucher_balance
+                );
 
                 let has_voucher = data.voucher_balance > 0.0;
                 let has_cash = data.cash_balance > 0.0;
@@ -189,7 +193,9 @@ impl ProviderExtension for KimiExtension {
                     },
                     free: if has_voucher {
                         Some(QuotaStatus {
-                            unit: BillingUnit::Money { currency: "CNY".to_string() },
+                            unit: BillingUnit::Money {
+                                currency: "CNY".to_string(),
+                            },
                             used: 0.0,
                             total: None,
                             remaining: Some(data.voucher_balance),
@@ -202,7 +208,9 @@ impl ProviderExtension for KimiExtension {
                     },
                     paid: if has_cash {
                         Some(QuotaStatus {
-                            unit: BillingUnit::Money { currency: "CNY".to_string() },
+                            unit: BillingUnit::Money {
+                                currency: "CNY".to_string(),
+                            },
                             used: 0.0,
                             total: None,
                             remaining: Some(data.cash_balance),
@@ -220,7 +228,10 @@ impl ProviderExtension for KimiExtension {
             }
         }
 
-        Ok(Some(BalanceStatus::error(format!("API 返回异常: {}", json.message))))
+        Ok(Some(BalanceStatus::error(format!(
+            "API 返回异常: {}",
+            json.message
+        ))))
     }
 
     fn concurrency_config(&self) -> ConcurrencyConfig {
@@ -229,7 +240,7 @@ impl ProviderExtension for KimiExtension {
             official_max: 20,
             initial_limit: 5,
             min_limit: 1,
-            max_limit: 30, 
+            max_limit: 30,
             ..Default::default()
         }
     }

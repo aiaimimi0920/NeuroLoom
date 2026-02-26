@@ -1,7 +1,7 @@
-use crate::concurrency::ConcurrencyConfig;
-use crate::provider::extension::{ProviderExtension, ModelInfo};
-use crate::provider::balance::BalanceStatus;
 use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
+use crate::provider::balance::BalanceStatus;
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 use reqwest::Client;
 use std::sync::Arc;
 
@@ -45,40 +45,73 @@ use std::sync::Arc;
 pub struct AzureOpenAiExtension;
 
 impl AzureOpenAiExtension {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 impl Default for AzureOpenAiExtension {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 fn azure_openai_models() -> Vec<ModelInfo> {
     vec![
         // 这些是 Azure 上常见的可部署模型
         // 实际可用的模型取决于用户的 deployment
-        ModelInfo { id: "gpt-4o".to_string(), description: "GPT-4o，128K context".to_string() },
-        ModelInfo { id: "gpt-4o-mini".to_string(), description: "GPT-4o Mini，128K context".to_string() },
-        ModelInfo { id: "gpt-4.1".to_string(), description: "GPT-4.1，1M context".to_string() },
-        ModelInfo { id: "gpt-4.1-mini".to_string(), description: "GPT-4.1 Mini，1M context".to_string() },
-        ModelInfo { id: "o3-mini".to_string(), description: "o3-mini 推理模型".to_string() },
+        ModelInfo {
+            id: "gpt-4o".to_string(),
+            description: "GPT-4o，128K context".to_string(),
+        },
+        ModelInfo {
+            id: "gpt-4o-mini".to_string(),
+            description: "GPT-4o Mini，128K context".to_string(),
+        },
+        ModelInfo {
+            id: "gpt-4.1".to_string(),
+            description: "GPT-4.1，1M context".to_string(),
+        },
+        ModelInfo {
+            id: "gpt-4.1-mini".to_string(),
+            description: "GPT-4.1 Mini，1M context".to_string(),
+        },
+        ModelInfo {
+            id: "o3-mini".to_string(),
+            description: "o3-mini 推理模型".to_string(),
+        },
     ]
 }
 
 #[async_trait::async_trait]
 impl ProviderExtension for AzureOpenAiExtension {
-    fn id(&self) -> &str { "azure_openai" }
+    fn id(&self) -> &str {
+        "azure_openai"
+    }
 
-    async fn list_models(&self, _http: &Client, _auth: &mut dyn Authenticator) -> anyhow::Result<Vec<ModelInfo>> {
+    async fn list_models(
+        &self,
+        _http: &Client,
+        _auth: &mut dyn Authenticator,
+    ) -> anyhow::Result<Vec<ModelInfo>> {
         Ok(azure_openai_models())
     }
 
-    async fn get_balance(&self, _http: &Client, _auth: &mut dyn Authenticator) -> anyhow::Result<Option<BalanceStatus>> {
+    async fn get_balance(
+        &self,
+        _http: &Client,
+        _auth: &mut dyn Authenticator,
+    ) -> anyhow::Result<Option<BalanceStatus>> {
         // Azure 通过订阅计费，无直接余额 API
         Ok(None)
     }
 
     fn concurrency_config(&self) -> ConcurrencyConfig {
-        ConcurrencyConfig { official_max: 10, initial_limit: 3, ..Default::default() }
+        ConcurrencyConfig {
+            official_max: 10,
+            initial_limit: 3,
+            ..Default::default()
+        }
     }
 }
 

@@ -30,10 +30,10 @@
 //! - 默认: 50 并发
 //! - 初始: 10
 
-use crate::concurrency::ConcurrencyConfig;
-use crate::provider::extension::{ProviderExtension, ModelInfo};
-use crate::provider::balance::BalanceStatus;
 use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
+use crate::provider::balance::BalanceStatus;
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 use reqwest::Client;
 use std::sync::Arc;
 
@@ -43,7 +43,9 @@ pub struct CloudflareExtension {
 
 impl CloudflareExtension {
     pub fn new() -> Self {
-        Self { account_id: String::new() }
+        Self {
+            account_id: String::new(),
+        }
     }
 
     pub fn with_account_id(mut self, id: impl Into<String>) -> Self {
@@ -61,40 +63,77 @@ impl CloudflareExtension {
 }
 
 impl Default for CloudflareExtension {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 fn cloudflare_models() -> Vec<ModelInfo> {
     vec![
         // === Meta Llama ===
-        ModelInfo { id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast".to_string(), description: "Llama 3.3 70B FP8 — 最新最强".to_string() },
-        ModelInfo { id: "@cf/meta/llama-3.1-70b-instruct".to_string(), description: "Llama 3.1 70B — 强力模型".to_string() },
-        ModelInfo { id: "@cf/meta/llama-3.1-8b-instruct".to_string(), description: "Llama 3.1 8B — 免费快速".to_string() },
+        ModelInfo {
+            id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast".to_string(),
+            description: "Llama 3.3 70B FP8 — 最新最强".to_string(),
+        },
+        ModelInfo {
+            id: "@cf/meta/llama-3.1-70b-instruct".to_string(),
+            description: "Llama 3.1 70B — 强力模型".to_string(),
+        },
+        ModelInfo {
+            id: "@cf/meta/llama-3.1-8b-instruct".to_string(),
+            description: "Llama 3.1 8B — 免费快速".to_string(),
+        },
         // === DeepSeek ===
-        ModelInfo { id: "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b".to_string(), description: "DeepSeek R1 Distill Qwen 32B — 推理模型".to_string() },
+        ModelInfo {
+            id: "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b".to_string(),
+            description: "DeepSeek R1 Distill Qwen 32B — 推理模型".to_string(),
+        },
         // === Mistral ===
-        ModelInfo { id: "@cf/mistral/mistral-7b-instruct-v0.2-lora".to_string(), description: "Mistral 7B — 轻量对话".to_string() },
+        ModelInfo {
+            id: "@cf/mistral/mistral-7b-instruct-v0.2-lora".to_string(),
+            description: "Mistral 7B — 轻量对话".to_string(),
+        },
         // === Qwen ===
-        ModelInfo { id: "@cf/qwen/qwen1.5-14b-chat-awq".to_string(), description: "Qwen 1.5 14B — 中文优化".to_string() },
+        ModelInfo {
+            id: "@cf/qwen/qwen1.5-14b-chat-awq".to_string(),
+            description: "Qwen 1.5 14B — 中文优化".to_string(),
+        },
         // === Google ===
-        ModelInfo { id: "@hf/google/gemma-7b-it".to_string(), description: "Gemma 7B — Google 开源".to_string() },
+        ModelInfo {
+            id: "@hf/google/gemma-7b-it".to_string(),
+            description: "Gemma 7B — Google 开源".to_string(),
+        },
     ]
 }
 
 #[async_trait::async_trait]
 impl ProviderExtension for CloudflareExtension {
-    fn id(&self) -> &str { "cloudflare" }
+    fn id(&self) -> &str {
+        "cloudflare"
+    }
 
-    async fn list_models(&self, _http: &Client, _auth: &mut dyn Authenticator) -> anyhow::Result<Vec<ModelInfo>> {
+    async fn list_models(
+        &self,
+        _http: &Client,
+        _auth: &mut dyn Authenticator,
+    ) -> anyhow::Result<Vec<ModelInfo>> {
         Ok(cloudflare_models())
     }
 
-    async fn get_balance(&self, _http: &Client, _auth: &mut dyn Authenticator) -> anyhow::Result<Option<BalanceStatus>> {
+    async fn get_balance(
+        &self,
+        _http: &Client,
+        _auth: &mut dyn Authenticator,
+    ) -> anyhow::Result<Option<BalanceStatus>> {
         Ok(None) // 通过 Cloudflare Dashboard 查看用量
     }
 
     fn concurrency_config(&self) -> ConcurrencyConfig {
-        ConcurrencyConfig { official_max: 50, initial_limit: 10, ..Default::default() }
+        ConcurrencyConfig {
+            official_max: 50,
+            initial_limit: 10,
+            ..Default::default()
+        }
     }
 }
 

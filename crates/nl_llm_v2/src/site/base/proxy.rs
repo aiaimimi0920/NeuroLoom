@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 
-use crate::site::traits::Site;
 use crate::site::context::UrlContext;
+use crate::site::traits::Site;
 
 /// 代理站点包装器
 /// ��于代理站场景：保持原站点的 URL 构建逻辑，只替换 base URL

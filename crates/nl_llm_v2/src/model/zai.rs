@@ -1,5 +1,5 @@
 use super::default::DefaultModelResolver;
-use super::resolver::{ModelResolver, Capability};
+use super::resolver::{Capability, ModelResolver};
 
 /// Z.AI（智谱 GLM 海外版）模型解析器
 ///
@@ -73,21 +73,37 @@ impl ZaiModelResolver {
         // === 能力配置 ===
         // GLM-5 系列
         inner.extend_capabilities(vec![
-            ("glm-5", Capability::CHAT | Capability::TOOLS | Capability::STREAMING),
-            ("glm-5-flash", Capability::CHAT | Capability::TOOLS | Capability::STREAMING),
+            (
+                "glm-5",
+                Capability::CHAT | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "glm-5-flash",
+                Capability::CHAT | Capability::TOOLS | Capability::STREAMING,
+            ),
         ]);
 
         // GLM-4 系列
         inner.extend_capabilities(vec![
-            ("glm-4", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING),
-            ("glm-4-flash", Capability::CHAT | Capability::TOOLS | Capability::STREAMING),
-            ("glm-4-plus", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING),
+            (
+                "glm-4",
+                Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "glm-4-flash",
+                Capability::CHAT | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "glm-4-plus",
+                Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+            ),
         ]);
 
         // 视觉模型
-        inner.extend_capabilities(vec![
-            ("glm-4v", Capability::CHAT | Capability::VISION | Capability::STREAMING),
-        ]);
+        inner.extend_capabilities(vec![(
+            "glm-4v",
+            Capability::CHAT | Capability::VISION | Capability::STREAMING,
+        )]);
 
         // === 上下文长度 ===
         inner.extend_context_lengths(vec![
@@ -125,6 +141,10 @@ impl ModelResolver for ZaiModelResolver {
     fn context_window_hint(&self, model: &str) -> (usize, usize) {
         self.inner.context_window_hint(model)
     }
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
-
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
+        None
+    }
 }

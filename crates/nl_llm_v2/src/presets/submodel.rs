@@ -1,7 +1,7 @@
 use crate::client::ClientBuilder;
-use crate::site::base::openai::OpenAiSite;
-use crate::protocol::base::openai::OpenAiProtocol;
 use crate::model::submodel::SubModelModelResolver;
+use crate::protocol::base::openai::OpenAiProtocol;
+use crate::site::base::openai::OpenAiSite;
 
 /// SubModel API 预设
 ///

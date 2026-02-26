@@ -1,10 +1,10 @@
+use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
+use crate::provider::balance::{BalanceStatus, BillingUnit, QuotaStatus, QuotaType};
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
-use crate::auth::traits::Authenticator;
-use crate::provider::extension::{ProviderExtension, ModelInfo};
-use crate::provider::balance::{BalanceStatus, QuotaStatus, QuotaType, BillingUnit};
-use crate::concurrency::ConcurrencyConfig;
 use std::sync::Arc;
 
 /// Z.AI（智谱 GLM 海外版）扩展
@@ -136,10 +136,13 @@ impl ProviderExtension for ZaiExtension {
             Ok(resp) if resp.status().is_success() => {
                 match resp.json::<OpenAiModelsResponse>().await {
                     Ok(api_resp) => {
-                        let models: Vec<ModelInfo> = api_resp.data.into_iter()
+                        let models: Vec<ModelInfo> = api_resp
+                            .data
+                            .into_iter()
                             .map(|m| ModelInfo {
                                 id: m.id,
-                                description: m.owned_by
+                                description: m
+                                    .owned_by
                                     .map(|o| format!("Provider: {}", o))
                                     .unwrap_or_else(|| "Z.AI GLM Model".to_string()),
                             })
@@ -151,10 +154,10 @@ impl ProviderExtension for ZaiExtension {
                             Ok(models)
                         }
                     }
-                    Err(_) => Ok(fallback_models())
+                    Err(_) => Ok(fallback_models()),
                 }
             }
-            _ => Ok(fallback_models())
+            _ => Ok(fallback_models()),
         }
     }
 
@@ -181,7 +184,9 @@ impl ProviderExtension for ZaiExtension {
                                 quota_type: QuotaType::PaidOnly,
                                 free: None,
                                 paid: Some(QuotaStatus {
-                                    unit: BillingUnit::Money { currency: "USD".to_string() },
+                                    unit: BillingUnit::Money {
+                                        currency: "USD".to_string(),
+                                    },
                                     used: 0.0,
                                     total: None,
                                     remaining: Some(balance),
@@ -199,10 +204,10 @@ impl ProviderExtension for ZaiExtension {
                             Ok(Some(BalanceStatus::error("余额信息不可用")))
                         }
                     }
-                    Err(_) => Ok(None)
+                    Err(_) => Ok(None),
                 }
             }
-            _ => Ok(None)
+            _ => Ok(None),
         }
     }
 

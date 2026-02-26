@@ -1,8 +1,8 @@
 use crate::client::ClientBuilder;
-use crate::provider::moka::MokaModelResolver;
-use crate::site::base::moka::MokaSite;
 use crate::protocol::base::openai::OpenAiProtocol;
+use crate::provider::moka::MokaModelResolver;
 use crate::provider::openai::OpenAiExtension;
+use crate::site::base::moka::MokaSite;
 use std::sync::Arc;
 
 pub fn builder() -> ClientBuilder {

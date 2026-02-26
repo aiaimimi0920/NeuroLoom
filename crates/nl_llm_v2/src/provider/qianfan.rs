@@ -35,57 +35,108 @@
 //! - 付费模型: 根据套餐
 //! - 初始: 3
 
-use crate::concurrency::ConcurrencyConfig;
-use crate::provider::extension::{ProviderExtension, ModelInfo};
-use crate::provider::balance::BalanceStatus;
 use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
+use crate::provider::balance::BalanceStatus;
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 use reqwest::Client;
 use std::sync::Arc;
 
 pub struct QianfanExtension;
 
 impl QianfanExtension {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 impl Default for QianfanExtension {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 fn qianfan_models() -> Vec<ModelInfo> {
     vec![
         // === ERNIE 4.5 系列（最新）===
-        ModelInfo { id: "ernie-4.5-turbo-128k".to_string(), description: "ERNIE 4.5 Turbo 128K — 最新旗舰，¥0.004/¥0.012".to_string() },
-        ModelInfo { id: "ernie-4.5-8k".to_string(), description: "ERNIE 4.5 8K — 标准版，¥0.004/¥0.012".to_string() },
+        ModelInfo {
+            id: "ernie-4.5-turbo-128k".to_string(),
+            description: "ERNIE 4.5 Turbo 128K — 最新旗舰，¥0.004/¥0.012".to_string(),
+        },
+        ModelInfo {
+            id: "ernie-4.5-8k".to_string(),
+            description: "ERNIE 4.5 8K — 标准版，¥0.004/¥0.012".to_string(),
+        },
         // === ERNIE 4.0 系列 ===
-        ModelInfo { id: "ernie-4.0-turbo-128k".to_string(), description: "ERNIE 4.0 Turbo 128K — 强力模型，¥0.03/¥0.09".to_string() },
-        ModelInfo { id: "ernie-4.0-turbo-8k".to_string(), description: "ERNIE 4.0 Turbo 8K，¥0.03/¥0.09".to_string() },
+        ModelInfo {
+            id: "ernie-4.0-turbo-128k".to_string(),
+            description: "ERNIE 4.0 Turbo 128K — 强力模型，¥0.03/¥0.09".to_string(),
+        },
+        ModelInfo {
+            id: "ernie-4.0-turbo-8k".to_string(),
+            description: "ERNIE 4.0 Turbo 8K，¥0.03/¥0.09".to_string(),
+        },
         // === ERNIE 3.5 系列 ===
-        ModelInfo { id: "ernie-3.5-128k".to_string(), description: "ERNIE 3.5 128K — 性价比之选，¥0.001/¥0.002".to_string() },
-        ModelInfo { id: "ernie-3.5-8k".to_string(), description: "ERNIE 3.5 8K，¥0.001/¥0.002".to_string() },
+        ModelInfo {
+            id: "ernie-3.5-128k".to_string(),
+            description: "ERNIE 3.5 128K — 性价比之选，¥0.001/¥0.002".to_string(),
+        },
+        ModelInfo {
+            id: "ernie-3.5-8k".to_string(),
+            description: "ERNIE 3.5 8K，¥0.001/¥0.002".to_string(),
+        },
         // === ERNIE Speed/Lite/Tiny（免费）===
-        ModelInfo { id: "ernie-speed-128k".to_string(), description: "ERNIE Speed 128K — 快速，免费".to_string() },
-        ModelInfo { id: "ernie-speed-8k".to_string(), description: "ERNIE Speed 8K — 快速，免费".to_string() },
-        ModelInfo { id: "ernie-lite-128k".to_string(), description: "ERNIE Lite 128K — 轻量，免费".to_string() },
-        ModelInfo { id: "ernie-lite-8k".to_string(), description: "ERNIE Lite 8K — 轻量，免费".to_string() },
-        ModelInfo { id: "ernie-tiny-8k".to_string(), description: "ERNIE Tiny 8K — 最小，免费".to_string() },
+        ModelInfo {
+            id: "ernie-speed-128k".to_string(),
+            description: "ERNIE Speed 128K — 快速，免费".to_string(),
+        },
+        ModelInfo {
+            id: "ernie-speed-8k".to_string(),
+            description: "ERNIE Speed 8K — 快速，免费".to_string(),
+        },
+        ModelInfo {
+            id: "ernie-lite-128k".to_string(),
+            description: "ERNIE Lite 128K — 轻量，免费".to_string(),
+        },
+        ModelInfo {
+            id: "ernie-lite-8k".to_string(),
+            description: "ERNIE Lite 8K — 轻量，免费".to_string(),
+        },
+        ModelInfo {
+            id: "ernie-tiny-8k".to_string(),
+            description: "ERNIE Tiny 8K — 最小，免费".to_string(),
+        },
     ]
 }
 
 #[async_trait::async_trait]
 impl ProviderExtension for QianfanExtension {
-    fn id(&self) -> &str { "qianfan" }
+    fn id(&self) -> &str {
+        "qianfan"
+    }
 
-    async fn list_models(&self, _http: &Client, _auth: &mut dyn Authenticator) -> anyhow::Result<Vec<ModelInfo>> {
+    async fn list_models(
+        &self,
+        _http: &Client,
+        _auth: &mut dyn Authenticator,
+    ) -> anyhow::Result<Vec<ModelInfo>> {
         Ok(qianfan_models())
     }
 
-    async fn get_balance(&self, _http: &Client, _auth: &mut dyn Authenticator) -> anyhow::Result<Option<BalanceStatus>> {
+    async fn get_balance(
+        &self,
+        _http: &Client,
+        _auth: &mut dyn Authenticator,
+    ) -> anyhow::Result<Option<BalanceStatus>> {
         Ok(None)
     }
 
     fn concurrency_config(&self) -> ConcurrencyConfig {
-        ConcurrencyConfig { official_max: 5, initial_limit: 3, ..Default::default() }
+        ConcurrencyConfig {
+            official_max: 5,
+            initial_limit: 3,
+            ..Default::default()
+        }
     }
 }
 

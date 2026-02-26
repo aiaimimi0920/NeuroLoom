@@ -1,12 +1,12 @@
 use async_trait::async_trait;
 use reqwest::{Client, RequestBuilder};
 use serde::Deserialize;
-use std::path::PathBuf;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use crate::auth::traits::Authenticator;
-use crate::site::context::AuthType;
 use crate::auth::types::TokenStorage;
+use crate::site::context::AuthType;
 
 // === Constants ===
 const KIMI_CLIENT_ID: &str = "17e5f671-d194-4dfb-9706-5516cb48c098";
@@ -117,7 +117,9 @@ impl KimiOAuth {
         // Step 1: 请求 device code
         let params = [("client_id", KIMI_CLIENT_ID)];
 
-        let resp = self.http.post(KIMI_DEVICE_CODE_URL)
+        let resp = self
+            .http
+            .post(KIMI_DEVICE_CODE_URL)
             .header("Content-Type", "application/x-www-form-urlencoded")
             .header("Accept", "application/json")
             .header("User-Agent", KIMI_USER_AGENT)
@@ -162,7 +164,9 @@ impl KimiOAuth {
                 ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
             ];
 
-            let resp = self.http.post(KIMI_TOKEN_URL)
+            let resp = self
+                .http
+                .post(KIMI_TOKEN_URL)
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .header("Accept", "application/json")
                 .header("User-Agent", KIMI_USER_AGENT)
@@ -194,12 +198,15 @@ impl KimiOAuth {
 
                 println!("Kimi 授权成功！");
 
-                let expires_at = token_resp.expires_in.map(|e| {
-                    chrono::Utc::now() + chrono::Duration::seconds(e as i64)
-                });
+                let expires_at = token_resp
+                    .expires_in
+                    .map(|e| chrono::Utc::now() + chrono::Duration::seconds(e as i64));
 
                 let mut extra = HashMap::new();
-                extra.insert("device_id".to_string(), serde_json::Value::String(self.device_id.clone()));
+                extra.insert(
+                    "device_id".to_string(),
+                    serde_json::Value::String(self.device_id.clone()),
+                );
 
                 self.token = Some(TokenStorage {
                     access_token,
@@ -220,7 +227,9 @@ impl KimiOAuth {
 
     /// 刷新 token
     async fn do_refresh(&mut self) -> anyhow::Result<()> {
-        let refresh_token = self.token.as_ref()
+        let refresh_token = self
+            .token
+            .as_ref()
             .and_then(|t| t.refresh_token.as_deref())
             .ok_or_else(|| anyhow::anyhow!("无 refresh_token"))?
             .to_string();
@@ -231,7 +240,9 @@ impl KimiOAuth {
             ("refresh_token", refresh_token.as_str()),
         ];
 
-        let resp = self.http.post(KIMI_TOKEN_URL)
+        let resp = self
+            .http
+            .post(KIMI_TOKEN_URL)
             .header("Content-Type", "application/x-www-form-urlencoded")
             .header("Accept", "application/json")
             .header("User-Agent", KIMI_USER_AGENT)
@@ -244,7 +255,9 @@ impl KimiOAuth {
             .send()
             .await?;
 
-        if resp.status() == reqwest::StatusCode::UNAUTHORIZED || resp.status() == reqwest::StatusCode::FORBIDDEN {
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED
+            || resp.status() == reqwest::StatusCode::FORBIDDEN
+        {
             return Err(anyhow::anyhow!("Kimi refresh token 已失效，需要重新登录"));
         }
 
@@ -255,12 +268,13 @@ impl KimiOAuth {
 
         let token_resp: TokenResponse = resp.json().await?;
 
-        let access_token = token_resp.access_token
+        let access_token = token_resp
+            .access_token
             .ok_or_else(|| anyhow::anyhow!("Kimi 刷新响应缺少 access_token"))?;
 
-        let expires_at = token_resp.expires_in.map(|e| {
-            chrono::Utc::now() + chrono::Duration::seconds(e as i64)
-        });
+        let expires_at = token_resp
+            .expires_in
+            .map(|e| chrono::Utc::now() + chrono::Duration::seconds(e as i64));
 
         if let Some(t) = &mut self.token {
             t.access_token = access_token;
@@ -314,8 +328,7 @@ impl Authenticator for KimiOAuth {
                 .header("X-Msh-Version", KIMI_VERSION)
                 .header("X-Msh-Device-Name", Self::hostname())
                 .header("X-Msh-Device-Model", Self::device_model())
-                .header("X-Msh-Device-Id", &self.device_id)
-            )
+                .header("X-Msh-Device-Id", &self.device_id))
         } else {
             Err(anyhow::anyhow!("Kimi 未认证"))
         }

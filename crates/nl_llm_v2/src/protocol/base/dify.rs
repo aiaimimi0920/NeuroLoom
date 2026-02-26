@@ -1,11 +1,11 @@
+use reqwest::Response;
 use serde_json::{json, Value};
 use tokio_stream::StreamExt;
-use reqwest::Response;
 
 use crate::primitive::PrimitiveRequest;
-use crate::provider::{LlmResponse, BoxLlmStream, LlmChunk};
+use crate::protocol::error::{ErrorKind, FallbackHint, StandardError};
 use crate::protocol::traits::ProtocolFormat;
-use crate::protocol::error::{StandardError, ErrorKind, FallbackHint};
+use crate::provider::{BoxLlmStream, LlmChunk, LlmResponse};
 
 pub struct DifyProtocol {}
 
@@ -72,11 +72,19 @@ impl DifyProtocol {
             || code_lc.contains("quota")
         {
             ErrorKind::RateLimit
-        } else if msg.contains("timeout") || msg.contains("timed out") || code_lc.contains("timeout") {
+        } else if msg.contains("timeout")
+            || msg.contains("timed out")
+            || code_lc.contains("timeout")
+        {
             ErrorKind::Timeout
         } else if msg.contains("connection") || msg.contains("network") || msg.contains("dns") {
             ErrorKind::Network
-        } else if is_5xx || msg.contains("server error") || msg.contains("internal") || msg.contains("502") || msg.contains("503") {
+        } else if is_5xx
+            || msg.contains("server error")
+            || msg.contains("internal")
+            || msg.contains("502")
+            || msg.contains("503")
+        {
             ErrorKind::ServerError
         } else if msg.contains("not found") || code_lc.contains("not_found") {
             ErrorKind::ModelUnavailable
@@ -85,7 +93,10 @@ impl DifyProtocol {
             || code_lc.contains("context_length")
         {
             ErrorKind::ContextLengthExceeded
-        } else if msg.contains("content filter") || msg.contains("safety") || code_lc.contains("content_filter") {
+        } else if msg.contains("content filter")
+            || msg.contains("safety")
+            || code_lc.contains("content_filter")
+        {
             ErrorKind::ContentFilter
         } else {
             ErrorKind::Other
@@ -97,9 +108,10 @@ impl DifyProtocol {
         );
 
         let fallback_hint = match kind {
-            ErrorKind::RateLimit | ErrorKind::Timeout | ErrorKind::ServerError | ErrorKind::Network => {
-                Some(FallbackHint::Retry)
-            }
+            ErrorKind::RateLimit
+            | ErrorKind::Timeout
+            | ErrorKind::ServerError
+            | ErrorKind::Network => Some(FallbackHint::Retry),
             ErrorKind::ContextLengthExceeded | ErrorKind::ModelUnavailable => {
                 Some(FallbackHint::DowngradeModel)
             }
@@ -124,7 +136,7 @@ impl ProtocolFormat for DifyProtocol {
     fn pack(&self, req: &PrimitiveRequest, is_stream: bool) -> Value {
         // Dify 需要将历史消息组合为 query
         let mut query = String::new();
-        
+
         if let Some(system) = &req.system {
             query.push_str("SYSTEM:\n");
             query.push_str(system);
@@ -151,7 +163,10 @@ impl ProtocolFormat for DifyProtocol {
                     crate::primitive::message::PrimitiveContent::ToolUse { name, .. } => {
                         query.push_str(&format!("[Invoking Tool: {}]", name));
                     }
-                    crate::primitive::message::PrimitiveContent::ToolResult { content: tool_content, .. } => {
+                    crate::primitive::message::PrimitiveContent::ToolResult {
+                        content: tool_content,
+                        ..
+                    } => {
                         query.push_str(&format!("[Tool Result: {}]", tool_content));
                     }
                 }
@@ -175,7 +190,7 @@ impl ProtocolFormat for DifyProtocol {
         }
 
         let answer = v.get("answer").and_then(|a| a.as_str()).unwrap_or_default();
-        
+
         Ok(LlmResponse {
             content: answer.to_string(),
             model: "dify".to_string(),
@@ -206,7 +221,7 @@ impl ProtocolFormat for DifyProtocol {
 
                     let data_str = line.strip_prefix("data: ")
                         .or_else(|| line.strip_prefix("data:"));
-                    
+
                     if let Some(data) = data_str {
                         let data = data.trim();
                         if data == "[DONE]" || data.is_empty() {
@@ -258,7 +273,10 @@ impl ProtocolFormat for DifyProtocol {
     fn unpack_error(&self, status: u16, raw: &str) -> anyhow::Result<StandardError> {
         let err_json: Result<Value, _> = serde_json::from_str(raw);
         let message = if let Ok(v) = err_json {
-            v.get("message").and_then(|m| m.as_str()).unwrap_or(raw).to_string()
+            v.get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or(raw)
+                .to_string()
         } else {
             raw.to_string()
         };
@@ -278,12 +296,16 @@ impl ProtocolFormat for DifyProtocol {
             code: Some(status.to_string()),
             retryable: matches!(
                 kind,
-                ErrorKind::RateLimit | ErrorKind::ServerError | ErrorKind::Network | ErrorKind::Timeout
+                ErrorKind::RateLimit
+                    | ErrorKind::ServerError
+                    | ErrorKind::Network
+                    | ErrorKind::Timeout
             ),
             fallback_hint: match kind {
-                ErrorKind::RateLimit | ErrorKind::ServerError | ErrorKind::Network | ErrorKind::Timeout => {
-                    Some(FallbackHint::Retry)
-                }
+                ErrorKind::RateLimit
+                | ErrorKind::ServerError
+                | ErrorKind::Network
+                | ErrorKind::Timeout => Some(FallbackHint::Retry),
                 ErrorKind::ContextLengthExceeded | ErrorKind::ModelUnavailable => {
                     Some(FallbackHint::DowngradeModel)
                 }

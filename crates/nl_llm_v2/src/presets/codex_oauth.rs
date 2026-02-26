@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use crate::client::ClientBuilder;
-use crate::site::base::codex::CodexSite;
-use crate::protocol::base::codex::CodexProtocol;
 use crate::model::CodexModelResolver;
+use crate::protocol::base::codex::CodexProtocol;
 use crate::provider::codex::CodexExtension;
+use crate::site::base::codex::CodexSite;
+use std::sync::Arc;
 
 /// Codex OAuth 预设
 ///

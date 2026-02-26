@@ -1,10 +1,10 @@
-use std::sync::Arc;
-use crate::client::ClientBuilder;
-use crate::site::base::qwen::QwenSite;
-use crate::protocol::base::openai::OpenAiProtocol;
-use crate::model::QwenModelResolver;
-use crate::provider::qwen::QwenExtension;
 use crate::auth::providers::qwen::QwenOAuth;
+use crate::client::ClientBuilder;
+use crate::model::QwenModelResolver;
+use crate::protocol::base::openai::OpenAiProtocol;
+use crate::provider::qwen::QwenExtension;
+use crate::site::base::qwen::QwenSite;
+use std::sync::Arc;
 
 /// 阿里云通义千问 (Qwen) OAuth API 预设
 ///
@@ -41,7 +41,9 @@ pub fn builder() -> ClientBuilder {
         .site(QwenSite::new())
         .protocol(OpenAiProtocol {})
         .model_resolver(QwenModelResolver::new())
-        .with_extension(Arc::new(QwenExtension::new().with_base_url("https://portal.qwen.ai/v1")))
+        .with_extension(Arc::new(
+            QwenExtension::new().with_base_url("https://portal.qwen.ai/v1"),
+        ))
         .default_model("qwen-plus")
 }
 

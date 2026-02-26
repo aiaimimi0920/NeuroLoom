@@ -1,10 +1,10 @@
+use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
+use crate::provider::extension::{ModelInfo, ProviderExtension};
+use crate::site::base::amp::AmpConfig;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
-use crate::auth::traits::Authenticator;
-use crate::provider::extension::{ProviderExtension, ModelInfo};
-use crate::concurrency::ConcurrencyConfig;
-use crate::site::base::amp::AmpConfig;
 use std::sync::Arc;
 
 /// Sourcegraph Amp 平台扩展
@@ -77,11 +77,13 @@ fn fallback_models() -> Vec<ModelInfo> {
         // Claude 系列
         ModelInfo {
             id: "claude-sonnet-4-20250514".to_string(),
-            description: "Claude Sonnet 4 — Balanced performance and cost, 200K context".to_string(),
+            description: "Claude Sonnet 4 — Balanced performance and cost, 200K context"
+                .to_string(),
         },
         ModelInfo {
             id: "claude-opus-4-20250514".to_string(),
-            description: "Claude Opus 4 — Highest capability Claude model, 200K context".to_string(),
+            description: "Claude Opus 4 — Highest capability Claude model, 200K context"
+                .to_string(),
         },
         // Gemini 系列
         ModelInfo {
@@ -132,10 +134,13 @@ impl ProviderExtension for AmpExtension {
             Ok(resp) if resp.status().is_success() => {
                 match resp.json::<AmpModelsResponse>().await {
                     Ok(api_resp) => {
-                        let models: Vec<ModelInfo> = api_resp.data.into_iter()
+                        let models: Vec<ModelInfo> = api_resp
+                            .data
+                            .into_iter()
                             .map(|m| ModelInfo {
                                 id: m.id,
-                                description: m.owned_by
+                                description: m
+                                    .owned_by
                                     .map(|o| format!("Provider: {}", o))
                                     .unwrap_or_else(|| "Available via Amp".to_string()),
                             })
@@ -147,10 +152,10 @@ impl ProviderExtension for AmpExtension {
                             Ok(models)
                         }
                     }
-                    Err(_) => Ok(fallback_models())
+                    Err(_) => Ok(fallback_models()),
                 }
             }
-            _ => Ok(fallback_models())
+            _ => Ok(fallback_models()),
         }
     }
 

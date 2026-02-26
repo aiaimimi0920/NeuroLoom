@@ -87,6 +87,8 @@ pub fn builder() -> ClientBuilder {
         .site(OpenAiSite::new().with_base_url(AICODEMIRROR_BASE_URL))
         .protocol(OpenAiProtocol {})
         .model_resolver(AiCodeMirrorModelResolver::new())
-        .with_extension(Arc::new(AiCodeMirrorExtension::new().with_base_url(AICODEMIRROR_BASE_URL)))
+        .with_extension(Arc::new(
+            AiCodeMirrorExtension::new().with_base_url(AICODEMIRROR_BASE_URL),
+        ))
         .default_model("claude-sonnet-4-5-20250929")
 }

@@ -60,6 +60,8 @@ pub fn builder() -> ClientBuilder {
         .site(OpenAiSite::new().with_base_url(RIGHTCODE_BASE_URL))
         .protocol(OpenAiProtocol {})
         .model_resolver(RightCodeModelResolver::new())
-        .with_extension(Arc::new(RightCodeExtension::new().with_base_url(RIGHTCODE_BASE_URL)))
+        .with_extension(Arc::new(
+            RightCodeExtension::new().with_base_url(RIGHTCODE_BASE_URL),
+        ))
         .default_model("gpt-5.1-codex-mini")
 }

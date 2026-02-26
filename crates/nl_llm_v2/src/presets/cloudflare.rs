@@ -66,7 +66,10 @@ use std::sync::Arc;
 const DEFAULT_ACCOUNT_ID: &str = "bea2e3be0577ee4f7b3ffae4df6f53bb";
 
 fn cloudflare_base_url(account_id: &str) -> String {
-    format!("https://api.cloudflare.com/client/v4/accounts/{}/ai/v1", account_id)
+    format!(
+        "https://api.cloudflare.com/client/v4/accounts/{}/ai/v1",
+        account_id
+    )
 }
 
 /// 创建 Cloudflare Workers AI 客户端构建器
@@ -77,7 +80,7 @@ pub fn builder() -> ClientBuilder {
         .protocol(OpenAiProtocol {})
         .model_resolver(CloudflareModelResolver::new())
         .with_extension(Arc::new(
-            CloudflareExtension::new().with_account_id(DEFAULT_ACCOUNT_ID)
+            CloudflareExtension::new().with_account_id(DEFAULT_ACCOUNT_ID),
         ))
         .default_model("@cf/meta/llama-3.3-70b-instruct-fp8-fast")
 }

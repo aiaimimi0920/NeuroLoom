@@ -1,5 +1,5 @@
 use super::default::DefaultModelResolver;
-use super::resolver::{ModelResolver, Capability};
+use super::resolver::{Capability, ModelResolver};
 
 /// Qwen (通义千问) 平台模型解析器
 ///
@@ -42,20 +42,17 @@ impl QwenModelResolver {
             ("max", "qwen-max"),
             ("turbo", "qwen-turbo"),
             ("latest", "qwen-max-latest"),
-
             // 代码模型专用
             ("coder", "qwen2.5-coder-32b-instruct"),
             ("code", "qwen2.5-coder-32b-instruct"),
             ("coder-32b", "qwen2.5-coder-32b-instruct"),
             ("coder-14b", "qwen2.5-coder-14b-instruct"),
             ("coder-7b", "qwen2.5-coder-7b-instruct"),
-
             // 视觉模型
             ("vl", "qwen-vl-max"),
             ("vision", "qwen-vl-max"),
             ("vl-max", "qwen-vl-max"),
             ("vl-plus", "qwen-vl-plus"),
-
             // 推理思考模型 (QwQ)
             ("qwq", "qwq-plus"),
             ("thinking", "qwq-plus"),
@@ -67,35 +64,77 @@ impl QwenModelResolver {
         // 主力模型（max, plus, turbo）已支持 Vision 多模态
         inner.extend_capabilities(vec![
             // 主力商业模型
-            ("qwen-max", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING),
-            ("qwen-plus", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING),
-            ("qwen-turbo", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING),
-            ("qwen-max-latest", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-
+            (
+                "qwen-max",
+                Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "qwen-plus",
+                Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "qwen-turbo",
+                Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "qwen-max-latest",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
             // 专属代码模型
-            ("qwen2.5-coder-32b-instruct", Capability::CHAT | Capability::TOOLS | Capability::STREAMING),
-            ("qwen2.5-coder-14b-instruct", Capability::CHAT | Capability::TOOLS | Capability::STREAMING),
-            ("qwen2.5-coder-7b-instruct", Capability::CHAT | Capability::TOOLS | Capability::STREAMING),
-
+            (
+                "qwen2.5-coder-32b-instruct",
+                Capability::CHAT | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "qwen2.5-coder-14b-instruct",
+                Capability::CHAT | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "qwen2.5-coder-7b-instruct",
+                Capability::CHAT | Capability::TOOLS | Capability::STREAMING,
+            ),
             // 基础开源模型
-            ("qwen2.5-72b-instruct", Capability::CHAT | Capability::TOOLS | Capability::STREAMING),
-            ("qwen2.5-14b-instruct", Capability::CHAT | Capability::TOOLS | Capability::STREAMING),
-            ("qwen2.5-7b-instruct", Capability::CHAT | Capability::TOOLS | Capability::STREAMING),
-
+            (
+                "qwen2.5-72b-instruct",
+                Capability::CHAT | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "qwen2.5-14b-instruct",
+                Capability::CHAT | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "qwen2.5-7b-instruct",
+                Capability::CHAT | Capability::TOOLS | Capability::STREAMING,
+            ),
             // 视觉模型 (支持 Vision，通常也支持基本对话)
-            ("qwen-vl-max", Capability::CHAT | Capability::VISION | Capability::STREAMING),
-            ("qwen-vl-plus", Capability::CHAT | Capability::VISION | Capability::STREAMING),
-
+            (
+                "qwen-vl-max",
+                Capability::CHAT | Capability::VISION | Capability::STREAMING,
+            ),
+            (
+                "qwen-vl-plus",
+                Capability::CHAT | Capability::VISION | Capability::STREAMING,
+            ),
             // 推理思考模型 (QwQ)
-            ("qwq-plus", Capability::CHAT | Capability::STREAMING | Capability::THINKING),
-            ("qwq-32b-preview", Capability::CHAT | Capability::STREAMING | Capability::THINKING),
+            (
+                "qwq-plus",
+                Capability::CHAT | Capability::STREAMING | Capability::THINKING,
+            ),
+            (
+                "qwq-32b-preview",
+                Capability::CHAT | Capability::STREAMING | Capability::THINKING,
+            ),
         ]);
 
         // ========== 上下文长度 ==========
         inner.extend_context_lengths(vec![
-            ("qwen-max", 32_768),            // Max 当前通常是 32k
+            ("qwen-max", 32_768), // Max 当前通常是 32k
             ("qwen-max-latest", 32_768),
-            ("qwen-plus", 131_072),          // Plus 支持近 130k
+            ("qwen-plus", 131_072), // Plus 支持近 130k
             ("qwen-turbo", 131_072),
             ("qwen2.5-coder-32b-instruct", 32_768), // Coder 32k
             ("qwen2.5-coder-14b-instruct", 32_768),
@@ -136,6 +175,10 @@ impl ModelResolver for QwenModelResolver {
     fn context_window_hint(&self, model: &str) -> (usize, usize) {
         self.inner.context_window_hint(model)
     }
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
-
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
+        None
+    }
 }

@@ -18,10 +18,14 @@ impl IflowThinkingHook {
             return true;
         }
         // 特定模型支持
-        matches!(model,
-            "qwen3-max" | "qwen3-max-preview"
-            | "deepseek-v3" | "deepseek-v3.1" | "deepseek-v3.2"
-            | "deepseek-r1"
+        matches!(
+            model,
+            "qwen3-max"
+                | "qwen3-max-preview"
+                | "deepseek-v3"
+                | "deepseek-v3.1"
+                | "deepseek-v3.2"
+                | "deepseek-r1"
         )
     }
 
@@ -43,7 +47,9 @@ impl ProtocolHook for IflowThinkingHook {
 
             if Self::is_thinking_model(&model) {
                 if let Some(obj) = packed.as_object_mut() {
-                    let kwargs = obj.entry("chat_template_kwargs").or_insert(serde_json::json!({}));
+                    let kwargs = obj
+                        .entry("chat_template_kwargs")
+                        .or_insert(serde_json::json!({}));
                     if let Some(kwargs_obj) = kwargs.as_object_mut() {
                         kwargs_obj.insert("enable_thinking".to_string(), Value::Bool(true));
                         // GLM 模型需要 clear_thinking: false 以保留推理过程

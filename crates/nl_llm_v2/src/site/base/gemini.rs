@@ -1,7 +1,7 @@
 use std::time::Duration;
 
+use crate::site::context::{Action, UrlContext};
 use crate::site::traits::Site;
-use crate::site::context::{UrlContext, Action};
 
 /// Gemini 官方原生端点站点
 pub struct GeminiSite {
@@ -25,7 +25,7 @@ impl GeminiSite {
         self.base_url = url.into();
         self
     }
-    
+
     pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
         self.api_key = key.into();
         self
@@ -48,19 +48,19 @@ impl Site for GeminiSite {
 
     fn build_url(&self, context: &UrlContext) -> String {
         // e.g. /models/gemini-2.5-pro:generateContent
-        let model = if context.model.is_empty() { 
-            "gemini-1.5-pro-latest" 
-        } else { 
-            context.model 
+        let model = if context.model.is_empty() {
+            "gemini-1.5-pro-latest"
+        } else {
+            context.model
         };
-        
+
         let path = match context.action {
             Action::Generate => format!(":generateContent"),
             Action::Stream => format!(":streamGenerateContent?alt=sse"),
             Action::Embed => format!(":embedContent"),
             _ => format!(":generateContent"),
         };
-        
+
         let mut base = format!("{}/{}{}", self.base_url.trim_end_matches('/'), model, path);
 
         if !self.api_key.is_empty() {

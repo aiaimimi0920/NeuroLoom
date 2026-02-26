@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use crate::client::ClientBuilder;
-use crate::site::base::openai::OpenAiSite;
-use crate::protocol::base::openai::OpenAiProtocol;
 use crate::model::QwenModelResolver;
+use crate::protocol::base::openai::OpenAiProtocol;
 use crate::provider::qwen::QwenExtension;
+use crate::site::base::openai::OpenAiSite;
+use std::sync::Arc;
 
 /// 阿里云通义千问 (Qwen) API 预设
 ///
@@ -55,5 +55,5 @@ pub fn builder() -> ClientBuilder {
         .protocol(OpenAiProtocol {})
         .model_resolver(QwenModelResolver::new())
         .with_extension(Arc::new(QwenExtension::new().with_base_url(QWEN_BASE_URL)))
-        .default_model("qwen-plus")  // 默认使用性价比最高且能力均衡的 qwen-plus
+        .default_model("qwen-plus") // 默认使用性价比最高且能力均衡的 qwen-plus
 }

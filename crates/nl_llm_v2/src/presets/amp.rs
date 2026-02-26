@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use crate::client::ClientBuilder;
-use crate::site::base::amp::{AmpSite, AmpConfig};
-use crate::protocol::base::openai::OpenAiProtocol;
 use crate::model::amp::AmpModelResolver;
+use crate::protocol::base::openai::OpenAiProtocol;
 use crate::provider::amp::AmpExtension;
+use crate::site::base::amp::{AmpConfig, AmpSite};
+use std::sync::Arc;
 
 /// Sourcegraph Amp 预设 (ampcode.com)
 ///
@@ -56,5 +56,5 @@ pub fn builder() -> ClientBuilder {
         .protocol(OpenAiProtocol {})
         .model_resolver(AmpModelResolver::new())
         .with_extension(Arc::new(AmpExtension::from_config(config)))
-        .default_model("gpt-4o")  // 默认使用 GPT-4o
+        .default_model("gpt-4o") // 默认使用 GPT-4o
 }

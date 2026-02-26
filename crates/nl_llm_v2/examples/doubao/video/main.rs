@@ -1,6 +1,6 @@
+use std::env;
 use tokio::io::{stdout, AsyncWriteExt};
 use tokio::time::{sleep, Duration};
-use std::env;
 
 use nl_llm_v2::client::LlmClient;
 use nl_llm_v2::primitive::PrimitiveRequest;
@@ -14,7 +14,9 @@ async fn main() -> anyhow::Result<()> {
 
     let client = LlmClient::from_preset("doubao")
         .expect("Doubao preset not found")
-        .auth(nl_llm_v2::auth::providers::api_key::ApiKeyAuth::new(&api_key))
+        .auth(nl_llm_v2::auth::providers::api_key::ApiKeyAuth::new(
+            &api_key,
+        ))
         .build();
 
     println!("🚀 [Doubao Video] 开始测试豆包视频大模型...");
@@ -33,32 +35,30 @@ async fn main() -> anyhow::Result<()> {
         stdout().flush().await?;
 
         match client.fetch_video_task(&task_id).await {
-            Ok(status) => {
-                match status.state {
-                    VideoTaskState::Submitted | VideoTaskState::Processing => {
-                        println!("处理中...");
-                    }
-                    VideoTaskState::Succeed => {
-                        println!("\n🎉 视频生成成功！");
-                        if let Some(video_urls) = status.video_urls.first() {
-                            println!("🔗 视频下载链接: {}", video_urls);
-                        }
-                        break;
-                    }
-                    VideoTaskState::Failed => {
-                        println!("\n❌ 任务失败！");
-                        if let Some(msg) = status.message {
-                            println!("错误信息: {}", msg);
-                        }
-                        break;
-                    }
+            Ok(status) => match status.state {
+                VideoTaskState::Submitted | VideoTaskState::Processing => {
+                    println!("处理中...");
                 }
-            }
+                VideoTaskState::Succeed => {
+                    println!("\n🎉 视频生成成功！");
+                    if let Some(video_urls) = status.video_urls.first() {
+                        println!("🔗 视频下载链接: {}", video_urls);
+                    }
+                    break;
+                }
+                VideoTaskState::Failed => {
+                    println!("\n❌ 任务失败！");
+                    if let Some(msg) = status.message {
+                        println!("错误信息: {}", msg);
+                    }
+                    break;
+                }
+            },
             Err(e) => {
                 println!("\n⚠️ 查询异常: {}", e);
             }
         }
-        
+
         sleep(Duration::from_secs(5)).await;
     }
 

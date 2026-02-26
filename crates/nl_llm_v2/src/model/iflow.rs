@@ -1,5 +1,5 @@
 use super::default::DefaultModelResolver;
-use super::resolver::{ModelResolver, Capability};
+use super::resolver::{Capability, ModelResolver};
 
 /// iFlow 平台专属模型解析器
 ///
@@ -42,36 +42,126 @@ impl IFlowModelResolver {
         // === 能力配置 ===
         // Qwen 系列 (支持 thinking)
         inner.extend_capabilities(vec![
-            ("qwen3-max", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("qwen3-max-preview", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("qwen3-turbo", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING),
-            ("qwen3-plus", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING),
-            ("qwen2.5-max", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING),
-            ("qwen2.5-turbo", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING),
+            (
+                "qwen3-max",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
+            (
+                "qwen3-max-preview",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
+            (
+                "qwen3-turbo",
+                Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "qwen3-plus",
+                Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "qwen2.5-max",
+                Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "qwen2.5-turbo",
+                Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+            ),
         ]);
 
         // GLM 系列 (支持 thinking)
         inner.extend_capabilities(vec![
-            ("glm-4", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("glm-4-air", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("glm-4-flash", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("glm-4-plus", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("glm-z1-air", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("glm-z1-flash", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
+            (
+                "glm-4",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
+            (
+                "glm-4-air",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
+            (
+                "glm-4-flash",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
+            (
+                "glm-4-plus",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
+            (
+                "glm-z1-air",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
+            (
+                "glm-z1-flash",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
         ]);
 
         // DeepSeek 系列 (支持 thinking)
         inner.extend_capabilities(vec![
-            ("deepseek-v3", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING),
-            ("deepseek-v3.1", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING),
-            ("deepseek-v3.2", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING),
-            ("deepseek-r1", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
+            (
+                "deepseek-v3",
+                Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "deepseek-v3.1",
+                Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "deepseek-v3.2",
+                Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "deepseek-r1",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
         ]);
 
         // MiniMax 系列
         inner.extend_capabilities(vec![
-            ("minimax-text-01", Capability::CHAT | Capability::TOOLS | Capability::STREAMING),
-            ("abab6.5s-chat", Capability::CHAT | Capability::TOOLS | Capability::STREAMING),
+            (
+                "minimax-text-01",
+                Capability::CHAT | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "abab6.5s-chat",
+                Capability::CHAT | Capability::TOOLS | Capability::STREAMING,
+            ),
         ]);
 
         // === 上下文长度 ===
@@ -135,6 +225,10 @@ impl ModelResolver for IFlowModelResolver {
     fn context_window_hint(&self, model: &str) -> (usize, usize) {
         self.inner.context_window_hint(model)
     }
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
-
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
+        None
+    }
 }

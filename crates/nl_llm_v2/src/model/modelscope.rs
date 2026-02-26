@@ -50,9 +50,11 @@ impl ModelScopeModelResolver {
         ]);
 
         // === 能力配置 ===
-        let thinking_caps = Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::THINKING;
+        let thinking_caps =
+            Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::THINKING;
         let standard_caps = Capability::CHAT | Capability::TOOLS | Capability::STREAMING;
-        let vision_caps = Capability::CHAT | Capability::VISION | Capability::STREAMING | Capability::THINKING;
+        let vision_caps =
+            Capability::CHAT | Capability::VISION | Capability::STREAMING | Capability::THINKING;
 
         inner.extend_capabilities(vec![
             ("Qwen/Qwen3-235B-A22B", thinking_caps),
@@ -97,6 +99,10 @@ impl ModelResolver for ModelScopeModelResolver {
     fn context_window_hint(&self, model: &str) -> (usize, usize) {
         self.inner.context_window_hint(model)
     }
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
-
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
+        None
+    }
 }

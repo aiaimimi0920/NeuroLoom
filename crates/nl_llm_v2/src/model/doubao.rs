@@ -1,4 +1,4 @@
-use super::resolver::{ModelResolver, Capability, Modality};
+use super::resolver::{Capability, Modality, ModelResolver};
 
 /// Doubao 视频模型解析器
 ///
@@ -14,7 +14,9 @@ impl DoubaoModelResolver {
 impl ModelResolver for DoubaoModelResolver {
     fn resolve(&self, model: &str) -> String {
         match model.to_lowercase().as_str() {
-            "doubao-video" | "seedance" | "seedance-pro" => "doubao-seedance-1-0-pro-250528".to_string(),
+            "doubao-video" | "seedance" | "seedance-pro" => {
+                "doubao-seedance-1-0-pro-250528".to_string()
+            }
             "seedance-lite" => "doubao-seedance-1-0-lite-t2v".to_string(),
             "seedance-1.5" => "doubao-seedance-1-5-pro-251215".to_string(),
             _ => model.to_string(),

@@ -1,10 +1,10 @@
+use async_trait::async_trait;
+use hmac::{Hmac, Mac};
+use reqwest::{header::HeaderValue, Client, RequestBuilder};
+use serde::Deserialize;
+use sha2::Sha256;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-use async_trait::async_trait;
-use reqwest::{Client, RequestBuilder, header::HeaderValue};
-use serde::Deserialize;
-use hmac::{Hmac, Mac};
-use sha2::Sha256;
 
 use crate::auth::traits::Authenticator;
 use crate::auth::types::{TokenStatus, TokenStorage};
@@ -102,21 +102,32 @@ impl IFlowAuth {
         );
         if is_json {
             headers.insert("Content-Type", HeaderValue::from_static("application/json"));
-            headers.insert("Origin", HeaderValue::from_static("https://platform.iflow.cn"));
-            headers.insert("Referer", HeaderValue::from_static("https://platform.iflow.cn/"));
+            headers.insert(
+                "Origin",
+                HeaderValue::from_static("https://platform.iflow.cn"),
+            );
+            headers.insert(
+                "Referer",
+                HeaderValue::from_static("https://platform.iflow.cn/"),
+            );
         }
         headers
     }
 
     /// 生成 HMAC-SHA256 签名
     /// 签名格式: HMAC-SHA256(apiKey, "userAgent:sessionId:timestamp")
-    fn create_signature(api_key: &str, user_agent: &str, session_id: &str, timestamp: u64) -> String {
+    fn create_signature(
+        api_key: &str,
+        user_agent: &str,
+        session_id: &str,
+        timestamp: u64,
+    ) -> String {
         if api_key.is_empty() {
             return String::new();
         }
         let payload = format!("{}:{}:{}", user_agent, session_id, timestamp);
-        let mut mac = HmacSha256::new_from_slice(api_key.as_bytes())
-            .expect("HMAC can take key of any size");
+        let mut mac =
+            HmacSha256::new_from_slice(api_key.as_bytes()).expect("HMAC can take key of any size");
         mac.update(payload.as_bytes());
         hex::encode(mac.finalize().into_bytes())
     }
@@ -134,7 +145,10 @@ impl Authenticator for IFlowAuth {
 
     fn needs_refresh(&self) -> bool {
         self.token.as_ref().map_or(true, |t| {
-            matches!(t.status(7 * 24 * 3600), TokenStatus::Expired | TokenStatus::ExpiringSoon)
+            matches!(
+                t.status(7 * 24 * 3600),
+                TokenStatus::Expired | TokenStatus::ExpiringSoon
+            )
         })
     }
 
@@ -144,17 +158,23 @@ impl Authenticator for IFlowAuth {
         }
 
         // STEP 1: GET 获取用户信息与 name
-        let get_resp = self.http.get("https://platform.iflow.cn/api/openapi/apikey")
+        let get_resp = self
+            .http
+            .get("https://platform.iflow.cn/api/openapi/apikey")
             .headers(self.build_headers(false))
             .send()
             .await?;
 
         if !get_resp.status().is_success() {
-            return Err(anyhow::anyhow!("GET apikey failed ({}): {}", get_resp.status(), get_resp.text().await.unwrap_or_default()));
+            return Err(anyhow::anyhow!(
+                "GET apikey failed ({}): {}",
+                get_resp.status(),
+                get_resp.text().await.unwrap_or_default()
+            ));
         }
 
         let text = get_resp.text().await?;
-        
+
         // 检查是否被重定向到了包含 HTML 的登录页（Cookie 失效）
         if text.trim().starts_with('<') {
             return Err(anyhow::anyhow!("iFlow Cookie has expired or is invalid. Server returned HTML (redirected to login). Please update your BXAuth cookie."));
@@ -162,23 +182,39 @@ impl Authenticator for IFlowAuth {
 
         let get_data: IFlowApiKeyResponse = match serde_json::from_str(&text) {
             Ok(j) => j,
-            Err(e) => return Err(anyhow::anyhow!("Failed to parse GET apikey JSON: {}\nRaw: {}", e, text)),
+            Err(e) => {
+                return Err(anyhow::anyhow!(
+                    "Failed to parse GET apikey JSON: {}\nRaw: {}",
+                    e,
+                    text
+                ))
+            }
         };
         if !get_data.success {
-            return Err(anyhow::anyhow!("GET apikey returned success=false\nRaw: {}", text));
+            return Err(anyhow::anyhow!(
+                "GET apikey returned success=false\nRaw: {}",
+                text
+            ));
         }
-        let data = get_data.data.ok_or_else(|| anyhow::anyhow!("Missing GET response payload"))?;
+        let data = get_data
+            .data
+            .ok_or_else(|| anyhow::anyhow!("Missing GET response payload"))?;
 
         // STEP 2: POST 刷新以获取真正的 apiKey
         let post_body = serde_json::json!({ "name": data.name });
-        let post_resp = self.http.post("https://platform.iflow.cn/api/openapi/apikey")
+        let post_resp = self
+            .http
+            .post("https://platform.iflow.cn/api/openapi/apikey")
             .headers(self.build_headers(true))
             .json(&post_body)
             .send()
             .await?;
 
         if !post_resp.status().is_success() {
-            return Err(anyhow::anyhow!("POST apikey failed: {}", post_resp.status()));
+            return Err(anyhow::anyhow!(
+                "POST apikey failed: {}",
+                post_resp.status()
+            ));
         }
 
         let json_post: IFlowApiKeyResponse = post_resp.json().await?;
@@ -186,7 +222,9 @@ impl Authenticator for IFlowAuth {
             return Err(anyhow::anyhow!("POST apikey returned false"));
         }
 
-        let post_data = json_post.data.ok_or_else(|| anyhow::anyhow!("Missing POST response payload"))?;
+        let post_data = json_post
+            .data
+            .ok_or_else(|| anyhow::anyhow!("Missing POST response payload"))?;
 
         let mut extra = std::collections::HashMap::new();
         extra.insert("session_id".to_string(), serde_json::json!(self.session_id));

@@ -193,11 +193,9 @@ impl AnthropicOAuth {
 <p>您可以关闭此窗口返回程序。</p>
 </body></html>"#;
 
-            let resp = tiny_http::Response::from_string(html)
-                .with_header(
-                    tiny_http::Header::from_bytes("Content-Type", "text/html; charset=utf-8")
-                        .unwrap(),
-                );
+            let resp = tiny_http::Response::from_string(html).with_header(
+                tiny_http::Header::from_bytes("Content-Type", "text/html; charset=utf-8").unwrap(),
+            );
             let _ = request.respond(resp);
 
             // 解析 URL 参数
@@ -302,9 +300,9 @@ impl AnthropicOAuth {
     }
 
     fn build_token_storage(&self, token_resp: TokenResponse) -> anyhow::Result<TokenStorage> {
-        let expires_at = token_resp.expires_in.map(|e| {
-            chrono::Utc::now() + chrono::Duration::seconds(e as i64)
-        });
+        let expires_at = token_resp
+            .expires_in
+            .map(|e| chrono::Utc::now() + chrono::Duration::seconds(e as i64));
 
         let email = token_resp.account.email_address.clone();
 
@@ -348,11 +346,10 @@ impl AnthropicOAuth {
         let port = self.callback_port;
         let timeout = Duration::from_secs(300); // 5 分钟超时
 
-        let callback_result = tokio::task::spawn_blocking(move || {
-            Self::wait_for_callback(port, timeout)
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("回调等待线程失败: {}", e))??;
+        let callback_result =
+            tokio::task::spawn_blocking(move || Self::wait_for_callback(port, timeout))
+                .await
+                .map_err(|e| anyhow::anyhow!("回调等待线程失败: {}", e))??;
 
         let (code, returned_state) = callback_result;
 
@@ -368,9 +365,9 @@ impl AnthropicOAuth {
         println!("Anthropic 授权成功！正在交换 token...");
 
         // 6. 交换 code → token
-        let token =
-            self.exchange_code_for_token(&code, &code_verifier, &state, self.callback_port)
-                .await?;
+        let token = self
+            .exchange_code_for_token(&code, &code_verifier, &state, self.callback_port)
+            .await?;
 
         if let Some(ref email) = token.email {
             println!("已登录账户: {}", email);
@@ -410,16 +407,13 @@ impl Authenticator for AnthropicOAuth {
         }
 
         // 尝试 refresh_token 刷新
-        let refresh_result = if let Some(rt) = self
-            .token
-            .as_ref()
-            .and_then(|t| t.refresh_token.as_deref())
-        {
-            let rt = rt.to_string();
-            Some(self.do_refresh(&rt).await)
-        } else {
-            None
-        };
+        let refresh_result =
+            if let Some(rt) = self.token.as_ref().and_then(|t| t.refresh_token.as_deref()) {
+                let rt = rt.to_string();
+                Some(self.do_refresh(&rt).await)
+            } else {
+                None
+            };
 
         match refresh_result {
             Some(Ok(new_token)) => {
@@ -450,9 +444,7 @@ impl Authenticator for AnthropicOAuth {
         AuthType::OAuth
     }
 
-    fn get_extra<'a>(
-        &'a self,
-    ) -> Option<&'a HashMap<String, serde_json::Value>> {
+    fn get_extra<'a>(&'a self) -> Option<&'a HashMap<String, serde_json::Value>> {
         self.token.as_ref().map(|t| &t.extra)
     }
 }

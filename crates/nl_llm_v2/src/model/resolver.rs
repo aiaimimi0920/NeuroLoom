@@ -125,13 +125,13 @@ pub trait ModelResolver: Send + Sync {
     fn context_window_hint(&self, model: &str) -> (usize, usize);
 
     /// 获取模型的基础智能评级与模态分类
-    /// 
+    ///
     /// 返回 (智能等级 1.0~5.0, 所属模态)
     fn intelligence_and_modality(&self, model: &str) -> Option<(f32, Modality)>;
 }
 
 /// 模型模态分类
-/// 
+///
 /// 决定了模型能处理的数据类型或擅长的具体领域
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Modality {

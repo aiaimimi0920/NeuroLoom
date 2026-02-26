@@ -37,7 +37,10 @@ impl SubModelModelResolver {
         let text_caps = Capability::CHAT | Capability::STREAMING | Capability::TOOLS;
         inner.extend_capabilities(vec![
             ("NousResearch/Hermes-4-405B-FP8", text_caps),
-            ("Qwen/Qwen3-235B-A22B-Thinking-2507", text_caps | Capability::THINKING),
+            (
+                "Qwen/Qwen3-235B-A22B-Thinking-2507",
+                text_caps | Capability::THINKING,
+            ),
             ("Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8", text_caps),
             ("Qwen/Qwen3-235B-A22B-Instruct-2507", text_caps),
             ("zai-org/GLM-4.5-FP8", text_caps),
@@ -62,7 +65,11 @@ impl SubModelModelResolver {
         inner.extend_intelligence_profiles(vec![
             ("NousResearch/Hermes-4-405B-FP8", 4.0, Modality::Text),
             ("Qwen/Qwen3-235B-A22B-Thinking-2507", 4.5, Modality::Text),
-            ("Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8", 4.4, Modality::Text),
+            (
+                "Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8",
+                4.4,
+                Modality::Text,
+            ),
             ("Qwen/Qwen3-235B-A22B-Instruct-2507", 4.3, Modality::Text),
             ("zai-org/GLM-4.5-FP8", 4.5, Modality::Text),
             ("openai/gpt-oss-120b", 4.2, Modality::Text),
@@ -109,7 +116,10 @@ mod tests {
     #[test]
     fn submodel_aliases_resolve() {
         let resolver = SubModelModelResolver::new();
-        assert_eq!(resolver.resolve("qwen-thinking"), "Qwen/Qwen3-235B-A22B-Thinking-2507");
+        assert_eq!(
+            resolver.resolve("qwen-thinking"),
+            "Qwen/Qwen3-235B-A22B-Thinking-2507"
+        );
         assert_eq!(resolver.resolve("DS"), "deepseek-ai/DeepSeek-V3.1");
     }
 

@@ -1,5 +1,5 @@
 use super::default::DefaultModelResolver;
-use super::resolver::{ModelResolver, Capability};
+use super::resolver::{Capability, ModelResolver};
 
 /// Anthropic Claude 模型解析器
 ///
@@ -35,22 +35,78 @@ impl AnthropicModelResolver {
         // === 能力配置 ===
         // Claude 4.6 系列
         inner.extend_capabilities(vec![
-            ("claude-opus-4-6", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("claude-sonnet-4-6", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
+            (
+                "claude-opus-4-6",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
+            (
+                "claude-sonnet-4-6",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
             // Claude 4.5 系列
-            ("claude-opus-4-5-20251101", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("claude-sonnet-4-5-20250929", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("claude-haiku-4-5-20251001", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
+            (
+                "claude-opus-4-5-20251101",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
+            (
+                "claude-sonnet-4-5-20250929",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
+            (
+                "claude-haiku-4-5-20251001",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
             // Claude 4 系列
-            ("claude-opus-4-20250514", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("claude-sonnet-4-20250514", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
+            (
+                "claude-opus-4-20250514",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
+            (
+                "claude-sonnet-4-20250514",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
             // Claude 3.7
-            ("claude-3-7-sonnet-20250219", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
+            (
+                "claude-3-7-sonnet-20250219",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
         ]);
 
         // === 上下文长度 ===
         inner.extend_context_lengths(vec![
-            ("claude-opus-4-6", 1_000_000),        // 1M context
+            ("claude-opus-4-6", 1_000_000), // 1M context
             ("claude-sonnet-4-6", 200_000),
             ("claude-opus-4-5-20251101", 200_000),
             ("claude-sonnet-4-5-20250929", 200_000),
@@ -86,6 +142,10 @@ impl ModelResolver for AnthropicModelResolver {
     fn context_window_hint(&self, model: &str) -> (usize, usize) {
         self.inner.context_window_hint(model)
     }
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
-
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
+        None
+    }
 }

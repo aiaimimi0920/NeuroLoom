@@ -1,10 +1,10 @@
 use serde_json::{json, Value};
 use tokio_stream::StreamExt;
 
+use crate::primitive::{PrimitiveMessage, PrimitiveRequest};
+use crate::protocol::error::{ErrorKind, StandardError};
 use crate::protocol::traits::ProtocolFormat;
-use crate::protocol::error::{StandardError, ErrorKind};
-use crate::primitive::{PrimitiveRequest, PrimitiveMessage};
-use crate::provider::{LlmResponse, BoxLlmStream, LlmChunk};
+use crate::provider::{BoxLlmStream, LlmChunk, LlmResponse};
 
 /// OpenAI 标准协议封包与解包
 pub struct OpenAiProtocol;
@@ -26,10 +26,13 @@ impl ProtocolFormat for OpenAiProtocol {
 
         if let Some(sys) = &primitive.system {
             if let Some(msgs) = body["messages"].as_array_mut() {
-                msgs.insert(0, json!({
-                    "role": "system",
-                    "content": sys
-                }));
+                msgs.insert(
+                    0,
+                    json!({
+                        "role": "system",
+                        "content": sys
+                    }),
+                );
             }
         }
 
@@ -42,7 +45,8 @@ impl ProtocolFormat for OpenAiProtocol {
             body["top_p"] = json!(top_p);
         }
 
-        let is_reasoning_model = primitive.model.starts_with("o1") || primitive.model.starts_with("o3");
+        let is_reasoning_model =
+            primitive.model.starts_with("o1") || primitive.model.starts_with("o3");
 
         if let Some(max_tok) = params.max_tokens {
             if is_reasoning_model {
@@ -74,18 +78,20 @@ impl ProtocolFormat for OpenAiProtocol {
             .to_string();
 
         // [修复] 正确解析 model 字段
-        let model = v.get("model")
+        let model = v
+            .get("model")
             .and_then(|m| m.as_str())
             .unwrap_or("unknown")
             .to_string();
 
         // [修复] 正确解析 usage
-        let usage = v.get("usage").map(|u| {
-            crate::provider::Usage {
-                prompt_tokens: u.get("prompt_tokens").and_then(|t| t.as_u64()).unwrap_or(0) as u32,
-                completion_tokens: u.get("completion_tokens").and_then(|t| t.as_u64()).unwrap_or(0) as u32,
-                total_tokens: u.get("total_tokens").and_then(|t| t.as_u64()).unwrap_or(0) as u32,
-            }
+        let usage = v.get("usage").map(|u| crate::provider::Usage {
+            prompt_tokens: u.get("prompt_tokens").and_then(|t| t.as_u64()).unwrap_or(0) as u32,
+            completion_tokens: u
+                .get("completion_tokens")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0) as u32,
+            total_tokens: u.get("total_tokens").and_then(|t| t.as_u64()).unwrap_or(0) as u32,
         });
 
         Ok(LlmResponse {
@@ -108,7 +114,7 @@ impl ProtocolFormat for OpenAiProtocol {
                         continue;
                     }
                 };
-                
+
                 let s = String::from_utf8_lossy(&bytes);
                 buffer.push_str(&s);
 
@@ -125,7 +131,7 @@ impl ProtocolFormat for OpenAiProtocol {
                         if data == "[DONE]" || data.is_empty() {
                             continue;
                         }
-                        
+
                         if let Ok(json) = serde_json::from_str::<Value>(data) {
                             if let Some(choices) = json.get("choices").and_then(|c| c.as_array()) {
                                 if !choices.is_empty() {
@@ -164,17 +170,21 @@ impl ProtocolFormat for OpenAiProtocol {
             _ => match error.get("type").and_then(|t| t.as_str()) {
                 Some("context_length_exceeded") => ErrorKind::ContextLengthExceeded,
                 Some("content_filter") => ErrorKind::ContentFilter,
-                Some("model_not_found") | Some("model_not_available") => ErrorKind::ModelUnavailable,
+                Some("model_not_found") | Some("model_not_available") => {
+                    ErrorKind::ModelUnavailable
+                }
                 _ => ErrorKind::Other,
-            }
+            },
         };
 
-        let message = error.get("message")
+        let message = error
+            .get("message")
             .and_then(|m| m.as_str())
             .unwrap_or(raw)
             .to_string();
 
-        let code = error.get("code")
+        let code = error
+            .get("code")
             .or_else(|| error.get("type"))
             .and_then(|c| c.as_str())
             .map(|s| s.to_string());
@@ -186,7 +196,9 @@ impl ProtocolFormat for OpenAiProtocol {
             retryable: matches!(kind, ErrorKind::RateLimit | ErrorKind::ServerError),
             fallback_hint: match kind {
                 ErrorKind::RateLimit => Some(crate::protocol::error::FallbackHint::Retry),
-                ErrorKind::ModelUnavailable => Some(crate::protocol::error::FallbackHint::FallbackTo("backup".into())),
+                ErrorKind::ModelUnavailable => Some(
+                    crate::protocol::error::FallbackHint::FallbackTo("backup".into()),
+                ),
                 _ => None,
             },
         })
@@ -196,13 +208,18 @@ impl ProtocolFormat for OpenAiProtocol {
 impl OpenAiProtocol {
     fn pack_message(msg: &PrimitiveMessage) -> Value {
         let role = msg.role.to_string();
-        let content_str = msg.content.iter().filter_map(|c| {
-            if let crate::primitive::message::PrimitiveContent::Text { text } = c {
-                Some(text.clone())
-            } else {
-                None
-            }
-        }).collect::<Vec<_>>().join("\n");
+        let content_str = msg
+            .content
+            .iter()
+            .filter_map(|c| {
+                if let crate::primitive::message::PrimitiveContent::Text { text } = c {
+                    Some(text.clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
         json!({
             "role": role,
             "content": content_str

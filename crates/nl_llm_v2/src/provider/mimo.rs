@@ -1,7 +1,7 @@
-use crate::concurrency::ConcurrencyConfig;
-use crate::provider::extension::{ProviderExtension, ModelInfo};
-use crate::provider::balance::BalanceStatus;
 use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
+use crate::provider::balance::BalanceStatus;
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 use reqwest::Client;
 use std::sync::Arc;
 
@@ -65,12 +65,11 @@ impl Default for MiMoExtension {
 }
 
 fn mimo_models() -> Vec<ModelInfo> {
-    vec![
-        ModelInfo {
-            id: "mimo-v2-flash".to_string(),
-            description: "MiMo V2 Flash — 小米旗舰模型，128K context，支持思考模式和工具调用".to_string(),
-        },
-    ]
+    vec![ModelInfo {
+        id: "mimo-v2-flash".to_string(),
+        description: "MiMo V2 Flash — 小米旗舰模型，128K context，支持思考模式和工具调用"
+            .to_string(),
+    }]
 }
 
 #[async_trait::async_trait]

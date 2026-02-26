@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use crate::client::ClientBuilder;
-use crate::site::base::codex_api::CodexApiSite;
-use crate::protocol::base::codex::CodexProtocol;
 use crate::model::CodexModelResolver;
+use crate::protocol::base::codex::CodexProtocol;
 use crate::provider::codex::CodexExtension;
+use crate::site::base::codex_api::CodexApiSite;
+use std::sync::Arc;
 
 /// Codex API 预设（API Key 模式）
 ///

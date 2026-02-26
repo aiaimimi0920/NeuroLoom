@@ -5,8 +5,7 @@ use tokio_stream::StreamExt;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let api_key = std::env::var("MOKA_API_KEY")
-        .expect("MOKA_API_KEY 环境变量未设置");
+    let api_key = std::env::var("MOKA_API_KEY").expect("MOKA_API_KEY 环境变量未设置");
 
     // Initialize MokaAI preset client
     let client = LlmClient::from_preset("moka")
@@ -17,7 +16,7 @@ async fn main() -> Result<()> {
     println!("Streaming from MokaAI...");
 
     let req = PrimitiveRequest::single_user_message("解释一下光电效应。");
-    
+
     let mut stream = client.stream(&req).await?;
 
     while let Some(chunk_result) = stream.next().await {

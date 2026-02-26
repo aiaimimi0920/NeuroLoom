@@ -1,6 +1,6 @@
-use std::time::Duration;
-use crate::site::traits::Site;
 use crate::site::context::UrlContext;
+use crate::site::traits::Site;
+use std::time::Duration;
 
 pub struct ReplicateSite {
     timeout: Duration,

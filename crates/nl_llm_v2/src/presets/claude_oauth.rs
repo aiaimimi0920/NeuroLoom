@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use crate::client::ClientBuilder;
-use crate::site::base::anthropic::AnthropicSite;
-use crate::protocol::base::claude::ClaudeProtocol;
 use crate::model::AnthropicModelResolver;
+use crate::protocol::base::claude::ClaudeProtocol;
 use crate::provider::anthropic::AnthropicExtension;
+use crate::site::base::anthropic::AnthropicSite;
+use std::sync::Arc;
 
 /// Claude OAuth 预设
 ///

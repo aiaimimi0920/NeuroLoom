@@ -1,9 +1,9 @@
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 use async_trait::async_trait;
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use reqwest::{Client, RequestBuilder};
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::auth::traits::Authenticator;
 use crate::auth::types::{TokenStatus, TokenStorage};
@@ -78,7 +78,10 @@ impl Authenticator for ServiceAccountAuth {
 
     fn needs_refresh(&self) -> bool {
         self.token.as_ref().map_or(true, |t| {
-            matches!(t.status(300), TokenStatus::Expired | TokenStatus::ExpiringSoon)
+            matches!(
+                t.status(300),
+                TokenStatus::Expired | TokenStatus::ExpiringSoon
+            )
         })
     }
 
@@ -105,7 +108,9 @@ impl Authenticator for ServiceAccountAuth {
             ("assertion", &jwt),
         ];
 
-        let res = self.http.post(VERTEX_TOKEN_ENDPOINT)
+        let res = self
+            .http
+            .post(VERTEX_TOKEN_ENDPOINT)
             .form(&params)
             .send()
             .await?;
@@ -116,7 +121,7 @@ impl Authenticator for ServiceAccountAuth {
         }
 
         let token_resp: GoogleTokenResponse = res.json().await?;
-        
+
         let token_info = TokenStorage {
             access_token: token_resp.access_token,
             refresh_token: None,

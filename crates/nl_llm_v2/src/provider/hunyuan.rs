@@ -69,7 +69,10 @@ impl ModelResolver for HunyuanModelResolver {
         self.inner.context_window_hint(model)
     }
 
-    fn intelligence_and_modality(&self, model: &str) -> Option<(f32, crate::model::resolver::Modality)> {
+    fn intelligence_and_modality(
+        &self,
+        model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
         self.inner.intelligence_and_modality(model)
     }
 }

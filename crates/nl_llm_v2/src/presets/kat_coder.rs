@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use crate::client::ClientBuilder;
-use crate::site::base::openai::OpenAiSite;
-use crate::protocol::base::openai::OpenAiProtocol;
 use crate::model::KatCoderModelResolver;
+use crate::protocol::base::openai::OpenAiProtocol;
 use crate::provider::kat_coder::KatCoderExtension;
+use crate::site::base::openai::OpenAiSite;
+use std::sync::Arc;
 
 /// KAT-Coder (StreamLake / Vanchin) API 预设
 ///
@@ -59,6 +59,8 @@ pub fn builder() -> ClientBuilder {
         .site(OpenAiSite::new().with_base_url(KAT_CODER_BASE_URL))
         .protocol(OpenAiProtocol {})
         .model_resolver(KatCoderModelResolver::new())
-        .with_extension(Arc::new(KatCoderExtension::new().with_base_url(KAT_CODER_BASE_URL)))
+        .with_extension(Arc::new(
+            KatCoderExtension::new().with_base_url(KAT_CODER_BASE_URL),
+        ))
         .default_model("kat-coder-pro")
 }

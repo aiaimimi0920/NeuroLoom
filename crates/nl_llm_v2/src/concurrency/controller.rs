@@ -1,11 +1,11 @@
 //! 并发控制器
 
-use std::sync::atomic::{AtomicUsize, AtomicU64, AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, RwLock};
 use tokio::sync::Semaphore;
 
-use super::config::{ConcurrencyConfig, AdjustmentStrategy};
+use super::config::{AdjustmentStrategy, ConcurrencyConfig};
 
 /// 并发控制器运行时状态
 pub struct ConcurrencyState {
@@ -151,12 +151,22 @@ impl ConcurrencyController {
 
         // 根据策略判断是否增加并发
         let should_increase = match &self.config.strategy {
-            AdjustmentStrategy::Aimd { additive_increment, .. } => {
-                let consecutive = self.state.consecutive_successes.fetch_add(1, Ordering::Relaxed) + 1;
+            AdjustmentStrategy::Aimd {
+                additive_increment, ..
+            } => {
+                let consecutive = self
+                    .state
+                    .consecutive_successes
+                    .fetch_add(1, Ordering::Relaxed)
+                    + 1;
                 // 每 N 次成功增加一次并发
                 consecutive % (*additive_increment as u64) == 0
             }
-            AdjustmentStrategy::LatencyBased { target_latency_ms, increase_threshold, .. } => {
+            AdjustmentStrategy::LatencyBased {
+                target_latency_ms,
+                increase_threshold,
+                ..
+            } => {
                 // 延迟低于目标 * 阈值时增加
                 latency_ms < (*target_latency_ms as f32 * increase_threshold) as u64
             }
@@ -175,14 +185,17 @@ impl ConcurrencyController {
         self.state.recovering.store(true, Ordering::Relaxed);
 
         let decrease_factor = match &self.config.strategy {
-            AdjustmentStrategy::Aimd { multiplicative_decrease, .. } => {
+            AdjustmentStrategy::Aimd {
+                multiplicative_decrease,
+                ..
+            } => {
                 // 对 429 错误使用更激进的降级
                 let base_factor = error_type.decrease_factor();
                 base_factor * multiplicative_decrease
             }
-            AdjustmentStrategy::LatencyBased { decrease_threshold, .. } => {
-                error_type.decrease_factor() * decrease_threshold
-            }
+            AdjustmentStrategy::LatencyBased {
+                decrease_threshold, ..
+            } => error_type.decrease_factor() * decrease_threshold,
             AdjustmentStrategy::Fixed => return,
         };
 

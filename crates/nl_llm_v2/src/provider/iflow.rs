@@ -1,7 +1,7 @@
-use async_trait::async_trait;
+use super::extension::{ModelInfo, ProviderExtension};
 use crate::auth::traits::Authenticator;
-use super::extension::{ProviderExtension, ModelInfo};
 use crate::concurrency::ConcurrencyConfig;
+use async_trait::async_trait;
 
 pub struct IFlowExtension;
 
@@ -27,7 +27,11 @@ impl ProviderExtension for IFlowExtension {
 
         if !status.is_success() {
             let err_text = resp.text().await.unwrap_or_default();
-            return Err(anyhow::anyhow!("iFlow models API failed ({}): {}", status, err_text));
+            return Err(anyhow::anyhow!(
+                "iFlow models API failed ({}): {}",
+                status,
+                err_text
+            ));
         }
 
         let text = resp.text().await?;

@@ -1,5 +1,5 @@
 use super::default::DefaultModelResolver;
-use super::resolver::{ModelResolver, Capability};
+use super::resolver::{Capability, ModelResolver};
 
 /// DeepSeek 模型解析器
 ///
@@ -72,8 +72,14 @@ impl DeepSeekModelResolver {
         // deepseek-chat: 支持 Chat、Tools、Streaming，不支持 Thinking
         // deepseek-reasoner: 支持 Chat、Streaming、Thinking，不支持 Tools
         inner.extend_capabilities(vec![
-            ("deepseek-chat", Capability::CHAT | Capability::TOOLS | Capability::STREAMING),
-            ("deepseek-reasoner", Capability::CHAT | Capability::STREAMING | Capability::THINKING),
+            (
+                "deepseek-chat",
+                Capability::CHAT | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "deepseek-reasoner",
+                Capability::CHAT | Capability::STREAMING | Capability::THINKING,
+            ),
         ]);
 
         // ========== 上下文长度 ==========
@@ -109,6 +115,10 @@ impl ModelResolver for DeepSeekModelResolver {
     fn context_window_hint(&self, model: &str) -> (usize, usize) {
         self.inner.context_window_hint(model)
     }
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
-
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
+        None
+    }
 }

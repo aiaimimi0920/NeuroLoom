@@ -7,6 +7,6 @@ mod config;
 mod controller;
 mod permit;
 
-pub use config::{ConcurrencyConfig, AdjustmentStrategy};
+pub use config::{AdjustmentStrategy, ConcurrencyConfig};
 pub use controller::{ConcurrencyController, ConcurrencySnapshot, FailureType};
 pub use permit::ConcurrencyPermit;

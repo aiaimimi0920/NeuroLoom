@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use crate::client::ClientBuilder;
-use crate::site::base::openai::OpenAiSite;
-use crate::protocol::base::openai::OpenAiProtocol;
 use crate::model::ZaiModelResolver;
+use crate::protocol::base::openai::OpenAiProtocol;
 use crate::provider::zai::ZaiExtension;
+use crate::site::base::openai::OpenAiSite;
+use std::sync::Arc;
 
 /// Z.AI（智谱 GLM 海外版）API 预设
 ///

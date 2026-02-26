@@ -1,7 +1,7 @@
-use crate::concurrency::ConcurrencyConfig;
-use crate::provider::extension::{ProviderExtension, ModelInfo};
-use crate::provider::balance::BalanceStatus;
 use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
+use crate::provider::balance::BalanceStatus;
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 use reqwest::Client;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -84,15 +84,24 @@ impl ProviderExtension for NvidiaExtension {
 
         if !status.is_success() {
             let err = resp.text().await.unwrap_or_default();
-            return Err(anyhow::anyhow!("Nvidia models API failed ({}): {}", status, err));
+            return Err(anyhow::anyhow!(
+                "Nvidia models API failed ({}): {}",
+                status,
+                err
+            ));
         }
 
-        let json: NvidiaModelsResponse = resp.json().await
+        let json: NvidiaModelsResponse = resp
+            .json()
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to parse models response: {}", e))?;
 
-        let models: Vec<ModelInfo> = json.data.into_iter()
+        let models: Vec<ModelInfo> = json
+            .data
+            .into_iter()
             .map(|m| {
-                let desc = m.owned_by
+                let desc = m
+                    .owned_by
                     .map(|owner| format!("by {}", owner))
                     .unwrap_or_else(|| "NVIDIA NIM model".to_string());
                 ModelInfo {

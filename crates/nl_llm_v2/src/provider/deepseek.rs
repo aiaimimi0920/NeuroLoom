@@ -1,10 +1,10 @@
+use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
+use crate::provider::balance::{BalanceStatus, BillingUnit, QuotaStatus, QuotaType};
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
-use crate::auth::traits::Authenticator;
-use crate::provider::extension::{ProviderExtension, ModelInfo};
-use crate::provider::balance::{BalanceStatus, QuotaStatus, QuotaType, BillingUnit};
-use crate::concurrency::ConcurrencyConfig;
 use std::sync::Arc;
 
 /// DeepSeek 默认 API 基础 URL
@@ -74,7 +74,10 @@ impl DeepSeekExtension {
     pub fn with_base_url(mut self, url: impl Into<String>) -> Self {
         let url = url.into();
         // 去除可能带的 /v1 后缀
-        self.base_url = url.trim_end_matches('/').trim_end_matches("/v1").to_string();
+        self.base_url = url
+            .trim_end_matches('/')
+            .trim_end_matches("/v1")
+            .to_string();
         self
     }
 
@@ -146,10 +149,15 @@ impl ProviderExtension for DeepSeekExtension {
 
         if !status.is_success() {
             let err_text = resp.text().await.unwrap_or_default();
-            return Ok(Some(BalanceStatus::error(format!("API 错误 ({}): {}", status, err_text))));
+            return Ok(Some(BalanceStatus::error(format!(
+                "API 错误 ({}): {}",
+                status, err_text
+            ))));
         }
 
-        let json: DeepSeekBalanceResponse = resp.json().await
+        let json: DeepSeekBalanceResponse = resp
+            .json()
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to parse balance response: {}", e))?;
 
         if !json.is_available {
@@ -174,10 +182,7 @@ impl ProviderExtension for DeepSeekExtension {
         for info in &json.balance_infos {
             display_parts.push(format!(
                 "{}: 总额 {} (赠送 {} / 充值 {})",
-                info.currency,
-                info.total_balance,
-                info.granted_balance,
-                info.topped_up_balance
+                info.currency, info.total_balance, info.granted_balance, info.topped_up_balance
             ));
 
             // 尝试解析数值
@@ -208,7 +213,9 @@ impl ProviderExtension for DeepSeekExtension {
             },
             free: if has_granted {
                 Some(QuotaStatus {
-                    unit: BillingUnit::Money { currency: "CNY".to_string() },
+                    unit: BillingUnit::Money {
+                        currency: "CNY".to_string(),
+                    },
                     used: 0.0, // DeepSeek 不返回已使用量
                     total: None,
                     remaining: Some(granted_balance),
@@ -221,7 +228,9 @@ impl ProviderExtension for DeepSeekExtension {
             },
             paid: if topped_up_balance > 0.0 {
                 Some(QuotaStatus {
-                    unit: BillingUnit::Money { currency: "CNY".to_string() },
+                    unit: BillingUnit::Money {
+                        currency: "CNY".to_string(),
+                    },
                     used: 0.0,
                     total: None,
                     remaining: Some(topped_up_balance),

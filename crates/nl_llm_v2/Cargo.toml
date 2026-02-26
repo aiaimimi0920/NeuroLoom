@@ -848,6 +848,10 @@ name = "jimeng_video"
 path = "examples/jimeng/video/main.rs"
 
 [[example]]
+name = "vidu_video"
+path = "examples/vidu/video/main.rs"
+
+[[example]]
 name = "submodel_chat"
 path = "examples/submodel/chat/main.rs"
 

@@ -1,10 +1,10 @@
-use serde_json::{json, Value};
+use crate::primitive::{PrimitiveMessage, PrimitiveRequest};
+use crate::protocol::error::{ErrorKind, StandardError};
 use crate::protocol::traits::ProtocolFormat;
-use crate::primitive::{PrimitiveRequest, PrimitiveMessage};
-use crate::provider::{LlmResponse, BoxLlmStream, LlmChunk};
-use crate::protocol::error::{StandardError, ErrorKind};
-use tokio_stream::StreamExt;
+use crate::provider::{BoxLlmStream, LlmChunk, LlmResponse};
 use anyhow::Result;
+use serde_json::{json, Value};
+use tokio_stream::StreamExt;
 
 pub struct ClaudeProtocol;
 
@@ -64,7 +64,8 @@ impl ProtocolFormat for ClaudeProtocol {
         }
 
         // [修复] 正确解析 model
-        let model = v.get("model")
+        let model = v
+            .get("model")
             .and_then(|m| m.as_str())
             .unwrap_or("claude")
             .to_string();
@@ -73,8 +74,9 @@ impl ProtocolFormat for ClaudeProtocol {
         let usage = v.get("usage").map(|u| {
             crate::provider::Usage {
                 prompt_tokens: u.get("input_tokens").and_then(|t| t.as_u64()).unwrap_or(0) as u32,
-                completion_tokens: u.get("output_tokens").and_then(|t| t.as_u64()).unwrap_or(0) as u32,
-                total_tokens: 0,  // Claude 不直接返回 total
+                completion_tokens: u.get("output_tokens").and_then(|t| t.as_u64()).unwrap_or(0)
+                    as u32,
+                total_tokens: 0, // Claude 不直接返回 total
             }
         });
 
@@ -98,7 +100,7 @@ impl ProtocolFormat for ClaudeProtocol {
                         continue;
                     }
                 };
-                
+
                 let s = String::from_utf8_lossy(&bytes);
                 buffer.push_str(&s);
 
@@ -111,11 +113,11 @@ impl ProtocolFormat for ClaudeProtocol {
                         if data.is_empty() {
                             continue;
                         }
-                        
+
                         if let Ok(json) = serde_json::from_str::<Value>(data) {
                             // Claude stream format often has: {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "..."}}
                             let event_type = json.get("type").and_then(|t| t.as_str());
-                            
+
                             if event_type == Some("content_block_delta") {
                                 if let Some(delta) = json.get("delta") {
                                     if delta.get("type").and_then(|t| t.as_str()) == Some("text_delta") {
@@ -158,12 +160,15 @@ impl ProtocolFormat for ClaudeProtocol {
                 Some("context_length_exceeded") => ErrorKind::ContextLengthExceeded,
                 Some("content_filter") => ErrorKind::ContentFilter,
                 _ => ErrorKind::Other,
-            }
+            },
         };
 
         Ok(StandardError {
             kind,
-            message: error["message"].as_str().unwrap_or("Unknown Claude Error").to_string(),
+            message: error["message"]
+                .as_str()
+                .unwrap_or("Unknown Claude Error")
+                .to_string(),
             code: error["type"].as_str().map(|s| s.to_string()),
             retryable: matches!(kind, ErrorKind::RateLimit | ErrorKind::ServerError),
             fallback_hint: None,
@@ -174,13 +179,18 @@ impl ProtocolFormat for ClaudeProtocol {
 impl ClaudeProtocol {
     fn pack_message(msg: &PrimitiveMessage) -> Value {
         let role = msg.role.to_string();
-        let content_str = msg.content.iter().filter_map(|c| {
-            if let crate::primitive::message::PrimitiveContent::Text { text } = c {
-                Some(text.clone())
-            } else {
-                None
-            }
-        }).collect::<Vec<_>>().join("\n");
+        let content_str = msg
+            .content
+            .iter()
+            .filter_map(|c| {
+                if let crate::primitive::message::PrimitiveContent::Text { text } = c {
+                    Some(text.clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
         json!({
             "role": role,
             "content": content_str

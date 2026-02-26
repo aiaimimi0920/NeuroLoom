@@ -3,7 +3,7 @@
 //! OpenRouter 支持多个后端提供商的模型，格式为 "provider/model-name"
 
 use super::default::DefaultModelResolver;
-use super::resolver::{ModelResolver, Capability};
+use super::resolver::{Capability, ModelResolver};
 
 /// OpenRouter 模型解析器
 ///
@@ -74,9 +74,15 @@ impl OpenRouterModelResolver {
         ]);
 
         // === 能力配置 ===
-        let claude_caps = Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING;
-        let gpt_vision_caps = Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING;
-        let gemini_caps = Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING;
+        let claude_caps =
+            Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING;
+        let gpt_vision_caps =
+            Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING;
+        let gemini_caps = Capability::CHAT
+            | Capability::VISION
+            | Capability::TOOLS
+            | Capability::STREAMING
+            | Capability::THINKING;
         let standard_caps = Capability::CHAT | Capability::TOOLS | Capability::STREAMING;
         let thinking_caps = Capability::CHAT | Capability::STREAMING | Capability::THINKING;
 
@@ -147,6 +153,10 @@ impl ModelResolver for OpenRouterModelResolver {
     fn context_window_hint(&self, model: &str) -> (usize, usize) {
         self.inner.context_window_hint(model)
     }
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
-
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
+        None
+    }
 }

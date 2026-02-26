@@ -55,15 +55,11 @@ impl LongcatModelResolver {
         // 目前先假定具备基本的一家通用的流式和工具支持，后续根据平台特性可增减
         let standard_caps = Capability::CHAT | Capability::TOOLS | Capability::STREAMING;
 
-        inner.extend_capabilities(vec![
-            ("LongCat-Flash-Chat", standard_caps),
-        ]);
+        inner.extend_capabilities(vec![("LongCat-Flash-Chat", standard_caps)]);
 
         // ========== 上下文长度 ==========
         // 暂无确切数据，先保守设置 128K
-        inner.extend_context_lengths(vec![
-            ("LongCat-Flash-Chat", 128_000),
-        ]);
+        inner.extend_context_lengths(vec![("LongCat-Flash-Chat", 128_000)]);
 
         Self { inner }
     }
@@ -91,6 +87,10 @@ impl ModelResolver for LongcatModelResolver {
     fn context_window_hint(&self, model: &str) -> (usize, usize) {
         self.inner.context_window_hint(model)
     }
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
-
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
+        None
+    }
 }

@@ -5,8 +5,7 @@ use nl_llm_v2::LlmClient;
 async fn main() -> Result<()> {
     // tracing_subscriber::fmt::init();
 
-    let api_key = std::env::var("JINA_API_KEY")
-        .expect("JINA_API_KEY 环境变量未设置");
+    let api_key = std::env::var("JINA_API_KEY").expect("JINA_API_KEY 环境变量未设置");
 
     let client = LlmClient::from_preset("jina")
         .expect("找不到 Jina 预设")

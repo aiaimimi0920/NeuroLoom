@@ -1,6 +1,6 @@
+use crate::site::context::UrlContext;
 use std::collections::HashMap;
 use std::time::Duration;
-use crate::site::context::UrlContext;
 
 /// 站点定义
 pub trait Site: Send + Sync {
@@ -43,7 +43,8 @@ impl Site for SimpleSite {
     }
 
     fn extra_headers(&self) -> HashMap<&str, &str> {
-        self.extra_headers.iter()
+        self.extra_headers
+            .iter()
             .map(|(k, v)| (k.as_str(), v.as_str()))
             .collect()
     }

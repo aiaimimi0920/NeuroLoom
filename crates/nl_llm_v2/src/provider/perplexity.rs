@@ -34,22 +34,26 @@
 //! - 默认: 50 RPM
 //! - 初始: 5
 
+use crate::auth::traits::Authenticator;
 use crate::concurrency::ConcurrencyConfig;
 use crate::model::perplexity::PERPLEXITY_MODEL_META;
-use crate::provider::extension::{ProviderExtension, ModelInfo};
 use crate::provider::balance::BalanceStatus;
-use crate::auth::traits::Authenticator;
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 use reqwest::Client;
 use std::sync::Arc;
 
 pub struct PerplexityExtension;
 
 impl PerplexityExtension {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 impl Default for PerplexityExtension {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 fn perplexity_models() -> Vec<ModelInfo> {
@@ -69,18 +73,32 @@ fn perplexity_models() -> Vec<ModelInfo> {
 
 #[async_trait::async_trait]
 impl ProviderExtension for PerplexityExtension {
-    fn id(&self) -> &str { "perplexity" }
+    fn id(&self) -> &str {
+        "perplexity"
+    }
 
-    async fn list_models(&self, _http: &Client, _auth: &mut dyn Authenticator) -> anyhow::Result<Vec<ModelInfo>> {
+    async fn list_models(
+        &self,
+        _http: &Client,
+        _auth: &mut dyn Authenticator,
+    ) -> anyhow::Result<Vec<ModelInfo>> {
         Ok(perplexity_models())
     }
 
-    async fn get_balance(&self, _http: &Client, _auth: &mut dyn Authenticator) -> anyhow::Result<Option<BalanceStatus>> {
+    async fn get_balance(
+        &self,
+        _http: &Client,
+        _auth: &mut dyn Authenticator,
+    ) -> anyhow::Result<Option<BalanceStatus>> {
         Ok(None)
     }
 
     fn concurrency_config(&self) -> ConcurrencyConfig {
-        ConcurrencyConfig { official_max: 50, initial_limit: 5, ..Default::default() }
+        ConcurrencyConfig {
+            official_max: 50,
+            initial_limit: 5,
+            ..Default::default()
+        }
     }
 }
 

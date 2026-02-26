@@ -1,10 +1,10 @@
+use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
+use crate::provider::balance::{BalanceStatus, BillingUnit, QuotaStatus, QuotaType};
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
-use crate::auth::traits::Authenticator;
-use crate::provider::extension::{ProviderExtension, ModelInfo};
-use crate::provider::balance::{BalanceStatus, QuotaStatus, QuotaType, BillingUnit};
-use crate::concurrency::ConcurrencyConfig;
 use std::sync::Arc;
 
 /// 智谱默认 API 基础 URL
@@ -130,10 +130,15 @@ impl ProviderExtension for ZhipuExtension {
 
         if !status.is_success() {
             let err = resp.text().await.unwrap_or_default();
-            return Ok(Some(BalanceStatus::error(format!("API 错误 ({}): {}", status, err))));
+            return Ok(Some(BalanceStatus::error(format!(
+                "API 错误 ({}): {}",
+                status, err
+            ))));
         }
 
-        let json: ZhipuQuotaResponse = resp.json().await
+        let json: ZhipuQuotaResponse = resp
+            .json()
+            .await
             .map_err(|e| anyhow::anyhow!("解析余额响应失败: {}", e))?;
 
         if !json.success {
@@ -181,10 +186,16 @@ impl ProviderExtension for ZhipuExtension {
 
             Ok(Some(BalanceStatus {
                 display: display_parts.join(", "),
-                quota_type: if has_granted { QuotaType::Mixed } else { QuotaType::PaidOnly },
+                quota_type: if has_granted {
+                    QuotaType::Mixed
+                } else {
+                    QuotaType::PaidOnly
+                },
                 free: if has_granted {
                     Some(QuotaStatus {
-                        unit: BillingUnit::Money { currency: "CNY".to_string() },
+                        unit: BillingUnit::Money {
+                            currency: "CNY".to_string(),
+                        },
                         used: 0.0,
                         total: None,
                         remaining: Some(granted),
@@ -196,12 +207,20 @@ impl ProviderExtension for ZhipuExtension {
                     None
                 },
                 paid: Some(QuotaStatus {
-                    unit: BillingUnit::Money { currency: "CNY".to_string() },
+                    unit: BillingUnit::Money {
+                        currency: "CNY".to_string(),
+                    },
                     used: data.used_quota.unwrap_or(0.0),
                     total: data.total_quota,
                     remaining: Some(remain),
-                    remaining_ratio: if let (Some(used), Some(total)) = (data.used_quota, data.total_quota) {
-                        if total > 0.0 { Some(((total - used) / total) as f32) } else { None }
+                    remaining_ratio: if let (Some(used), Some(total)) =
+                        (data.used_quota, data.total_quota)
+                    {
+                        if total > 0.0 {
+                            Some(((total - used) / total) as f32)
+                        } else {
+                            None
+                        }
                     } else {
                         None
                     },

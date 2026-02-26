@@ -1,7 +1,7 @@
-use crate::concurrency::ConcurrencyConfig;
-use crate::provider::extension::{ProviderExtension, ModelInfo};
-use crate::provider::balance::BalanceStatus;
 use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
+use crate::provider::balance::BalanceStatus;
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 use reqwest::Client;
 use std::sync::Arc;
 
@@ -40,42 +40,81 @@ use std::sync::Arc;
 pub struct CohereExtension;
 
 impl CohereExtension {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 impl Default for CohereExtension {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 fn cohere_models() -> Vec<ModelInfo> {
     vec![
         // === Command A 系列 (最新) ===
-        ModelInfo { id: "command-a-03-2025".to_string(), description: "Command A — 最新旗舰模型，对话与代码生成".to_string() },
-        ModelInfo { id: "command-a-vision-07-2025".to_string(), description: "Command A Vision — 支持图像输入".to_string() },
-        ModelInfo { id: "command-a-reasoning-08-2025".to_string(), description: "Command A Reasoning — 推理增强".to_string() },
-        ModelInfo { id: "command-a-translate-08-2025".to_string(), description: "Command A Translate — 多语言翻译".to_string() },
+        ModelInfo {
+            id: "command-a-03-2025".to_string(),
+            description: "Command A — 最新旗舰模型，对话与代码生成".to_string(),
+        },
+        ModelInfo {
+            id: "command-a-vision-07-2025".to_string(),
+            description: "Command A Vision — 支持图像输入".to_string(),
+        },
+        ModelInfo {
+            id: "command-a-reasoning-08-2025".to_string(),
+            description: "Command A Reasoning — 推理增强".to_string(),
+        },
+        ModelInfo {
+            id: "command-a-translate-08-2025".to_string(),
+            description: "Command A Translate — 多语言翻译".to_string(),
+        },
         // === Command R+ 系列 ===
-        ModelInfo { id: "command-r-plus-08-2024".to_string(), description: "Command R+ — 强力模型,128K context".to_string() },
-        ModelInfo { id: "command-r-08-2024".to_string(), description: "Command R — 平衡模型，128K context".to_string() },
+        ModelInfo {
+            id: "command-r-plus-08-2024".to_string(),
+            description: "Command R+ — 强力模型,128K context".to_string(),
+        },
+        ModelInfo {
+            id: "command-r-08-2024".to_string(),
+            description: "Command R — 平衡模型，128K context".to_string(),
+        },
         // === 轻量级 ===
-        ModelInfo { id: "command-r7b-12-2024".to_string(), description: "Command R 7B — 轻量快速".to_string() },
+        ModelInfo {
+            id: "command-r7b-12-2024".to_string(),
+            description: "Command R 7B — 轻量快速".to_string(),
+        },
     ]
 }
 
 #[async_trait::async_trait]
 impl ProviderExtension for CohereExtension {
-    fn id(&self) -> &str { "cohere" }
+    fn id(&self) -> &str {
+        "cohere"
+    }
 
-    async fn list_models(&self, _http: &Client, _auth: &mut dyn Authenticator) -> anyhow::Result<Vec<ModelInfo>> {
+    async fn list_models(
+        &self,
+        _http: &Client,
+        _auth: &mut dyn Authenticator,
+    ) -> anyhow::Result<Vec<ModelInfo>> {
         Ok(cohere_models())
     }
 
-    async fn get_balance(&self, _http: &Client, _auth: &mut dyn Authenticator) -> anyhow::Result<Option<BalanceStatus>> {
+    async fn get_balance(
+        &self,
+        _http: &Client,
+        _auth: &mut dyn Authenticator,
+    ) -> anyhow::Result<Option<BalanceStatus>> {
         Ok(None)
     }
 
     fn concurrency_config(&self) -> ConcurrencyConfig {
-        ConcurrencyConfig { official_max: 20, initial_limit: 5, ..Default::default() }
+        ConcurrencyConfig {
+            official_max: 20,
+            initial_limit: 5,
+            ..Default::default()
+        }
     }
 }
 

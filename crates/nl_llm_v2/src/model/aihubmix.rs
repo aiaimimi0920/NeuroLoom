@@ -57,10 +57,16 @@ impl AiHubMixModelResolver {
         ]);
 
         // === 能力配置 ===
-        let gpt_caps = Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::VISION;
-        let gemini_caps = Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::VISION;
+        let gpt_caps =
+            Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::VISION;
+        let gemini_caps =
+            Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::VISION;
         let gemini3_caps = gemini_caps | Capability::THINKING;
-        let claude_caps = Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::VISION | Capability::THINKING;
+        let claude_caps = Capability::CHAT
+            | Capability::TOOLS
+            | Capability::STREAMING
+            | Capability::VISION
+            | Capability::THINKING;
         let standard_caps = Capability::CHAT | Capability::TOOLS | Capability::STREAMING;
 
         inner.extend_capabilities(vec![
@@ -129,6 +135,10 @@ impl ModelResolver for AiHubMixModelResolver {
     fn context_window_hint(&self, model: &str) -> (usize, usize) {
         self.inner.context_window_hint(model)
     }
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
-
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
+        None
+    }
 }

@@ -51,7 +51,8 @@ impl MiniMaxModelResolver {
 
         // === 能力配置 ===
         // M2.5 和 M2.1 支持 Chain of Thought (CoT) 思考
-        let thinking_caps = Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::THINKING;
+        let thinking_caps =
+            Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::THINKING;
         let standard_caps = Capability::CHAT | Capability::TOOLS | Capability::STREAMING;
 
         inner.extend_capabilities(vec![
@@ -107,6 +108,10 @@ impl ModelResolver for MiniMaxModelResolver {
     fn context_window_hint(&self, model: &str) -> (usize, usize) {
         self.inner.context_window_hint(model)
     }
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
-
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
+        None
+    }
 }

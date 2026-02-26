@@ -1,10 +1,10 @@
-use serde_json::Value;
 use async_trait::async_trait;
 use reqwest::Client;
+use serde_json::Value;
 
 use crate::auth::traits::Authenticator;
 use crate::concurrency::ConcurrencyConfig;
-use crate::model::resolver::{ModelResolver, Capability};
+use crate::model::resolver::{Capability, ModelResolver};
 use crate::pipeline::traits::PipelineContext;
 use crate::protocol::traits::ProtocolHook;
 use crate::provider::extension::{ModelInfo, ProviderExtension};
@@ -41,7 +41,10 @@ impl ModelResolver for MistralModelResolver {
         (input_limit, output_limit)
     }
 
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> {
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
         Some((4.0, crate::model::resolver::Modality::Text))
     }
 }
@@ -81,7 +84,8 @@ impl ProtocolHook for MistralHook {
     fn after_pack(&self, _ctx: &mut PipelineContext, packed: &mut Value) {
         // payload 应为一个 JSON 对象，并在内部包含 "messages" 数组
         if let Some(messages) = packed.get_mut("messages").and_then(|m| m.as_array_mut()) {
-            let mut id_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+            let mut id_map: std::collections::HashMap<String, String> =
+                std::collections::HashMap::new();
 
             for msg in messages.iter_mut() {
                 // 如果消息带有 tool_calls 数组 (Assistant 产生)
@@ -91,7 +95,9 @@ impl ProtocolHook for MistralHook {
                             let original_id = id_val.to_string();
                             if !Self::is_mistral_valid_id(&original_id) {
                                 // 查找或生成一个新的
-                                let new_id = id_map.entry(original_id).or_insert_with(|| Self::generate_9_char_id());
+                                let new_id = id_map
+                                    .entry(original_id)
+                                    .or_insert_with(|| Self::generate_9_char_id());
                                 tool_call["id"] = Value::String(new_id.clone());
                             }
                         }

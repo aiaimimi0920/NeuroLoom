@@ -34,7 +34,8 @@ impl PackyCodeModelResolver {
             ("r1", "deepseek-reasoner"),
         ]);
 
-        let gpt_caps = Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::VISION;
+        let gpt_caps =
+            Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::VISION;
         let claude_caps = gpt_caps | Capability::THINKING;
         let gemini_caps = gpt_caps | Capability::THINKING;
         let ds_chat_caps = Capability::CHAT | Capability::TOOLS | Capability::STREAMING;
@@ -87,6 +88,10 @@ impl ModelResolver for PackyCodeModelResolver {
     fn context_window_hint(&self, model: &str) -> (usize, usize) {
         self.inner.context_window_hint(model)
     }
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
-
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
+        None
+    }
 }

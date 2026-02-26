@@ -1,7 +1,7 @@
-use crate::concurrency::ConcurrencyConfig;
 use crate::auth::traits::Authenticator;
-use crate::provider::extension::{ModelInfo, ProviderExtension};
+use crate::concurrency::ConcurrencyConfig;
 use crate::provider::balance::BalanceStatus;
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 use reqwest::Client;
 
 /// Longcat AI 默认基础 URL
@@ -75,12 +75,10 @@ impl Default for LongcatExtension {
 
 /// Longcat 模型列表
 fn longcat_models() -> Vec<ModelInfo> {
-    vec![
-        ModelInfo {
-            id: "LongCat-Flash-Chat".to_string(),
-            description: "LongCat Flash Chat - Longcat AI 推出的基础语言模型".to_string(),
-        },
-    ]
+    vec![ModelInfo {
+        id: "LongCat-Flash-Chat".to_string(),
+        description: "LongCat Flash Chat - Longcat AI 推出的基础语言模型".to_string(),
+    }]
 }
 
 #[async_trait::async_trait]

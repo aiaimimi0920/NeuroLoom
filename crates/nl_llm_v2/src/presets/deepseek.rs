@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use crate::client::ClientBuilder;
-use crate::site::base::openai::OpenAiSite;
-use crate::protocol::base::openai::OpenAiProtocol;
 use crate::model::DeepSeekModelResolver;
+use crate::protocol::base::openai::OpenAiProtocol;
 use crate::provider::deepseek::DeepSeekExtension;
+use crate::site::base::openai::OpenAiSite;
+use std::sync::Arc;
 
 /// DeepSeek API 预设
 ///
@@ -64,6 +64,8 @@ pub fn builder() -> ClientBuilder {
         .site(OpenAiSite::new().with_base_url(DEEPSEEK_BASE_URL))
         .protocol(OpenAiProtocol {})
         .model_resolver(DeepSeekModelResolver::new())
-        .with_extension(Arc::new(DeepSeekExtension::new().with_base_url(DEEPSEEK_BASE_URL)))
+        .with_extension(Arc::new(
+            DeepSeekExtension::new().with_base_url(DEEPSEEK_BASE_URL),
+        ))
         .default_model("deepseek-chat")
 }

@@ -39,7 +39,8 @@ impl DouBaoSeedModelResolver {
 
         // === 能力配置 ===
         // 豆包系列模型支持多模态（VISION）
-        let standard_caps = Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING;
+        let standard_caps =
+            Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING;
         let code_caps = Capability::CHAT | Capability::TOOLS | Capability::STREAMING;
         let thinking_caps = Capability::CHAT | Capability::STREAMING | Capability::THINKING;
 
@@ -96,6 +97,10 @@ impl ModelResolver for DouBaoSeedModelResolver {
     fn context_window_hint(&self, model: &str) -> (usize, usize) {
         self.inner.context_window_hint(model)
     }
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
-
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
+        None
+    }
 }

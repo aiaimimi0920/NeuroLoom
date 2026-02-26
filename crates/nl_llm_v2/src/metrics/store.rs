@@ -1,8 +1,8 @@
 //! 指标存储
 
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::RwLock;
-use std::collections::VecDeque;
 
 use super::pipeline::PipelineMetrics;
 
@@ -93,7 +93,10 @@ impl MetricsStore {
             return None;
         }
 
-        let sum: u64 = recent.iter().rev().take(count)
+        let sum: u64 = recent
+            .iter()
+            .rev()
+            .take(count)
             .filter_map(|m| m.response_time_ms)
             .sum();
 
@@ -108,7 +111,10 @@ impl MetricsStore {
             return None;
         }
 
-        let successes: usize = recent.iter().rev().take(count)
+        let successes: usize = recent
+            .iter()
+            .rev()
+            .take(count)
             .filter(|m| m.success)
             .count();
 

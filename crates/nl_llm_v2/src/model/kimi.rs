@@ -1,5 +1,5 @@
 use super::default::DefaultModelResolver;
-use super::resolver::{ModelResolver, Capability};
+use super::resolver::{Capability, ModelResolver};
 
 /// Kimi/Moonshot 平台专属模型解析器
 ///
@@ -32,12 +32,10 @@ impl KimiModelResolver {
             ("moonshot-8k", "moonshot-v1-8k"),
             ("moonshot-32k", "moonshot-v1-32k"),
             ("moonshot-128k", "moonshot-v1-128k"),
-            
             // K2.5 最新系列
             ("kimi", "kimi-k2.5"),
             ("k2.5", "kimi-k2.5"),
             ("kimi-k2.5", "kimi-k2.5"),
-
             // 专属代码大模型 (通常可能跑在 api.kimi.com 节点下)
             ("coding", "kimi-for-coding"),
             ("code", "kimi-for-coding"),
@@ -46,7 +44,7 @@ impl KimiModelResolver {
         // ========== 能力配置 ==========
         // 绝大部分支持对话、流式和工具调用 (Function Calling)
         let standard_caps = Capability::CHAT | Capability::TOOLS | Capability::STREAMING;
-        
+
         inner.extend_capabilities(vec![
             ("moonshot-v1-8k", standard_caps),
             ("moonshot-v1-32k", standard_caps),
@@ -90,6 +88,10 @@ impl ModelResolver for KimiModelResolver {
     fn context_window_hint(&self, model: &str) -> (usize, usize) {
         self.inner.context_window_hint(model)
     }
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
-
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
+        None
+    }
 }

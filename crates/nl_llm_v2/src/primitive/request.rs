@@ -1,7 +1,10 @@
-use std::collections::HashMap;
 use serde_json::Value;
+use std::collections::HashMap;
 
-use super::{message::PrimitiveMessage, tool::PrimitiveTool, parameters::PrimitiveParameters, metadata::PrimitiveMetadata};
+use super::{
+    message::PrimitiveMessage, metadata::PrimitiveMetadata, parameters::PrimitiveParameters,
+    tool::PrimitiveTool,
+};
 
 /// 原语请求：统一中间表示
 #[derive(Debug, Clone)]

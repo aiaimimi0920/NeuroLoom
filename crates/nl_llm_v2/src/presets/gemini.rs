@@ -1,7 +1,7 @@
 use crate::client::ClientBuilder;
-use crate::site::base::gemini::GeminiSite;
-use crate::protocol::base::gemini::GeminiProtocol;
 use crate::model::GeminiModelResolver;
+use crate::protocol::base::gemini::GeminiProtocol;
+use crate::site::base::gemini::GeminiSite;
 
 /// Google Gemini 官方 API 预设
 ///

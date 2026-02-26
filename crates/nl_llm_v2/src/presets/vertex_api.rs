@@ -1,8 +1,8 @@
 use crate::client::ClientBuilder;
-use crate::site::base::vertex_api::VertexApiSite;
-use crate::protocol::base::gemini::GeminiProtocol;
 use crate::model::VertexModelResolver;
+use crate::protocol::base::gemini::GeminiProtocol;
 use crate::provider::vertex;
+use crate::site::base::vertex_api::VertexApiSite;
 
 pub fn builder() -> ClientBuilder {
     // 注意: api_key 由 with_vertex_api_key() 注入并重建 Site。

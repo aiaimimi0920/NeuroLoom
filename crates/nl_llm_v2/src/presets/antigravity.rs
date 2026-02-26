@@ -1,9 +1,9 @@
 use crate::client::ClientBuilder;
-use crate::site::base::cloudcode::CloudCodeSite;
+use crate::model::antigravity::AntigravityModelResolver;
 use crate::protocol::base::gemini::GeminiProtocol;
 use crate::protocol::hooks::cloudcode::CloudCodeHook;
-use crate::model::antigravity::AntigravityModelResolver;
 use crate::provider::antigravity::AntigravityExtension;
+use crate::site::base::cloudcode::CloudCodeSite;
 use std::sync::Arc;
 
 /// Antigravity (CloudCode PA) API 预设

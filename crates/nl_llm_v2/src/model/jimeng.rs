@@ -1,4 +1,4 @@
-use super::resolver::{ModelResolver, Capability, Modality};
+use super::resolver::{Capability, Modality, ModelResolver};
 
 pub struct JimengModelResolver {}
 

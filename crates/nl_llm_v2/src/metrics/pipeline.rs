@@ -1,7 +1,7 @@
 //! Pipeline 执行指标
 
-use std::time::Instant;
 use std::collections::HashMap;
+use std::time::Instant;
 
 /// Pipeline 执行指标
 #[derive(Debug, Clone)]

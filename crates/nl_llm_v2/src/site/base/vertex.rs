@@ -1,7 +1,7 @@
+use crate::site::context::{Action, AuthType, UrlContext};
+use crate::site::traits::Site;
 use std::collections::HashMap;
 use std::time::Duration;
-use crate::site::traits::Site;
-use crate::site::context::{UrlContext, Action, AuthType};
 
 /// Google Cloud Vertex AI 网关
 pub struct VertexSite {
@@ -64,7 +64,7 @@ impl Site for VertexSite {
                     "https://{}-aiplatform.googleapis.com/v1/projects/{}/locations/{}/publishers/google/models/{}:{}",
                     self.location, self.project_id, self.location, ctx.model, action_suffix
                 )
-            },
+            }
             AuthType::ApiKey | _ => {
                 format!(
                     "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/{}/locations/us-central1/publishers/google/models/{}:{}",

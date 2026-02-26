@@ -56,6 +56,8 @@ pub fn builder() -> ClientBuilder {
         .site(OpenAiSite::new().with_base_url(MINIMAX_CN_BASE_URL))
         .protocol(OpenAiProtocol {})
         .model_resolver(MiniMaxModelResolver::new())
-        .with_extension(Arc::new(MiniMaxExtension::new().with_base_url(MINIMAX_CN_BASE_URL)))
+        .with_extension(Arc::new(
+            MiniMaxExtension::new().with_base_url(MINIMAX_CN_BASE_URL),
+        ))
         .default_model("MiniMax-M2.5")
 }

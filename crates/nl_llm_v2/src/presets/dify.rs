@@ -1,7 +1,7 @@
 use crate::client::ClientBuilder;
-use crate::site::base::dify::DifySite;
 use crate::protocol::base::dify::DifyProtocol;
 use crate::provider::dify::DifyModelResolver;
+use crate::site::base::dify::DifySite;
 
 pub fn builder() -> ClientBuilder {
     ClientBuilder::new()

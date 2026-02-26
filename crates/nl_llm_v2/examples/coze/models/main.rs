@@ -14,14 +14,14 @@ async fn main() -> anyhow::Result<()> {
 
     // 2. 调用 Extension 接口获取可用模型列表
     println!("\n▶ 正在从 Coze API 查询可用模型 (Bots) ...");
-    
+
     match client.list_models().await {
         Ok(models) => {
             println!("\n✅ Coze Extension 模型列表 (实际您需要使用 Bot ID 替代):");
             for m in models {
                 println!("  - [{}] {}", m.id, m.description);
             }
-        },
+        }
         Err(e) => {
             println!("\n❌ 获取模型列表失败: {}", e);
         }

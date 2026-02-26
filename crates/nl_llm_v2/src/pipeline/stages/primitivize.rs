@@ -1,5 +1,5 @@
+use crate::pipeline::traits::{PipelineContext, PipelineInput, Stage};
 use async_trait::async_trait;
-use crate::pipeline::traits::{Stage, PipelineContext, PipelineInput};
 
 /// 原语化阶段：将输入转换为 PrimitiveRequest
 ///
@@ -52,12 +52,16 @@ impl Stage for PrimitivizeStage {
             PipelineInput::Raw(_) => {
                 // Raw bytes 不应该出现在 primitivize 阶段
                 // 原因：这是 SendStage 的输出，不应回到原语化
-                Err(anyhow::anyhow!("Raw bytes should not appear in primitivize stage"))
+                Err(anyhow::anyhow!(
+                    "Raw bytes should not appear in primitivize stage"
+                ))
             }
             PipelineInput::RawResponse(_) => {
                 // RawResponse 不应该出现在 primitivize 阶段
                 // 原因：这是 SendStage 的流式输出，不应回到原语化
-                Err(anyhow::anyhow!("RawResponse should not appear in primitivize stage"))
+                Err(anyhow::anyhow!(
+                    "RawResponse should not appear in primitivize stage"
+                ))
             }
         }
     }

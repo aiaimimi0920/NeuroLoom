@@ -1,5 +1,5 @@
 use super::default::DefaultModelResolver;
-use super::resolver::{ModelResolver, Capability};
+use super::resolver::{Capability, ModelResolver};
 
 /// Antigravity / CloudCode PA 专属模型解析器
 ///
@@ -30,21 +30,90 @@ impl AntigravityModelResolver {
         // === 能力配置 ===
         // Claude via CloudCode PA
         inner.extend_capabilities(vec![
-            ("claude-opus-4-6-thinking", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("claude-sonnet-4-6", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING),
-            ("claude-sonnet-4-6-thinking", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("claude-opus-4-5-thinking", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("claude-sonnet-4-5", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING),
-            ("claude-sonnet-4-5-thinking", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
+            (
+                "claude-opus-4-6-thinking",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
+            (
+                "claude-sonnet-4-6",
+                Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "claude-sonnet-4-6-thinking",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
+            (
+                "claude-opus-4-5-thinking",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
+            (
+                "claude-sonnet-4-5",
+                Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "claude-sonnet-4-5-thinking",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
         ]);
 
         // Gemini 3.x (CloudCode PA 内部名)
         inner.extend_capabilities(vec![
-            ("gemini-3-pro-high", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("gemini-3.1-pro-high", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("gemini-3.1-pro-low", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("gemini-3-flash", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("gemini-3-pro-image", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
+            (
+                "gemini-3-pro-high",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
+            (
+                "gemini-3.1-pro-high",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
+            (
+                "gemini-3.1-pro-low",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
+            (
+                "gemini-3-flash",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
+            (
+                "gemini-3-pro-image",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
         ]);
 
         // === 上下文长度 ===
@@ -93,6 +162,10 @@ impl ModelResolver for AntigravityModelResolver {
     fn context_window_hint(&self, model: &str) -> (usize, usize) {
         self.inner.context_window_hint(model)
     }
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
-
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
+        None
+    }
 }

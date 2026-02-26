@@ -1,8 +1,8 @@
-use std::path::{Path, PathBuf};
-use std::time::Duration;
 use async_trait::async_trait;
 use reqwest::{Client, RequestBuilder};
 use serde::Deserialize;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use crate::auth::traits::Authenticator;
 use crate::auth::types::{TokenStatus, TokenStorage};
@@ -66,7 +66,10 @@ impl QwenOAuth {
         Self {
             token: None,
             cache_path: None,
-            http: Client::builder().timeout(Duration::from_secs(30)).build().unwrap(),
+            http: Client::builder()
+                .timeout(Duration::from_secs(30))
+                .build()
+                .unwrap(),
         }
     }
 
@@ -95,7 +98,7 @@ impl QwenOAuth {
     }
 
     fn generate_code_challenge(verifier: &str) -> String {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let hash = Sha256::digest(verifier.as_bytes());
         base64_url_encode(&hash)
     }
@@ -114,7 +117,8 @@ impl QwenOAuth {
             ("code_challenge_method", "S256"),
         ];
 
-        let res = self.http
+        let res = self
+            .http
             .post(QWEN_DEVICE_CODE_ENDPOINT)
             .form(&params)
             .header("Accept", "application/json")
@@ -131,11 +135,17 @@ impl QwenOAuth {
         // Step 2: 提示用户授权
         println!("=== Qwen OAuth Login ===");
         println!("User Code: {}", device_flow.user_code);
-        println!("请在浏览器中打开以下链接完成授权:\n{}\n", device_flow.verification_uri_complete);
+        println!(
+            "请在浏览器中打开以下链接完成授权:\n{}\n",
+            device_flow.verification_uri_complete
+        );
 
         #[cfg(target_os = "windows")]
         let _ = std::process::Command::new("powershell")
-            .args(["-Command", &format!("Start-Process '{}'", device_flow.verification_uri_complete)])
+            .args([
+                "-Command",
+                &format!("Start-Process '{}'", device_flow.verification_uri_complete),
+            ])
             .spawn();
 
         #[cfg(target_os = "macos")]
@@ -163,7 +173,8 @@ impl QwenOAuth {
                 ("code_verifier", &code_verifier),
             ];
 
-            let res = self.http
+            let res = self
+                .http
                 .post(QWEN_TOKEN_ENDPOINT)
                 .form(&token_params)
                 .header("Accept", "application/json")
@@ -180,11 +191,15 @@ impl QwenOAuth {
 
             if res.status().is_success() {
                 let token_resp: QwenTokenResponse = res.json().await?;
-                let expires_at = chrono::Utc::now() + chrono::Duration::seconds(token_resp.expires_in);
+                let expires_at =
+                    chrono::Utc::now() + chrono::Duration::seconds(token_resp.expires_in);
 
                 let mut extra = std::collections::HashMap::new();
                 if let Some(ref url) = token_resp.resource_url {
-                    extra.insert("resource_url".to_string(), serde_json::Value::String(url.clone()));
+                    extra.insert(
+                        "resource_url".to_string(),
+                        serde_json::Value::String(url.clone()),
+                    );
                 }
 
                 println!("Qwen 授权成功！");
@@ -202,7 +217,10 @@ impl QwenOAuth {
             // 解析错误响应
             let body = res.bytes().await.unwrap_or_default();
             if let Ok(error_data) = serde_json::from_slice::<serde_json::Value>(&body) {
-                let error_type = error_data.get("error").and_then(|e| e.as_str()).unwrap_or("");
+                let error_type = error_data
+                    .get("error")
+                    .and_then(|e| e.as_str())
+                    .unwrap_or("");
                 match error_type {
                     "authorization_pending" => {
                         print!("\r轮询 {}/{}...", attempt + 1, max_attempts);
@@ -222,7 +240,8 @@ impl QwenOAuth {
                         return Err(anyhow::anyhow!("用户拒绝了授权"));
                     }
                     _ => {
-                        let desc = error_data.get("error_description")
+                        let desc = error_data
+                            .get("error_description")
                             .and_then(|d| d.as_str())
                             .unwrap_or("unknown");
                         return Err(anyhow::anyhow!("Token 轮询失败: {} - {}", error_type, desc));
@@ -243,7 +262,8 @@ impl QwenOAuth {
             ("client_id", QWEN_CLIENT_ID),
         ];
 
-        let res = self.http
+        let res = self
+            .http
             .post(QWEN_TOKEN_ENDPOINT)
             .form(&params)
             .header("Accept", "application/json")
@@ -260,12 +280,19 @@ impl QwenOAuth {
 
         let mut extra = std::collections::HashMap::new();
         if let Some(ref url) = token_resp.resource_url {
-            extra.insert("resource_url".to_string(), serde_json::Value::String(url.clone()));
+            extra.insert(
+                "resource_url".to_string(),
+                serde_json::Value::String(url.clone()),
+            );
         }
 
         Ok(TokenStorage {
             access_token: token_resp.access_token,
-            refresh_token: Some(token_resp.refresh_token.unwrap_or_else(|| refresh_token.to_string())),
+            refresh_token: Some(
+                token_resp
+                    .refresh_token
+                    .unwrap_or_else(|| refresh_token.to_string()),
+            ),
             expires_at: Some(expires_at),
             email: None,
             provider: "qwen".to_string(),
@@ -275,7 +302,8 @@ impl QwenOAuth {
 
     /// 获取 resource_url（API Base URL）
     pub fn resource_url(&self) -> Option<String> {
-        self.token.as_ref()
+        self.token
+            .as_ref()
             .and_then(|t| t.extra.get("resource_url"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
@@ -297,7 +325,10 @@ impl Authenticator for QwenOAuth {
     fn needs_refresh(&self) -> bool {
         self.token.as_ref().map_or(true, |t| {
             // 提前 10 分钟刷新
-            matches!(t.status(600), TokenStatus::Expired | TokenStatus::ExpiringSoon)
+            matches!(
+                t.status(600),
+                TokenStatus::Expired | TokenStatus::ExpiringSoon
+            )
         })
     }
 
@@ -337,8 +368,7 @@ impl Authenticator for QwenOAuth {
                 .header("User-Agent", QWEN_USER_AGENT)
                 .header("X-Dashscope-Useragent", QWEN_USER_AGENT)
                 .header("X-Dashscope-Authtype", "qwen-oauth")
-                .header("X-Dashscope-Cachecontrol", "enable")
-            )
+                .header("X-Dashscope-Cachecontrol", "enable"))
         } else {
             Err(anyhow::anyhow!("Qwen 未认证"))
         }

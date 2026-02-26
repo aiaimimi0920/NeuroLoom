@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::RwLock;
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 
 use crate::model::resolver::{Capability, Modality};
 use crate::model::router::{
@@ -19,20 +19,20 @@ struct CooldownRecord {
 pub struct RouterEndpoint {
     pub provider_id: String,
     pub model_name: String,
-    
+
     // 基础智能
     pub base_intelligence: f32,
     // 造假与中转降智惩罚
     pub penalty: f32,
-    
+
     pub modality: Modality,
     pub max_context: usize,
     pub capabilities: Capability,
     pub clearance: SecurityClearance,
-    
+
     // 是否官方信誉良好 (影响 Accuracy 兜底排序)
     pub is_official_or_trusted: bool,
-    
+
     // 动态计价估算 / 动态速度估算
     // 在真实应用中，这可能会通过一个探测器定期更新
     pub current_cost_estimate: f32,
@@ -68,7 +68,7 @@ impl DefaultRouter {
         let mut eps = self.endpoints.write().unwrap();
         eps.push(endpoint);
     }
-    
+
     /// 清理过期的冷却记录
     fn clean_expired_cooldowns(&self) {
         let mut cds = self.cooldowns.write().unwrap();
@@ -84,84 +84,107 @@ impl Router for DefaultRouter {
         constraint: RouteConstraint,
     ) -> anyhow::Result<RouteCandidate> {
         self.clean_expired_cooldowns();
-        
+
         let eps = self.endpoints.read().unwrap();
         let cds = self.cooldowns.read().unwrap();
-        
+
         // 预选池过滤
-        let mut candidates: Vec<&RouterEndpoint> = eps.iter().filter(|ep| {
-            // 过滤冷却节点
-            let key = format!("{}:{}", ep.provider_id, ep.model_name);
-            if cds.contains_key(&key) {
-                return false;
-            }
-            
-            // 1. 模态过滤 （Multimodal 比较特殊）
-            if constraint.modality != ep.modality {
-                // 如果任务只要求 Text，但是节点是 Multimodal，这是可以当兼容平替的
-                // 只是稍后的计价可能会让它排在后头
-                if constraint.modality == Modality::Text && ep.modality == Modality::Multimodal {
-                    // 放行兼容
-                } else {
+        let mut candidates: Vec<&RouterEndpoint> = eps
+            .iter()
+            .filter(|ep| {
+                // 过滤冷却节点
+                let key = format!("{}:{}", ep.provider_id, ep.model_name);
+                if cds.contains_key(&key) {
                     return false;
                 }
-            }
-            
-            // 2. 实际智能度下限
-            if ep.actual_intelligence() < constraint.min_intelligence {
-                return false;
-            }
-            
-            // 3. 上下文长度限制
-            if ep.max_context < constraint.estimated_tokens {
-                return false;
-            }
-            
-            // 4. 安全等级约束
-            if ep.clearance < constraint.require_clearance {
-                return false;
-            }
-            
-            // 5. 特性能力约束
-            if !ep.capabilities.contains(constraint.require_capabilities) {
-                return false;
-            }
-            
-            true
-        }).collect();
-        
+
+                // 1. 模态过滤 （Multimodal 比较特殊）
+                if constraint.modality != ep.modality {
+                    // 如果任务只要求 Text，但是节点是 Multimodal，这是可以当兼容平替的
+                    // 只是稍后的计价可能会让它排在后头
+                    if constraint.modality == Modality::Text && ep.modality == Modality::Multimodal
+                    {
+                        // 放行兼容
+                    } else {
+                        return false;
+                    }
+                }
+
+                // 2. 实际智能度下限
+                if ep.actual_intelligence() < constraint.min_intelligence {
+                    return false;
+                }
+
+                // 3. 上下文长度限制
+                if ep.max_context < constraint.estimated_tokens {
+                    return false;
+                }
+
+                // 4. 安全等级约束
+                if ep.clearance < constraint.require_clearance {
+                    return false;
+                }
+
+                // 5. 特性能力约束
+                if !ep.capabilities.contains(constraint.require_capabilities) {
+                    return false;
+                }
+
+                true
+            })
+            .collect();
+
         if candidates.is_empty() {
-            return Err(anyhow::anyhow!("No suitable endpoints found in orchestration pool"));
+            return Err(anyhow::anyhow!(
+                "No suitable endpoints found in orchestration pool"
+            ));
         }
-        
+
         // 执行排序逻辑
         match mode {
             RoutingMode::AccuracyFirst => {
                 // 智能度最高 -> 信誉好 -> TTFT最快 -> 价格最低
                 candidates.sort_by(|a, b| {
-                    b.actual_intelligence().partial_cmp(&a.actual_intelligence()).unwrap()
+                    b.actual_intelligence()
+                        .partial_cmp(&a.actual_intelligence())
+                        .unwrap()
                         .then_with(|| b.is_official_or_trusted.cmp(&a.is_official_or_trusted))
                         .then_with(|| a.ttft_ms.cmp(&b.ttft_ms))
-                        .then_with(|| a.current_cost_estimate.partial_cmp(&b.current_cost_estimate).unwrap())
+                        .then_with(|| {
+                            a.current_cost_estimate
+                                .partial_cmp(&b.current_cost_estimate)
+                                .unwrap()
+                        })
                 });
             }
             RoutingMode::SpeedFirst => {
                 // TTFT最快 -> TPS最大 -> 智能度最高 -> 价格极差
                 candidates.sort_by(|a, b| {
-                    a.ttft_ms.cmp(&b.ttft_ms)
+                    a.ttft_ms
+                        .cmp(&b.ttft_ms)
                         .then_with(|| b.tps.cmp(&a.tps))
-                        .then_with(|| b.actual_intelligence().partial_cmp(&a.actual_intelligence()).unwrap())
+                        .then_with(|| {
+                            b.actual_intelligence()
+                                .partial_cmp(&a.actual_intelligence())
+                                .unwrap()
+                        })
                 });
             }
             RoutingMode::PriceFirst => {
                 // 价格最低 -> 智能最高
                 candidates.sort_by(|a, b| {
-                    a.current_cost_estimate.partial_cmp(&b.current_cost_estimate).unwrap()
-                        .then_with(|| b.actual_intelligence().partial_cmp(&a.actual_intelligence()).unwrap())
+                    a.current_cost_estimate
+                        .partial_cmp(&b.current_cost_estimate)
+                        .unwrap()
+                        .then_with(|| {
+                            b.actual_intelligence()
+                                .partial_cmp(&a.actual_intelligence())
+                                .unwrap()
+                        })
                 });
             }
         }
-        
+
         let best = candidates[0];
         Ok(RouteCandidate {
             provider_id: best.provider_id.clone(),
@@ -175,12 +198,12 @@ impl Router for DefaultRouter {
     fn report_failure(&self, provider_id: &str, model_name: &str) {
         let key = format!("{}:{}", provider_id, model_name);
         let mut cds = self.cooldowns.write().unwrap();
-        
+
         let record = cds.entry(key).or_insert_with(|| CooldownRecord {
             until: Instant::now() + self.default_cooldown_duration,
             failures: 0,
         });
-        
+
         record.failures += 1;
         record.until = Instant::now() + self.default_cooldown_duration; // 刷新封印时间
     }
@@ -196,7 +219,7 @@ mod tests {
 
     fn build_test_router() -> DefaultRouter {
         let router = DefaultRouter::new();
-        
+
         // 节点A: 高端官方模型 (Claude 3.5 Sonnet)
         router.register_endpoint(RouterEndpoint {
             provider_id: "anthropic".into(),
@@ -240,9 +263,9 @@ mod tests {
             capabilities: Capability::CHAT | Capability::TOOLS | Capability::VISION,
             clearance: SecurityClearance::L2TrustedCloud,
             is_official_or_trusted: true,
-            current_cost_estimate: 1.0, 
+            current_cost_estimate: 1.0,
             ttft_ms: 400, // 极速
-            tps: 120,    // 极速
+            tps: 120,     // 极速
         });
 
         // 节点D: 本地部署大模型 (Local Llama)
@@ -257,10 +280,10 @@ mod tests {
             clearance: SecurityClearance::L3LocalPrivate, // 最高安全级别
             is_official_or_trusted: true,
             current_cost_estimate: 0.0, // 电费忽略不计，视为免费
-            ttft_ms: 5000, // 非常慢
+            ttft_ms: 5000,              // 非常慢
             tps: 15,
         });
-        
+
         router
     }
 
@@ -278,7 +301,7 @@ mod tests {
             capabilities: Capability::CHAT | Capability::TOOLS,
             clearance: SecurityClearance::L1UntrustedProxy,
             is_official_or_trusted: false,
-            current_cost_estimate: 8.0, 
+            current_cost_estimate: 8.0,
             ttft_ms: 1000,
             tps: 50,
         });
@@ -292,7 +315,9 @@ mod tests {
         };
 
         // AccuracyFirst，当官方节点和代理节点都是 5.0 的真实智商时，官方节点胜出 (虽然代理节点更便宜)
-        let best = router.route(RoutingMode::AccuracyFirst, constraint).unwrap();
+        let best = router
+            .route(RoutingMode::AccuracyFirst, constraint)
+            .unwrap();
         assert_eq!(best.provider_id, "anthropic");
     }
 
@@ -309,7 +334,9 @@ mod tests {
 
         // cheap_proxy 虽然标称 claude-3.5-sonnet，但扣除 3 分后跌至 2.0，达不到 4.0 的要求，被淘汰
         // anthropic (5.0) 会胜出
-        let best = router.route(RoutingMode::AccuracyFirst, constraint).unwrap();
+        let best = router
+            .route(RoutingMode::AccuracyFirst, constraint)
+            .unwrap();
         assert_eq!(best.provider_id, "anthropic");
     }
 
@@ -344,7 +371,7 @@ mod tests {
         let best = router.route(RoutingMode::SpeedFirst, constraint).unwrap();
         assert_eq!(best.provider_id, "google");
     }
-    
+
     #[test]
     fn test_security_clearance_constraint() {
         let router = build_test_router();
@@ -356,11 +383,13 @@ mod tests {
             require_capabilities: Capability::CHAT,
         };
 
-        let best = router.route(RoutingMode::AccuracyFirst, constraint).unwrap();
+        let best = router
+            .route(RoutingMode::AccuracyFirst, constraint)
+            .unwrap();
         // 只有 L3 级别的 local_ollama 能接这个活
         assert_eq!(best.provider_id, "local_ollama");
     }
-    
+
     #[test]
     fn test_circuit_breaker() {
         let router = build_test_router();
@@ -372,12 +401,14 @@ mod tests {
             require_capabilities: Capability::CHAT,
         };
 
-        let best1 = router.route(RoutingMode::SpeedFirst, constraint.clone()).unwrap();
+        let best1 = router
+            .route(RoutingMode::SpeedFirst, constraint.clone())
+            .unwrap();
         assert_eq!(best1.provider_id, "google"); // 快人一步
 
         // 模拟 Google 发生 429 崩溃熔断
         router.report_failure("google", "gemini-flash");
-        
+
         // 再次请求
         let best2 = router.route(RoutingMode::SpeedFirst, constraint).unwrap();
         assert_eq!(best2.provider_id, "anthropic"); // 自动降级至备选

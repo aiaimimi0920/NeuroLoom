@@ -1,10 +1,10 @@
 use serde_json::{json, Value};
 use tokio_stream::StreamExt;
 
+use crate::primitive::{PrimitiveMessage, PrimitiveRequest};
+use crate::protocol::error::{ErrorKind, StandardError};
 use crate::protocol::traits::ProtocolFormat;
-use crate::protocol::error::{StandardError, ErrorKind};
-use crate::primitive::{PrimitiveRequest, PrimitiveMessage};
-use crate::provider::{LlmResponse, BoxLlmStream, LlmChunk};
+use crate::provider::{BoxLlmStream, LlmChunk, LlmResponse};
 
 /// Codex 协议 (OpenAI Responses API 格式)
 ///
@@ -28,10 +28,7 @@ impl ProtocolFormat for CodexProtocol {
 
     fn pack(&self, primitive: &PrimitiveRequest, _is_stream: bool) -> Value {
         // 提取 system → instructions
-        let instructions = primitive.system
-            .as_deref()
-            .unwrap_or("")
-            .to_string();
+        let instructions = primitive.system.as_deref().unwrap_or("").to_string();
 
         // 提取 user messages → input (拼接为单字符串 or 数组)
         let input = Self::build_input(&primitive.messages);
@@ -78,25 +75,31 @@ impl ProtocolFormat for CodexProtocol {
 
         // Codex Responses API 格式
         let content = Self::extract_output_text(&v);
-        let model = v.get("model")
+        let model = v
+            .get("model")
             .and_then(|m| m.as_str())
             .unwrap_or("unknown")
             .to_string();
 
-        let usage = v.get("usage").map(|u| {
-            crate::provider::Usage {
-                prompt_tokens: u.get("input_tokens")
-                    .or_else(|| u.get("prompt_tokens"))
-                    .and_then(|t| t.as_u64()).unwrap_or(0) as u32,
-                completion_tokens: u.get("output_tokens")
-                    .or_else(|| u.get("completion_tokens"))
-                    .and_then(|t| t.as_u64()).unwrap_or(0) as u32,
-                total_tokens: u.get("total_tokens")
-                    .and_then(|t| t.as_u64()).unwrap_or(0) as u32,
-            }
+        let usage = v.get("usage").map(|u| crate::provider::Usage {
+            prompt_tokens: u
+                .get("input_tokens")
+                .or_else(|| u.get("prompt_tokens"))
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0) as u32,
+            completion_tokens: u
+                .get("output_tokens")
+                .or_else(|| u.get("completion_tokens"))
+                .and_then(|t| t.as_u64())
+                .unwrap_or(0) as u32,
+            total_tokens: u.get("total_tokens").and_then(|t| t.as_u64()).unwrap_or(0) as u32,
         });
 
-        Ok(LlmResponse { content, model, usage })
+        Ok(LlmResponse {
+            content,
+            model,
+            usage,
+        })
     }
 
     fn unpack_stream(&self, resp: reqwest::Response) -> anyhow::Result<BoxLlmStream> {
@@ -194,12 +197,14 @@ impl ProtocolFormat for CodexProtocol {
             _ => ErrorKind::Other,
         };
 
-        let message = error.get("message")
+        let message = error
+            .get("message")
             .and_then(|m| m.as_str())
             .unwrap_or(if !detail.is_empty() { detail } else { raw })
             .to_string();
 
-        let code = error.get("code")
+        let code = error
+            .get("code")
             .or_else(|| error.get("type"))
             .and_then(|c| c.as_str())
             .map(|s| s.to_string());
@@ -222,49 +227,58 @@ impl CodexProtocol {
     /// Codex API 要求 input 始终为数组格式，且内部结构为:
     /// {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "..."}]}
     fn build_input(messages: &[PrimitiveMessage]) -> Value {
-        let items: Vec<Value> = messages.iter().map(|msg| {
-            // Codex 不支持 system role，需转为 developer
-            let mut role = msg.role.to_string();
-            if role == "system" {
-                role = "developer".to_string();
-            }
-            
-            let text = Self::extract_text(msg);
-            json!({
-                "type": "message",
-                "role": role,
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": text
-                    }
-                ]
+        let items: Vec<Value> = messages
+            .iter()
+            .map(|msg| {
+                // Codex 不支持 system role，需转为 developer
+                let mut role = msg.role.to_string();
+                if role == "system" {
+                    role = "developer".to_string();
+                }
+
+                let text = Self::extract_text(msg);
+                json!({
+                    "type": "message",
+                    "role": role,
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": text
+                        }
+                    ]
+                })
             })
-        }).collect();
+            .collect();
         json!(items)
     }
 
     fn extract_text(msg: &PrimitiveMessage) -> String {
-        msg.content.iter().filter_map(|c| {
-            if let crate::primitive::message::PrimitiveContent::Text { text } = c {
-                Some(text.clone())
-            } else {
-                None
-            }
-        }).collect::<Vec<_>>().join("\n")
+        msg.content
+            .iter()
+            .filter_map(|c| {
+                if let crate::primitive::message::PrimitiveContent::Text { text } = c {
+                    Some(text.clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     /// 从 Codex Responses API 响应中提取输出文本
     fn extract_output_text(v: &Value) -> String {
         // 尝试 output[].content[].text 格式
         if let Some(output) = v.get("output").and_then(|o| o.as_array()) {
-            let texts: Vec<&str> = output.iter()
+            let texts: Vec<&str> = output
+                .iter()
                 .filter_map(|item| {
                     if item.get("type").and_then(|t| t.as_str()) == Some("message") {
                         item.get("content")
                             .and_then(|c| c.as_array())
                             .map(|content_arr| {
-                                content_arr.iter()
+                                content_arr
+                                    .iter()
                                     .filter_map(|c| c.get("text").and_then(|t| t.as_str()))
                                     .collect::<Vec<_>>()
                             })
@@ -290,7 +304,8 @@ impl CodexProtocol {
     fn parse_sse_completed(raw: &str) -> Option<LlmResponse> {
         for line in raw.lines() {
             // SSE 格式包含 event:、data: 和空行，只处理 data: 行
-            let data = match line.strip_prefix("data: ")
+            let data = match line
+                .strip_prefix("data: ")
                 .or_else(|| line.strip_prefix("data:"))
             {
                 Some(d) => d.trim(),
@@ -305,22 +320,27 @@ impl CodexProtocol {
                 if json.get("type").and_then(|t| t.as_str()) == Some("response.completed") {
                     if let Some(response) = json.get("response") {
                         let content = Self::extract_output_text(response);
-                        let model = response.get("model")
+                        let model = response
+                            .get("model")
                             .and_then(|m| m.as_str())
                             .unwrap_or("unknown")
                             .to_string();
 
-                        let usage = response.get("usage").map(|u| {
-                            crate::provider::Usage {
-                                prompt_tokens: u.get("input_tokens")
-                                    .or_else(|| u.get("prompt_tokens"))
-                                    .and_then(|t| t.as_u64()).unwrap_or(0) as u32,
-                                completion_tokens: u.get("output_tokens")
-                                    .or_else(|| u.get("completion_tokens"))
-                                    .and_then(|t| t.as_u64()).unwrap_or(0) as u32,
-                                total_tokens: u.get("total_tokens")
-                                    .and_then(|t| t.as_u64()).unwrap_or(0) as u32,
-                            }
+                        let usage = response.get("usage").map(|u| crate::provider::Usage {
+                            prompt_tokens: u
+                                .get("input_tokens")
+                                .or_else(|| u.get("prompt_tokens"))
+                                .and_then(|t| t.as_u64())
+                                .unwrap_or(0) as u32,
+                            completion_tokens: u
+                                .get("output_tokens")
+                                .or_else(|| u.get("completion_tokens"))
+                                .and_then(|t| t.as_u64())
+                                .unwrap_or(0) as u32,
+                            total_tokens: u
+                                .get("total_tokens")
+                                .and_then(|t| t.as_u64())
+                                .unwrap_or(0) as u32,
                         });
 
                         return Some(LlmResponse {

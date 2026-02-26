@@ -41,7 +41,10 @@ impl ModelResolver for JinaModelResolver {
         (input_limit, output_limit)
     }
 
-    fn intelligence_and_modality(&self, model: &str) -> Option<(f32, crate::model::resolver::Modality)> {
+    fn intelligence_and_modality(
+        &self,
+        model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
         let resolved = self.resolve(model);
         if resolved.contains("embeddings") {
             Some((3.0, crate::model::resolver::Modality::Embedding))

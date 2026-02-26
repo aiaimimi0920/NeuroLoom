@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use crate::client::ClientBuilder;
-use crate::site::base::openai::OpenAiSite;
-use crate::protocol::base::openai::OpenAiProtocol;
 use crate::model::KimiModelResolver;
+use crate::protocol::base::openai::OpenAiProtocol;
 use crate::provider::kimi::KimiExtension;
+use crate::site::base::openai::OpenAiSite;
+use std::sync::Arc;
 
 /// 月之暗面 Kimi (Moonshot) API 预设
 ///
@@ -55,5 +55,5 @@ pub fn builder() -> ClientBuilder {
         .protocol(OpenAiProtocol {})
         .model_resolver(KimiModelResolver::new())
         .with_extension(Arc::new(KimiExtension::new().with_base_url(KIMI_BASE_URL)))
-        .default_model("kimi-k2.5")  // K2.5 作为默认的首选最强入口
+        .default_model("kimi-k2.5") // K2.5 作为默认的首选最强入口
 }

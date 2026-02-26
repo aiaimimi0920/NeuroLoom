@@ -1,8 +1,8 @@
+use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 use async_trait::async_trait;
 use reqwest::Client;
-use crate::auth::traits::Authenticator;
-use crate::provider::extension::{ProviderExtension, ModelInfo};
-use crate::concurrency::ConcurrencyConfig;
 use std::sync::Arc;
 
 /// OpenAI 静态模型列表扩展

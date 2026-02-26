@@ -1,7 +1,7 @@
-use crate::concurrency::ConcurrencyConfig;
-use crate::provider::extension::{ProviderExtension, ModelInfo};
-use crate::provider::balance::BalanceStatus;
 use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
+use crate::provider::balance::BalanceStatus;
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 use reqwest::Client;
 use std::sync::Arc;
 
@@ -45,7 +45,9 @@ pub struct AiCodeMirrorExtension {
 
 impl AiCodeMirrorExtension {
     pub fn new() -> Self {
-        Self { base_url: DEFAULT_BASE_URL.to_string() }
+        Self {
+            base_url: DEFAULT_BASE_URL.to_string(),
+        }
     }
 
     pub fn with_base_url(mut self, url: impl Into<String>) -> Self {
@@ -55,41 +57,81 @@ impl AiCodeMirrorExtension {
 }
 
 impl Default for AiCodeMirrorExtension {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 fn aicodemirror_models() -> Vec<ModelInfo> {
     vec![
         // === Claude 4.6 ===
-        ModelInfo { id: "claude-sonnet-4-6".to_string(), description: "Claude 4.6 Sonnet — 最新平衡模型，200K context".to_string() },
-        ModelInfo { id: "claude-opus-4-6".to_string(), description: "Claude 4.6 Opus — 最新旗舰模型，200K context".to_string() },
+        ModelInfo {
+            id: "claude-sonnet-4-6".to_string(),
+            description: "Claude 4.6 Sonnet — 最新平衡模型，200K context".to_string(),
+        },
+        ModelInfo {
+            id: "claude-opus-4-6".to_string(),
+            description: "Claude 4.6 Opus — 最新旗舰模型，200K context".to_string(),
+        },
         // === Claude 4.5 ===
-        ModelInfo { id: "claude-sonnet-4-5-20250929".to_string(), description: "Claude Sonnet 4.5，200K context".to_string() },
-        ModelInfo { id: "claude-haiku-4-5-20251001".to_string(), description: "Claude 4.5 Haiku — 快速高效，200K context".to_string() },
+        ModelInfo {
+            id: "claude-sonnet-4-5-20250929".to_string(),
+            description: "Claude Sonnet 4.5，200K context".to_string(),
+        },
+        ModelInfo {
+            id: "claude-haiku-4-5-20251001".to_string(),
+            description: "Claude 4.5 Haiku — 快速高效，200K context".to_string(),
+        },
         // === Claude 4 ===
-        ModelInfo { id: "claude-opus-4-20250514".to_string(), description: "Claude 4 Opus — 旗舰模型，200K context".to_string() },
-        ModelInfo { id: "claude-sonnet-4-20250514".to_string(), description: "Claude 4 Sonnet，200K context".to_string() },
+        ModelInfo {
+            id: "claude-opus-4-20250514".to_string(),
+            description: "Claude 4 Opus — 旗舰模型，200K context".to_string(),
+        },
+        ModelInfo {
+            id: "claude-sonnet-4-20250514".to_string(),
+            description: "Claude 4 Sonnet，200K context".to_string(),
+        },
         // === Claude 3.7 ===
-        ModelInfo { id: "claude-3-7-sonnet-20250219".to_string(), description: "Claude 3.7 Sonnet — 扩展思考，200K context".to_string() },
+        ModelInfo {
+            id: "claude-3-7-sonnet-20250219".to_string(),
+            description: "Claude 3.7 Sonnet — 扩展思考，200K context".to_string(),
+        },
         // === Claude 3.5 ===
-        ModelInfo { id: "claude-3-5-sonnet-20241022".to_string(), description: "Claude 3.5 Sonnet，200K context".to_string() },
+        ModelInfo {
+            id: "claude-3-5-sonnet-20241022".to_string(),
+            description: "Claude 3.5 Sonnet，200K context".to_string(),
+        },
     ]
 }
 
 #[async_trait::async_trait]
 impl ProviderExtension for AiCodeMirrorExtension {
-    fn id(&self) -> &str { "aicodemirror" }
+    fn id(&self) -> &str {
+        "aicodemirror"
+    }
 
-    async fn list_models(&self, _http: &Client, _auth: &mut dyn Authenticator) -> anyhow::Result<Vec<ModelInfo>> {
+    async fn list_models(
+        &self,
+        _http: &Client,
+        _auth: &mut dyn Authenticator,
+    ) -> anyhow::Result<Vec<ModelInfo>> {
         Ok(aicodemirror_models())
     }
 
-    async fn get_balance(&self, _http: &Client, _auth: &mut dyn Authenticator) -> anyhow::Result<Option<BalanceStatus>> {
+    async fn get_balance(
+        &self,
+        _http: &Client,
+        _auth: &mut dyn Authenticator,
+    ) -> anyhow::Result<Option<BalanceStatus>> {
         Ok(None)
     }
 
     fn concurrency_config(&self) -> ConcurrencyConfig {
-        ConcurrencyConfig { official_max: 20, initial_limit: 5, ..Default::default() }
+        ConcurrencyConfig {
+            official_max: 20,
+            initial_limit: 5,
+            ..Default::default()
+        }
     }
 }
 

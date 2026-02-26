@@ -29,9 +29,18 @@ impl CubenceModelResolver {
             ("gemini-pro", "gemini-2.5-pro"),
         ]);
 
-        let claude_caps = Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::VISION | Capability::THINKING;
-        let gpt_caps = Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::VISION;
-        let gemini_caps = Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::VISION | Capability::THINKING;
+        let claude_caps = Capability::CHAT
+            | Capability::TOOLS
+            | Capability::STREAMING
+            | Capability::VISION
+            | Capability::THINKING;
+        let gpt_caps =
+            Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::VISION;
+        let gemini_caps = Capability::CHAT
+            | Capability::TOOLS
+            | Capability::STREAMING
+            | Capability::VISION
+            | Capability::THINKING;
 
         inner.extend_capabilities(vec![
             ("claude-sonnet-4-5-20250929", claude_caps),
@@ -62,10 +71,22 @@ impl Default for CubenceModelResolver {
 }
 
 impl ModelResolver for CubenceModelResolver {
-    fn resolve(&self, model: &str) -> String { self.inner.resolve(model) }
-    fn has_capability(&self, model: &str, cap: Capability) -> bool { self.inner.has_capability(model, cap) }
-    fn max_context(&self, model: &str) -> usize { self.inner.max_context(model) }
-    fn context_window_hint(&self, model: &str) -> (usize, usize) { self.inner.context_window_hint(model) }
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
-
+    fn resolve(&self, model: &str) -> String {
+        self.inner.resolve(model)
+    }
+    fn has_capability(&self, model: &str, cap: Capability) -> bool {
+        self.inner.has_capability(model, cap)
+    }
+    fn max_context(&self, model: &str) -> usize {
+        self.inner.max_context(model)
+    }
+    fn context_window_hint(&self, model: &str) -> (usize, usize) {
+        self.inner.context_window_hint(model)
+    }
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
+        None
+    }
 }

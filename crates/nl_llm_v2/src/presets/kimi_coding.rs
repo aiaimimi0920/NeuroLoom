@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use crate::client::ClientBuilder;
-use crate::site::base::openai::OpenAiSite;
-use crate::protocol::base::openai::OpenAiProtocol;
 use crate::model::KimiModelResolver;
+use crate::protocol::base::openai::OpenAiProtocol;
 use crate::provider::kimi::KimiExtension;
+use crate::site::base::openai::OpenAiSite;
+use std::sync::Arc;
 
 /// 月之暗面 Kimi For Coding (专门构建版) 预设
 ///
@@ -21,7 +21,9 @@ pub fn builder() -> ClientBuilder {
         // 依然复用统一解析体系
         .model_resolver(KimiModelResolver::new())
         // 确保各种 /balance 的附加路由走专门 Endpoint
-        .with_extension(Arc::new(KimiExtension::new().with_base_url(KIMI_CODING_BASE_URL)))
+        .with_extension(Arc::new(
+            KimiExtension::new().with_base_url(KIMI_CODING_BASE_URL),
+        ))
         // 默认将该通道指派为写代码最棒的模型
         .default_model("kimi-for-coding")
 }

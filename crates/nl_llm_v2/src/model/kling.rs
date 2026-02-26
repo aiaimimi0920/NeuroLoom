@@ -1,4 +1,4 @@
-use super::resolver::{ModelResolver, Capability, Modality};
+use super::resolver::{Capability, Modality, ModelResolver};
 
 /// 可灵 AI (Kling) 模型解析器
 ///
@@ -23,7 +23,7 @@ impl ModelResolver for KlingModelResolver {
             "v2" | "kling-v2" | "kling-v2-master" => "kling-v2-master".to_string(),
             "o1" | "video-o1" | "kling-video-o1" => "kling-video-o1".to_string(),
             "v3" | "omni" | "v3-omni" | "kling-v3-omni" => "kling-v3-omni".to_string(),
-            
+
             _ => {
                 // 如果用户输入了未知模型，直接传给 Kling
                 model.to_string()

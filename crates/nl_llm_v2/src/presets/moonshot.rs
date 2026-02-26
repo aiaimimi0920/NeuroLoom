@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use crate::client::ClientBuilder;
-use crate::site::base::openai::OpenAiSite;
-use crate::protocol::base::openai::OpenAiProtocol;
 use crate::model::MoonshotModelResolver;
+use crate::protocol::base::openai::OpenAiProtocol;
 use crate::provider::moonshot::MoonshotExtension;
+use crate::site::base::openai::OpenAiSite;
+use std::sync::Arc;
 
 /// Moonshot (月之暗面) API 预设
 ///

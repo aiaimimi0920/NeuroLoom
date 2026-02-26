@@ -1,8 +1,8 @@
-use hmac::{Hmac, Mac};
-use sha2::{Digest, Sha256};
-use reqwest::header::{HeaderMap, HeaderValue};
-use std::time::{SystemTime, UNIX_EPOCH};
 use hex;
+use hmac::{Hmac, Mac};
+use reqwest::header::{HeaderMap, HeaderValue};
+use sha2::{Digest, Sha256};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::auth::Authenticator;
 use anyhow::Result;
@@ -53,7 +53,7 @@ impl JimengAuth {
             .unwrap()
             .as_secs();
         let utc_time = chrono::DateTime::from_timestamp(now as i64, 0).unwrap();
-        
+
         let x_date = utc_time.format("%Y%m%dT%H%M%SZ").to_string();
         let short_date = utc_time.format("%Y%m%d").to_string();
 

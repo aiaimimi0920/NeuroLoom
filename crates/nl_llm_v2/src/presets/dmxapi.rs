@@ -40,6 +40,8 @@ pub fn builder() -> ClientBuilder {
         .site(OpenAiSite::new().with_base_url(DMXAPI_BASE_URL))
         .protocol(OpenAiProtocol {})
         .model_resolver(DmxApiModelResolver::new())
-        .with_extension(Arc::new(DmxApiExtension::new().with_base_url(DMXAPI_BASE_URL)))
+        .with_extension(Arc::new(
+            DmxApiExtension::new().with_base_url(DMXAPI_BASE_URL),
+        ))
         .default_model("gpt-4o-mini")
 }

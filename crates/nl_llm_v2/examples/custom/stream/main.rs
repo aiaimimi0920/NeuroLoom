@@ -17,16 +17,18 @@ async fn main() -> Result<()> {
 
     let default_prompt = "Write a short poem about coding.".to_string();
     let prompt = args.get(2).cloned().unwrap_or(default_prompt);
-    
-    let model = args.get(3).cloned().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
 
-    let req = PrimitiveRequest::single_user_message(&prompt)
-        .with_model(&model);
+    let model = args
+        .get(3)
+        .cloned()
+        .unwrap_or_else(|| "gpt-3.5-turbo".to_string());
+
+    let req = PrimitiveRequest::single_user_message(&prompt).with_model(&model);
 
     println!("User: {}", prompt);
     println!("Model Request: {}", model);
     println!("Streaming Custom AI Output...\n");
-    
+
     let mut stream = client.stream(&req).await?;
 
     while let Some(chunk_result) = stream.next().await {

@@ -201,13 +201,23 @@ impl From<anyhow::Error> for StandardError {
         let err_str = err.to_string().to_lowercase();
 
         // 根据错误消息内容推断错误类型
-        let kind = if err_str.contains("429") || err_str.contains("rate limit") || err_str.contains("too many requests") {
+        let kind = if err_str.contains("429")
+            || err_str.contains("rate limit")
+            || err_str.contains("too many requests")
+        {
             ErrorKind::RateLimit
-        } else if err_str.contains("401") || err_str.contains("403") || err_str.contains("unauthorized") || err_str.contains("forbidden") {
+        } else if err_str.contains("401")
+            || err_str.contains("403")
+            || err_str.contains("unauthorized")
+            || err_str.contains("forbidden")
+        {
             ErrorKind::Authentication
         } else if err_str.contains("timeout") || err_str.contains("timed out") {
             ErrorKind::Timeout
-        } else if err_str.contains("connection") || err_str.contains("network") || err_str.contains("dns") {
+        } else if err_str.contains("connection")
+            || err_str.contains("network")
+            || err_str.contains("dns")
+        {
             ErrorKind::Network
         } else if err_str.contains("500") || err_str.contains("502") || err_str.contains("503") {
             ErrorKind::ServerError
@@ -217,7 +227,10 @@ impl From<anyhow::Error> for StandardError {
             ErrorKind::Other
         };
 
-        let retryable = matches!(kind, ErrorKind::RateLimit | ErrorKind::ServerError | ErrorKind::Network | ErrorKind::Timeout);
+        let retryable = matches!(
+            kind,
+            ErrorKind::RateLimit | ErrorKind::ServerError | ErrorKind::Network | ErrorKind::Timeout
+        );
         let fallback_hint = if retryable {
             Some(FallbackHint::Retry)
         } else {

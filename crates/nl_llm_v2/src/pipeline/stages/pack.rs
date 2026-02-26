@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::pipeline::traits::{Stage, PipelineContext, PipelineInput};
+use crate::pipeline::traits::{PipelineContext, PipelineInput, Stage};
 use crate::protocol::traits::{ProtocolFormat, ProtocolHook};
 
 use std::sync::Arc;

@@ -1,12 +1,12 @@
 use async_trait::async_trait;
+use reqwest::Client;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use reqwest::Client;
 
-use crate::pipeline::traits::{Stage, PipelineContext, PipelineInput};
 use crate::auth::Authenticator;
-use crate::site::Site;
+use crate::pipeline::traits::{PipelineContext, PipelineInput, Stage};
 use crate::protocol::traits::{ProtocolFormat, ProtocolHook};
+use crate::site::Site;
 
 /// 发送阶段：构建 reqwest 实体并最终发送
 pub struct SendStage {
@@ -26,7 +26,13 @@ impl SendStage {
         http: Client,
         protocol: Arc<dyn ProtocolFormat>,
     ) -> Self {
-        Self { site, authenticator, http, protocol, hooks: Vec::new() }
+        Self {
+            site,
+            authenticator,
+            http,
+            protocol,
+            hooks: Vec::new(),
+        }
     }
 
     /// [新增] 带钩子的构造函数
@@ -37,7 +43,13 @@ impl SendStage {
         protocol: Arc<dyn ProtocolFormat>,
         hooks: Vec<Arc<dyn ProtocolHook>>,
     ) -> Self {
-        Self { site, authenticator, http, protocol, hooks }
+        Self {
+            site,
+            authenticator,
+            http,
+            protocol,
+            hooks,
+        }
     }
 }
 
@@ -51,9 +63,7 @@ impl Stage for SendStage {
         if let PipelineInput::Packed(data) = &ctx.input {
             let url = self.site.build_url(&ctx.url_context);
 
-            let mut req = self.http.post(&url)
-                .json(data)
-                .timeout(self.site.timeout());
+            let mut req = self.http.post(&url).json(data).timeout(self.site.timeout());
 
             for (k, v) in self.site.extra_headers() {
                 req = req.header(k, v);

@@ -1,8 +1,8 @@
+use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 use async_trait::async_trait;
 use reqwest::Client;
-use crate::auth::traits::Authenticator;
-use crate::provider::extension::{ProviderExtension, ModelInfo};
-use crate::concurrency::ConcurrencyConfig;
 use std::sync::Arc;
 
 /// Anthropic (Claude) 静态模型列表扩展
@@ -42,7 +42,8 @@ fn claude_models() -> Vec<ModelInfo> {
         },
         ModelInfo {
             id: "claude-sonnet-4-5-20250929".to_string(),
-            description: "Claude 4.5 Sonnet — Balanced model with thinking, 200K context".to_string(),
+            description: "Claude 4.5 Sonnet — Balanced model with thinking, 200K context"
+                .to_string(),
         },
         ModelInfo {
             id: "claude-haiku-4-5-20251001".to_string(),
@@ -51,7 +52,8 @@ fn claude_models() -> Vec<ModelInfo> {
         // Claude 4
         ModelInfo {
             id: "claude-opus-4-20250514".to_string(),
-            description: "Claude 4 Opus — Flagship model, 200K context, extended thinking".to_string(),
+            description: "Claude 4 Opus — Flagship model, 200K context, extended thinking"
+                .to_string(),
         },
         ModelInfo {
             id: "claude-sonnet-4-20250514".to_string(),

@@ -49,6 +49,8 @@ pub fn builder() -> ClientBuilder {
         .site(OpenAiSite::new().with_base_url(LONGCAT_BASE_URL))
         .protocol(OpenAiProtocol {})
         .model_resolver(LongcatModelResolver::new())
-        .with_extension(Arc::new(LongcatExtension::new().with_base_url(LONGCAT_BASE_URL)))
+        .with_extension(Arc::new(
+            LongcatExtension::new().with_base_url(LONGCAT_BASE_URL),
+        ))
         .default_model("LongCat-Flash-Chat")
 }

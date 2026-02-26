@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::pipeline::traits::{Stage, PipelineContext};
 use crate::auth::Authenticator;
+use crate::pipeline::traits::{PipelineContext, Stage};
 
 /// 认证阶段：注入认证上下文并判断是否需要执行刷新
 pub struct AuthenticateStage {

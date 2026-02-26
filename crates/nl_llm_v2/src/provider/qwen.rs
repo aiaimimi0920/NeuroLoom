@@ -1,9 +1,9 @@
+use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
+use crate::provider::balance::BalanceStatus;
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 use async_trait::async_trait;
 use reqwest::Client;
-use crate::auth::traits::Authenticator;
-use crate::provider::extension::{ProviderExtension, ModelInfo};
-use crate::provider::balance::BalanceStatus;
-use crate::concurrency::ConcurrencyConfig;
 use std::sync::Arc;
 
 /// Qwen (通义千问) 默认 API 基础 URL
@@ -92,11 +92,11 @@ fn qwen_models() -> Vec<ModelInfo> {
             id: "qwen-turbo".to_string(),
             description: "Qwen Turbo — 通义千问高速模型，低延迟高并发".to_string(),
         },
-
         // === 编程专用大模型 (Qwen2.5 Coder) ===
         ModelInfo {
             id: "qwen2.5-coder-32b-instruct".to_string(),
-            description: "Qwen2.5 Coder 32B — 顶级的开源代码模型，出色的代码生成与修复能力".to_string(),
+            description: "Qwen2.5 Coder 32B — 顶级的开源代码模型，出色的代码生成与修复能力"
+                .to_string(),
         },
         ModelInfo {
             id: "qwen2.5-coder-14b-instruct".to_string(),
@@ -106,7 +106,6 @@ fn qwen_models() -> Vec<ModelInfo> {
             id: "qwen2.5-coder-7b-instruct".to_string(),
             description: "Qwen2.5 Coder 7B — 轻量级极速代码生成模型".to_string(),
         },
-
         // === 开源系列大模型 (Qwen2.5) ===
         ModelInfo {
             id: "qwen2.5-72b-instruct".to_string(),
@@ -120,7 +119,6 @@ fn qwen_models() -> Vec<ModelInfo> {
             id: "qwen2.5-7b-instruct".to_string(),
             description: "Qwen2.5 7B — 轻量级通用开源模型".to_string(),
         },
-
         // === 多模态视觉模型 ===
         ModelInfo {
             id: "qwen-vl-max".to_string(),
@@ -130,7 +128,6 @@ fn qwen_models() -> Vec<ModelInfo> {
             id: "qwen-vl-plus".to_string(),
             description: "Qwen VL Plus — 视觉理解高性能模型".to_string(),
         },
-
         // === 推理思考模型 (QwQ) ===
         ModelInfo {
             id: "qwen-max-latest".to_string(),

@@ -44,9 +44,9 @@ pub struct RouteCandidate {
     /// 实际采用的基础模型名称
     pub model_name: String,
     /// 该节点实际结算的智能积分 (包含任何中转商降智惩罚)
-    pub actual_intelligence: f32, 
+    pub actual_intelligence: f32,
     /// 混合评估成本 (可能会依赖认证方式，0元党最高优)
-    pub cost_estimate: f32,       
+    pub cost_estimate: f32,
     /// 标定速度 (首字延迟 TTFT 毫秒, 每秒生成 token TPS)
     pub speed_metrics: (u64, u64),
 }
@@ -57,11 +57,11 @@ pub struct RouteCandidate {
 pub trait Router: Send + Sync {
     /// 在不指定确切模型的前提下，根据需求图谱挑选最佳候选者
     fn route(
-        &self, 
-        mode: RoutingMode, 
+        &self,
+        mode: RoutingMode,
         constraint: RouteConstraint,
     ) -> anyhow::Result<RouteCandidate>;
-    
+
     /// 反馈回路监控
     /// 当下游执行器遭遇某个渠道由于 429/500 限流崩溃时的回调。
     /// Router 将基于此在内存中将其置为 Cooldown 状态，防止并发雪崩。

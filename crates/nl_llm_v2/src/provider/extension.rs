@@ -1,7 +1,7 @@
-use async_trait::async_trait;
+use super::balance::BalanceStatus;
 use crate::auth::traits::Authenticator;
 use crate::concurrency::ConcurrencyConfig;
-use super::balance::BalanceStatus;
+use async_trait::async_trait;
 
 /// 视频任务状态枚举
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,7 +105,7 @@ pub trait ProviderExtension: Send + Sync {
     async fn list_models(
         &self,
         http: &reqwest::Client,
-        auth: &mut dyn Authenticator
+        auth: &mut dyn Authenticator,
     ) -> anyhow::Result<Vec<ModelInfo>>;
 
     /// 获取平台的余额或额度信息
@@ -156,15 +156,15 @@ pub trait ProviderExtension: Send + Sync {
     async fn get_balance(
         &self,
         _http: &reqwest::Client,
-        _auth: &mut dyn Authenticator
+        _auth: &mut dyn Authenticator,
     ) -> anyhow::Result<Option<BalanceStatus>> {
         Ok(None) // 默认不支持
     }
 
     /// 提交异步视频生成任务（如可灵 Kling、Luma 等）
-    /// 
+    ///
     /// # 返回
-    /// 
+    ///
     /// - `Ok(task_id)`: 任务提交成功，返回任务 ID
     async fn submit_video_task(
         &self,
@@ -172,13 +172,15 @@ pub trait ProviderExtension: Send + Sync {
         _auth: &mut dyn Authenticator,
         _req: &crate::primitive::PrimitiveRequest,
     ) -> anyhow::Result<String> {
-        Err(anyhow::anyhow!("submit_video_task not supported for this provider"))
+        Err(anyhow::anyhow!(
+            "submit_video_task not supported for this provider"
+        ))
     }
 
     /// 查询异步视频生成任务状态
-    /// 
+    ///
     /// # 参数
-    /// 
+    ///
     /// - `task_id`: 通过 `submit_video_task` 获取的任务 ID
     async fn fetch_video_task(
         &self,
@@ -186,7 +188,9 @@ pub trait ProviderExtension: Send + Sync {
         _auth: &mut dyn Authenticator,
         _task_id: &str,
     ) -> anyhow::Result<VideoTaskStatus> {
-        Err(anyhow::anyhow!("fetch_video_task not supported for this provider"))
+        Err(anyhow::anyhow!(
+            "fetch_video_task not supported for this provider"
+        ))
     }
 
     /// 获取并发配置

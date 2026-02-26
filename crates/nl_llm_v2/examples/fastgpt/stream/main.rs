@@ -5,8 +5,7 @@ use tokio::io::{stdout, AsyncWriteExt};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let api_key = std::env::var("FASTGPT_API_KEY")
-        .expect("FASTGPT_API_KEY 环境变量未设置");
+    let api_key = std::env::var("FASTGPT_API_KEY").expect("FASTGPT_API_KEY 环境变量未设置");
 
     let client = LlmClient::from_preset("fastgpt")
         .expect("找不到 FastGPT 预设")
@@ -16,8 +15,7 @@ async fn main() -> Result<()> {
     let prompt = "Write a short poem about coding.";
     println!("Sending stream request to FastGPT...\n");
 
-    let req = PrimitiveRequest::single_user_message(prompt)
-        .with_model("fastgpt-default");
+    let req = PrimitiveRequest::single_user_message(prompt).with_model("fastgpt-default");
 
     let mut stream = client.stream(&req).await?;
 

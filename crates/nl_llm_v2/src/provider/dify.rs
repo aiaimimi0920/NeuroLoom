@@ -1,4 +1,4 @@
-use crate::model::resolver::{ModelResolver, Capability};
+use crate::model::resolver::{Capability, ModelResolver};
 
 /// Dify 模型解析器
 /// Dify App 隐藏了其底层大模型设定，因此我们默认所有输入均指向默认的 Chat 应用，并赋予对话和流式能力。
@@ -38,7 +38,10 @@ impl ModelResolver for DifyModelResolver {
         (input_limit, output_limit)
     }
 
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> {
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
         Some((3.5, crate::model::resolver::Modality::Text))
     }
 }

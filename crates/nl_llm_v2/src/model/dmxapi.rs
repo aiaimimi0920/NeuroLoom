@@ -38,8 +38,13 @@ impl DmxApiModelResolver {
             ("4.1-mini", "gpt-4.1-mini"),
         ]);
 
-        let claude_caps = Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::VISION | Capability::THINKING;
-        let gpt_caps = Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::VISION;
+        let claude_caps = Capability::CHAT
+            | Capability::TOOLS
+            | Capability::STREAMING
+            | Capability::VISION
+            | Capability::THINKING;
+        let gpt_caps =
+            Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::VISION;
 
         inner.extend_capabilities(vec![
             ("claude-sonnet-4-5-20250929", claude_caps),
@@ -85,6 +90,10 @@ impl ModelResolver for DmxApiModelResolver {
     fn context_window_hint(&self, model: &str) -> (usize, usize) {
         self.inner.context_window_hint(model)
     }
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
-
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
+        None
+    }
 }

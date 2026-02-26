@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use once_cell::sync::Lazy;
+use std::collections::HashMap;
 
 use crate::client::ClientBuilder;
 
@@ -27,46 +27,67 @@ impl PresetRegistry {
         self.builders.insert("moonshot", super::moonshot::builder);
         self.builders.insert("zhipu", super::zhipu::builder);
         self.builders.insert("iflow", super::iflow::builder);
-        self.builders.insert("openrouter", super::openrouter::builder);
-        self.builders.insert("gemini_cli", super::gemini_cli::builder);
-        self.builders.insert("vertex_api", super::vertex_api::builder);
+        self.builders
+            .insert("openrouter", super::openrouter::builder);
+        self.builders
+            .insert("gemini_cli", super::gemini_cli::builder);
+        self.builders
+            .insert("vertex_api", super::vertex_api::builder);
         self.builders.insert("qwen", super::qwen::builder);
-        self.builders.insert("qwen_coder", super::qwen_coder::builder);
-        self.builders.insert("qwen_oauth", super::qwen_oauth::builder);
+        self.builders
+            .insert("qwen_coder", super::qwen_coder::builder);
+        self.builders
+            .insert("qwen_oauth", super::qwen_oauth::builder);
         self.builders.insert("kimi", super::kimi::builder);
-        self.builders.insert("kimi_coding", super::kimi_coding::builder);
-        self.builders.insert("kimi_oauth", super::kimi_oauth::builder);
-        self.builders.insert("claude_oauth", super::claude_oauth::builder);
-        self.builders.insert("codex_oauth", super::codex_oauth::builder);
+        self.builders
+            .insert("kimi_coding", super::kimi_coding::builder);
+        self.builders
+            .insert("kimi_oauth", super::kimi_oauth::builder);
+        self.builders
+            .insert("claude_oauth", super::claude_oauth::builder);
+        self.builders
+            .insert("codex_oauth", super::codex_oauth::builder);
         self.builders.insert("codex_api", super::codex_api::builder);
-        self.builders.insert("antigravity", super::antigravity::builder);
+        self.builders
+            .insert("antigravity", super::antigravity::builder);
         self.builders.insert("amp", super::amp::builder);
         self.builders.insert("zai", super::zai::builder);
         self.builders.insert("longcat", super::longcat::builder);
         self.builders.insert("minimax", super::minimax::builder);
-        self.builders.insert("minimax_cn", super::minimax_cn::builder);
-        self.builders.insert("doubaoseed", super::doubaoseed::builder);
+        self.builders
+            .insert("minimax_cn", super::minimax_cn::builder);
+        self.builders
+            .insert("doubaoseed", super::doubaoseed::builder);
         self.builders.insert("bailing", super::bailing::builder);
         self.builders.insert("mimo", super::mimo::builder);
-        self.builders.insert("modelscope", super::modelscope::builder);
+        self.builders
+            .insert("modelscope", super::modelscope::builder);
         self.builders.insert("aihubmix", super::aihubmix::builder);
-        self.builders.insert("siliconflow", super::siliconflow::builder);
-        self.builders.insert("siliconflow_en", super::siliconflow_en::builder);
+        self.builders
+            .insert("siliconflow", super::siliconflow::builder);
+        self.builders
+            .insert("siliconflow_en", super::siliconflow_en::builder);
         self.builders.insert("dmxapi", super::dmxapi::builder);
         self.builders.insert("nvidia", super::nvidia::builder);
         self.builders.insert("packycode", super::packycode::builder);
         self.builders.insert("cubence", super::cubence::builder);
         self.builders.insert("aigocode", super::aigocode::builder);
         self.builders.insert("rightcode", super::rightcode::builder);
-        self.builders.insert("aicodemirror", super::aicodemirror::builder);
-        self.builders.insert("azure_openai", super::azure_openai::builder);
-        self.builders.insert("aws_claude", super::aws_claude::builder);
-        self.builders.insert("aws_claude_ak", super::aws_claude::builder_ak);
+        self.builders
+            .insert("aicodemirror", super::aicodemirror::builder);
+        self.builders
+            .insert("azure_openai", super::azure_openai::builder);
+        self.builders
+            .insert("aws_claude", super::aws_claude::builder);
+        self.builders
+            .insert("aws_claude_ak", super::aws_claude::builder_ak);
         self.builders.insert("cohere", super::cohere::builder);
         self.builders.insert("hunyuan", super::hunyuan::builder);
-        self.builders.insert("cloudflare", super::cloudflare::builder);
+        self.builders
+            .insert("cloudflare", super::cloudflare::builder);
         self.builders.insert("qianfan", super::qianfan::builder);
-        self.builders.insert("perplexity", super::perplexity::builder);
+        self.builders
+            .insert("perplexity", super::perplexity::builder);
         self.builders.insert("kat_coder", super::kat_coder::builder);
         self.builders.insert("spark", super::spark::builder);
         self.builders.insert("spark_x", super::spark::builder_x);
@@ -74,16 +95,19 @@ impl PresetRegistry {
         self.builders.insert("jina", super::jina::builder);
         self.builders.insert("mistral", super::mistral::builder);
         self.builders.insert("custom", super::custom::builder);
-        self.builders.insert("fastgpt", super::fastgpt::default_builder);
+        self.builders
+            .insert("fastgpt", super::fastgpt::default_builder);
         self.builders.insert("aiproxy", super::aiproxy::builder);
         self.builders.insert("moka", super::moka::builder);
         self.builders.insert("coze", super::coze::default_builder);
         self.builders.insert("xai", super::xai::builder);
         self.builders.insert("kling", super::kling::builder);
-        self.builders.insert("jimeng", super::jimeng::default_preset);
+        self.builders
+            .insert("jimeng", super::jimeng::default_preset);
         self.builders.insert("submodel", super::submodel::builder);
         self.builders.insert("doubao", super::doubao::builder);
         self.builders.insert("sora", super::sora::builder);
+        self.builders.insert("vidu", super::vidu::builder);
         self.builders.insert("replicate", super::replicate::builder);
     }
 

@@ -16,7 +16,9 @@ async fn main() -> anyhow::Result<()> {
     // 初始化客户端
     let client = LlmClient::from_preset("jimeng")
         .expect("jimeng preset not found")
-        .auth(nl_llm_v2::auth::providers::api_key::ApiKeyAuth::new(&auth_token))
+        .auth(nl_llm_v2::auth::providers::api_key::ApiKeyAuth::new(
+            &auth_token,
+        ))
         .build();
 
     println!("🚀 开始提交即梦视频生成任务...");
@@ -45,35 +47,33 @@ async fn main() -> anyhow::Result<()> {
     // 轮询获取任务结果
     loop {
         sleep(Duration::from_secs(5)).await;
-        
+
         match client.fetch_video_task(&task_id).await {
-            Ok(status) => {
-                match status.state {
-                    nl_llm_v2::provider::extension::VideoTaskState::Submitted => {
-                        println!("...任务已提交并排队中 (Task ID: {})", task_id);
-                    }
-                    nl_llm_v2::provider::extension::VideoTaskState::Processing => {
-                        println!("...任务处理中 (Task ID: {})", task_id);
-                    }
-                    nl_llm_v2::provider::extension::VideoTaskState::Succeed => {
-                        println!("🎉 任务生成成功!");
-                        if let Some(msg) = status.message {
-                            println!("消息: {}", msg);
-                        }
-                        for (i, url) in status.video_urls.iter().enumerate() {
-                            println!("🔗 视频地址 [{}]: {}", i + 1, url);
-                        }
-                        break;
-                    }
-                    nl_llm_v2::provider::extension::VideoTaskState::Failed => {
-                        println!("❌ 任务生成失败!");
-                        if let Some(msg) = status.message {
-                            println!("错误信息: {}", msg);
-                        }
-                        break;
-                    }
+            Ok(status) => match status.state {
+                nl_llm_v2::provider::extension::VideoTaskState::Submitted => {
+                    println!("...任务已提交并排队中 (Task ID: {})", task_id);
                 }
-            }
+                nl_llm_v2::provider::extension::VideoTaskState::Processing => {
+                    println!("...任务处理中 (Task ID: {})", task_id);
+                }
+                nl_llm_v2::provider::extension::VideoTaskState::Succeed => {
+                    println!("🎉 任务生成成功!");
+                    if let Some(msg) = status.message {
+                        println!("消息: {}", msg);
+                    }
+                    for (i, url) in status.video_urls.iter().enumerate() {
+                        println!("🔗 视频地址 [{}]: {}", i + 1, url);
+                    }
+                    break;
+                }
+                nl_llm_v2::provider::extension::VideoTaskState::Failed => {
+                    println!("❌ 任务生成失败!");
+                    if let Some(msg) = status.message {
+                        println!("错误信息: {}", msg);
+                    }
+                    break;
+                }
+            },
             Err(e) => {
                 eprintln!("⚠️ 查询状态出错: {}", e);
                 // 暂时忽略网络错误，继续重试

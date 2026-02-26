@@ -1,10 +1,10 @@
-use std::sync::Arc;
-use crate::client::ClientBuilder;
-use crate::site::base::openai::OpenAiSite;
-use crate::protocol::base::openai::OpenAiProtocol;
-use crate::model::KimiModelResolver;
-use crate::provider::kimi::KimiExtension;
 use crate::auth::providers::kimi::KimiOAuth;
+use crate::client::ClientBuilder;
+use crate::model::KimiModelResolver;
+use crate::protocol::base::openai::OpenAiProtocol;
+use crate::provider::kimi::KimiExtension;
+use crate::site::base::openai::OpenAiSite;
+use std::sync::Arc;
 
 /// 月之暗面 Kimi (Moonshot) OAuth 预设
 ///
@@ -26,7 +26,7 @@ use crate::auth::providers::kimi::KimiOAuth;
 /// let client = LlmClient::from_preset("kimi_oauth")
 ///     .expect("Preset should exist")
 ///     // 触发或直接读取之前的 OAuth 缓存信息
-///     .with_kimi_oauth() 
+///     .with_kimi_oauth()
 ///     .build();
 /// ```
 pub fn builder() -> ClientBuilder {
@@ -35,7 +35,9 @@ pub fn builder() -> ClientBuilder {
         .site(OpenAiSite::new().with_base_url("https://api.kimi.com/coding"))
         .protocol(OpenAiProtocol {})
         .model_resolver(KimiModelResolver::new())
-        .with_extension(Arc::new(KimiExtension::new().with_base_url("https://api.kimi.com/coding")))
+        .with_extension(Arc::new(
+            KimiExtension::new().with_base_url("https://api.kimi.com/coding"),
+        ))
         .default_model("kimi-k2.5")
 }
 

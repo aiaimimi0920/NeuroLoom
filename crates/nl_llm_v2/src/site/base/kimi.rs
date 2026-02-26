@@ -1,7 +1,7 @@
+use crate::site::context::{Action, UrlContext};
+use crate::site::traits::Site;
 use std::collections::HashMap;
 use std::time::Duration;
-use crate::site::traits::Site;
-use crate::site::context::{UrlContext, Action};
 
 /// Kimi (Moonshot AI) API 站点
 ///

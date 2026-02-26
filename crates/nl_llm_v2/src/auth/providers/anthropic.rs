@@ -1,6 +1,6 @@
-use reqwest::RequestBuilder;
 use crate::auth::Authenticator;
 use crate::site::context::AuthType;
+use reqwest::RequestBuilder;
 
 /// Anthropic API Key 认证
 /// 特殊：使用 x-api-key header（而非标准的 Authorization: Bearer）
@@ -10,7 +10,9 @@ pub struct AnthropicApiKeyAuth {
 
 impl AnthropicApiKeyAuth {
     pub fn new(key: impl Into<String>) -> Self {
-        Self { api_key: key.into() }
+        Self {
+            api_key: key.into(),
+        }
     }
 }
 

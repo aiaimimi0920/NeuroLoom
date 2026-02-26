@@ -1,8 +1,8 @@
 use crate::client::ClientBuilder;
-use crate::site::base::vertex::VertexSite;
-use crate::protocol::base::gemini::GeminiProtocol;
 use crate::model::VertexModelResolver;
+use crate::protocol::base::gemini::GeminiProtocol;
 use crate::provider::vertex;
+use crate::site::base::vertex::VertexSite;
 
 /// Google Vertex AI API 预设
 ///

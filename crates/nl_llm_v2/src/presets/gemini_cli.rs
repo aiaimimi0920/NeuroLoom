@@ -1,9 +1,9 @@
 use crate::client::ClientBuilder;
-use crate::site::base::cloudcode::CloudCodeSite;
+use crate::model::GeminiCliModelResolver;
 use crate::protocol::base::gemini::GeminiProtocol;
 use crate::protocol::hooks::cloudcode::CloudCodeHook;
 use crate::provider::gemini_cli::GeminiCliExtension;
-use crate::model::GeminiCliModelResolver;
+use crate::site::base::cloudcode::CloudCodeSite;
 
 pub fn builder() -> ClientBuilder {
     ClientBuilder::new()

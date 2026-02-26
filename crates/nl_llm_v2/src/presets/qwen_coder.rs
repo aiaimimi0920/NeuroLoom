@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use crate::client::ClientBuilder;
-use crate::site::base::openai::OpenAiSite;
-use crate::protocol::base::openai::OpenAiProtocol;
 use crate::model::QwenModelResolver;
+use crate::protocol::base::openai::OpenAiProtocol;
 use crate::provider::qwen::QwenExtension;
+use crate::site::base::openai::OpenAiSite;
+use std::sync::Arc;
 
 /// 通义千问 Qwen2.5-Coder (编程专家级) 预设
 ///

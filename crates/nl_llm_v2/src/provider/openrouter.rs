@@ -2,13 +2,13 @@
 //!
 //! OpenRouter 是一个 LLM API 聚合网关，支持多个后端提供商。
 
+use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
+use crate::provider::balance::BalanceStatus;
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
-use crate::auth::traits::Authenticator;
-use crate::provider::extension::{ProviderExtension, ModelInfo};
-use crate::provider::balance::BalanceStatus;
-use crate::concurrency::ConcurrencyConfig;
 use std::sync::Arc;
 
 /// OpenRouter 扩展
@@ -58,16 +58,25 @@ impl ProviderExtension for OpenRouterExtension {
 
         if !status.is_success() {
             let err = resp.text().await.unwrap_or_default();
-            return Err(anyhow::anyhow!("OpenRouter models API failed ({}): {}", status, err));
+            return Err(anyhow::anyhow!(
+                "OpenRouter models API failed ({}): {}",
+                status,
+                err
+            ));
         }
 
-        let json: OpenRouterModelsResponse = resp.json().await
+        let json: OpenRouterModelsResponse = resp
+            .json()
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to parse models response: {}", e))?;
 
-        let models: Vec<ModelInfo> = json.data.into_iter()
+        let models: Vec<ModelInfo> = json
+            .data
+            .into_iter()
             .map(|m| ModelInfo {
                 id: m.id,
-                description: m.description
+                description: m
+                    .description
                     .or(m.name)
                     .unwrap_or_else(|| "OpenRouter model".to_string()),
             })

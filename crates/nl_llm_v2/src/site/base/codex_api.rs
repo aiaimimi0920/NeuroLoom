@@ -1,7 +1,7 @@
+use crate::site::context::UrlContext;
+use crate::site::traits::Site;
 use std::collections::HashMap;
 use std::time::Duration;
-use crate::site::traits::Site;
-use crate::site::context::UrlContext;
 
 /// OpenAI Codex API 站点（API Key 模式）
 ///

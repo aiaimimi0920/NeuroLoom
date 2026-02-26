@@ -78,8 +78,12 @@ impl ProviderExtension for ReplicateExtension {
         req: &crate::primitive::PrimitiveRequest,
     ) -> Result<String> {
         // Replicate uses POST /v1/models/{model_owner}/{model_name}/predictions
-        let endpoint = format!("{}/v1/models/{}/predictions", self.base_url.trim_end_matches('/'), req.model);
-        
+        let endpoint = format!(
+            "{}/v1/models/{}/predictions",
+            self.base_url.trim_end_matches('/'),
+            req.model
+        );
+
         let mut prompt = String::new();
         for msg in &req.messages {
             for content in &msg.content {
@@ -101,14 +105,23 @@ impl ProviderExtension for ReplicateExtension {
         // Often needed for replicate
         builder = builder.header("Prefer", "wait");
 
-        let req_obj = builder.build().map_err(|e| anyhow!("Failed to build Replicate submit request: {}", e))?;
+        let req_obj = builder
+            .build()
+            .map_err(|e| anyhow!("Failed to build Replicate submit request: {}", e))?;
 
-        let response = http.execute(req_obj).await.map_err(|e| anyhow!("Network error: {}", e))?;
+        let response = http
+            .execute(req_obj)
+            .await
+            .map_err(|e| anyhow!("Network error: {}", e))?;
         let status = response.status();
         let res_text = response.text().await.unwrap_or_default();
 
         if !status.is_success() {
-            return Err(anyhow!("Replicate API HTTP error ({}): {}", status, res_text));
+            return Err(anyhow!(
+                "Replicate API HTTP error ({}): {}",
+                status,
+                res_text
+            ));
         }
 
         let task_resp: ReplicateSubmitResponse = serde_json::from_str(&res_text)
@@ -117,7 +130,9 @@ impl ProviderExtension for ReplicateExtension {
         if let Some(task_id) = task_resp.id {
             Ok(task_id)
         } else {
-            Err(anyhow!("Replicate API error: missing prediction id in response"))
+            Err(anyhow!(
+                "Replicate API error: missing prediction id in response"
+            ))
         }
     }
 
@@ -127,18 +142,31 @@ impl ProviderExtension for ReplicateExtension {
         auth: &mut dyn Authenticator,
         task_id: &str,
     ) -> Result<VideoTaskStatus> {
-        let endpoint = format!("{}/v1/predictions/{}", self.base_url.trim_end_matches('/'), task_id);
+        let endpoint = format!(
+            "{}/v1/predictions/{}",
+            self.base_url.trim_end_matches('/'),
+            task_id
+        );
 
         let mut builder = http.get(&endpoint);
         builder = auth.inject(builder)?;
-        let req_obj = builder.build().map_err(|e| anyhow!("Failed to build Replicate fetch request: {}", e))?;
+        let req_obj = builder
+            .build()
+            .map_err(|e| anyhow!("Failed to build Replicate fetch request: {}", e))?;
 
-        let response = http.execute(req_obj).await.map_err(|e| anyhow!("Network error: {}", e))?;
+        let response = http
+            .execute(req_obj)
+            .await
+            .map_err(|e| anyhow!("Network error: {}", e))?;
         let status = response.status();
         let res_text = response.text().await.unwrap_or_default();
 
         if !status.is_success() {
-            return Err(anyhow!("Replicate API HTTP fetch error ({}): {}", status, res_text));
+            return Err(anyhow!(
+                "Replicate API HTTP fetch error ({}): {}",
+                status,
+                res_text
+            ));
         }
 
         let task_resp: ReplicateFetchResponse = serde_json::from_str(&res_text)

@@ -1,8 +1,8 @@
-use async_trait::async_trait;
+use super::balance::{BalanceStatus, BillingUnit, QuotaStatus, QuotaType};
+use super::extension::{ModelInfo, ProviderExtension};
 use crate::auth::traits::Authenticator;
-use super::extension::{ProviderExtension, ModelInfo};
-use super::balance::{BalanceStatus, QuotaStatus, QuotaType, BillingUnit};
 use crate::concurrency::ConcurrencyConfig;
+use async_trait::async_trait;
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -25,9 +25,10 @@ impl ProviderExtension for AntigravityExtension {
 
         // 获取并刷新凭据
         auth.refresh().await?;
-        
+
         // 由于是从 extension 调用，不再通过 Pipeline，注入必要的 Agent
-        let req = http.post(url)
+        let req = http
+            .post(url)
             .header("User-Agent", "antigravity/1.104.0 darwin/arm64")
             .json(&body);
         let req = auth.inject(req)?;
@@ -37,7 +38,11 @@ impl ProviderExtension for AntigravityExtension {
 
         if !status.is_success() {
             let err_text = resp.text().await.unwrap_or_default();
-            return Err(anyhow::anyhow!("Antigravity models API failed ({}): {}", status, err_text));
+            return Err(anyhow::anyhow!(
+                "Antigravity models API failed ({}): {}",
+                status,
+                err_text
+            ));
         }
 
         let text = resp.text().await?;
@@ -50,22 +55,29 @@ impl ProviderExtension for AntigravityExtension {
         if let Some(models) = json.get("models").and_then(|m| m.as_object()) {
             for (id, model_data) in models {
                 // 内部模型过滤
-                let skip_models = ["chat_20706", "chat_23310", "gemini-2.5-flash-thinking", "gemini-3-pro-low"];
+                let skip_models = [
+                    "chat_20706",
+                    "chat_23310",
+                    "gemini-2.5-flash-thinking",
+                    "gemini-3-pro-low",
+                ];
                 if skip_models.contains(&id.as_str()) {
                     continue;
                 }
 
                 // 解析能力描述
                 let mut caps = Vec::new();
-                
+
                 // 模型基本描述
                 if let Some(desc) = model_data.get("description").and_then(|v| v.as_str()) {
                     caps.push(desc.to_string());
                 }
-                
+
                 // 是否推荐
                 if let Some(is_rec) = model_data.get("isRecommended").and_then(|v| v.as_bool()) {
-                    if is_rec { caps.push("Recommended".to_string()); }
+                    if is_rec {
+                        caps.push("Recommended".to_string());
+                    }
                 }
 
                 // fallback 到静态字典描述
@@ -78,13 +90,13 @@ impl ProviderExtension for AntigravityExtension {
                     "gemini-3-flash" => "Gemini 3 Flash",
                     "claude-sonnet-4-6" => "Claude Sonnet 4.6 — 200K ctx",
                     "claude-opus-4-6-thinking" => "Claude Opus 4.6 + Thinking — 1M ctx",
-                    _ => ""
+                    _ => "",
                 };
 
                 if caps.is_empty() && !static_desc.is_empty() {
                     caps.push(static_desc.to_string());
                 }
-                
+
                 available_models.push(ModelInfo {
                     id: id.to_string(),
                     description: caps.join(" | "),
@@ -98,7 +110,7 @@ impl ProviderExtension for AntigravityExtension {
     async fn get_balance(
         &self,
         http: &reqwest::Client,
-        auth: &mut dyn Authenticator
+        auth: &mut dyn Authenticator,
     ) -> anyhow::Result<Option<BalanceStatus>> {
         let url = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist";
         let body = serde_json::json!({
@@ -124,7 +136,10 @@ impl ProviderExtension for AntigravityExtension {
         let text = res.text().await?;
 
         if !status.is_success() {
-            return Ok(Some(BalanceStatus::error(format!("API 错误 ({}): {}", status, text))));
+            return Ok(Some(BalanceStatus::error(format!(
+                "API 错误 ({}): {}",
+                status, text
+            ))));
         }
 
         let json: Value = serde_json::from_str(&text)?;
@@ -144,7 +159,10 @@ impl ProviderExtension for AntigravityExtension {
 
         if let Some(tier) = json.get("currentTier") {
             let id = tier.get("id").and_then(|v| v.as_str()).unwrap_or("unknown");
-            let name = tier.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let name = tier
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
             display_parts.push(format!("当前 Tier: {} ({})", name, id));
             // 免费层级判断
             if id.contains("free") || name.to_lowercase().contains("free") {
@@ -153,10 +171,16 @@ impl ProviderExtension for AntigravityExtension {
         }
 
         if let Some(paid) = json.get("paidTier") {
-            let name = paid.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let name = paid
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
             if let Some(credits) = paid.get("availableCredits").and_then(|v| v.as_array()) {
                 for c in credits {
-                    let amount = c.get("creditAmount").and_then(|v| v.as_str()).unwrap_or("0");
+                    let amount = c
+                        .get("creditAmount")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("0");
                     let ctype = c.get("creditType").and_then(|v| v.as_str()).unwrap_or("");
                     display_parts.push(format!("付费 Tier: {} (额度: {} {})", name, amount, ctype));
                     if let Ok(val) = amount.parse::<f64>() {
@@ -195,7 +219,9 @@ impl ProviderExtension for AntigravityExtension {
                 },
                 paid: if paid_credits > 0.0 {
                     Some(QuotaStatus {
-                        unit: BillingUnit::Money { currency: "USD".to_string() },
+                        unit: BillingUnit::Money {
+                            currency: "USD".to_string(),
+                        },
                         used: 0.0,
                         total: None,
                         remaining: Some(paid_credits),

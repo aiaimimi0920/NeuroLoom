@@ -61,6 +61,8 @@ pub fn builder() -> ClientBuilder {
         .site(OpenAiSite::new().with_base_url(PACKYCODE_BASE_URL))
         .protocol(OpenAiProtocol {})
         .model_resolver(PackyCodeModelResolver::new())
-        .with_extension(Arc::new(PackyCodeExtension::new().with_base_url(PACKYCODE_BASE_URL)))
+        .with_extension(Arc::new(
+            PackyCodeExtension::new().with_base_url(PACKYCODE_BASE_URL),
+        ))
         .default_model("gpt-4o-mini")
 }

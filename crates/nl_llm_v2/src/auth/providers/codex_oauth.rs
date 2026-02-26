@@ -182,11 +182,9 @@ impl CodexOAuth {
 <p>您可以关闭此窗口返回程序。</p>
 </body></html>"#;
 
-            let resp = tiny_http::Response::from_string(html)
-                .with_header(
-                    tiny_http::Header::from_bytes("Content-Type", "text/html; charset=utf-8")
-                        .unwrap(),
-                );
+            let resp = tiny_http::Response::from_string(html).with_header(
+                tiny_http::Header::from_bytes("Content-Type", "text/html; charset=utf-8").unwrap(),
+            );
             let _ = request.respond(resp);
 
             // 解析 URL 参数
@@ -291,9 +289,9 @@ impl CodexOAuth {
     }
 
     fn build_token_storage(&self, token_resp: TokenResponse) -> anyhow::Result<TokenStorage> {
-        let expires_at = token_resp.expires_in.map(|e| {
-            chrono::Utc::now() + chrono::Duration::seconds(e as i64)
-        });
+        let expires_at = token_resp
+            .expires_in
+            .map(|e| chrono::Utc::now() + chrono::Duration::seconds(e as i64));
 
         // 尝试从 JWT id_token 解析 email 和 account_id
         let (email, account_id) = if let Some(ref id_token) = token_resp.id_token {
@@ -307,10 +305,16 @@ impl CodexOAuth {
             extra.insert("email".to_string(), serde_json::Value::String(e.clone()));
         }
         if let Some(ref aid) = account_id {
-            extra.insert("account_id".to_string(), serde_json::Value::String(aid.clone()));
+            extra.insert(
+                "account_id".to_string(),
+                serde_json::Value::String(aid.clone()),
+            );
         }
         if let Some(ref id_token) = token_resp.id_token {
-            extra.insert("id_token".to_string(), serde_json::Value::String(id_token.clone()));
+            extra.insert(
+                "id_token".to_string(),
+                serde_json::Value::String(id_token.clone()),
+            );
         }
 
         Ok(TokenStorage {
@@ -347,11 +351,10 @@ impl CodexOAuth {
         let port = self.callback_port;
         let timeout = Duration::from_secs(300);
 
-        let callback_result = tokio::task::spawn_blocking(move || {
-            Self::wait_for_callback(port, timeout)
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("回调等待线程失败: {}", e))??;
+        let callback_result =
+            tokio::task::spawn_blocking(move || Self::wait_for_callback(port, timeout))
+                .await
+                .map_err(|e| anyhow::anyhow!("回调等待线程失败: {}", e))??;
 
         let (code, returned_state) = callback_result;
 
@@ -408,16 +411,13 @@ impl Authenticator for CodexOAuth {
             return self.do_login().await;
         }
 
-        let refresh_result = if let Some(rt) = self
-            .token
-            .as_ref()
-            .and_then(|t| t.refresh_token.as_deref())
-        {
-            let rt = rt.to_string();
-            Some(self.do_refresh(&rt).await)
-        } else {
-            None
-        };
+        let refresh_result =
+            if let Some(rt) = self.token.as_ref().and_then(|t| t.refresh_token.as_deref()) {
+                let rt = rt.to_string();
+                Some(self.do_refresh(&rt).await)
+            } else {
+                None
+            };
 
         match refresh_result {
             Some(Ok(new_token)) => {
@@ -425,9 +425,7 @@ impl Authenticator for CodexOAuth {
                 self.save_token()?;
                 Ok(())
             }
-            Some(Err(_)) | None => {
-                self.do_login().await
-            }
+            Some(Err(_)) | None => self.do_login().await,
         }
     }
 
@@ -438,10 +436,14 @@ impl Authenticator for CodexOAuth {
                 use rand::RngCore;
                 let mut bytes = [0u8; 16];
                 rand::thread_rng().fill_bytes(&mut bytes);
-                bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+                bytes
+                    .iter()
+                    .map(|b| format!("{:02x}", b))
+                    .collect::<String>()
             };
 
-            let mut req = req.bearer_auth(&t.access_token)
+            let mut req = req
+                .bearer_auth(&t.access_token)
                 .header("Originator", CODEX_ORIGINATOR)
                 .header("User-Agent", "codex_cli_rs/0.101.0 (Windows; x86_64)")
                 .header("Session_id", &session_id);
@@ -461,9 +463,7 @@ impl Authenticator for CodexOAuth {
         AuthType::OAuth
     }
 
-    fn get_extra<'a>(
-        &'a self,
-    ) -> Option<&'a HashMap<String, serde_json::Value>> {
+    fn get_extra<'a>(&'a self) -> Option<&'a HashMap<String, serde_json::Value>> {
         self.token.as_ref().map(|t| &t.extra)
     }
 }
@@ -500,7 +500,10 @@ fn parse_jwt_claims(token: &str) -> (Option<String>, Option<String>) {
         Err(_) => return (None, None),
     };
 
-    let email = json.get("email").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let email = json
+        .get("email")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     // account_id 可能在 codex_auth_info.chatgpt_account_id 或直接 sub 字段
     let account_id = json

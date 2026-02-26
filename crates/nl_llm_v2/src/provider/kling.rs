@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::auth::traits::Authenticator;
-use crate::provider::extension::{ProviderExtension, VideoTaskState, VideoTaskStatus, ModelInfo};
-use crate::primitive::{PrimitiveRequest, PrimitiveContent};
+use crate::primitive::{PrimitiveContent, PrimitiveRequest};
+use crate::provider::extension::{ModelInfo, ProviderExtension, VideoTaskState, VideoTaskStatus};
 
 pub struct KlingExtension;
 
@@ -35,7 +35,7 @@ struct KlingVideoRequest {
 #[derive(Debug, Deserialize)]
 struct KlingTaskData {
     task_id: String,
-    task_status: String,      // submitted, processing, succeed, failed
+    task_status: String, // submitted, processing, succeed, failed
     task_status_msg: Option<String>,
     task_result: Option<KlingTaskResult>,
 }
@@ -70,7 +70,7 @@ impl ProviderExtension for KlingExtension {
     async fn list_models(
         &self,
         _http: &reqwest::Client,
-        _auth: &mut dyn Authenticator
+        _auth: &mut dyn Authenticator,
     ) -> anyhow::Result<Vec<ModelInfo>> {
         Ok(vec![
             ModelInfo {
@@ -144,7 +144,7 @@ impl ProviderExtension for KlingExtension {
         // 注入 Auth (Kling 内部其实就是 JWT Bearer)
         let mut req_builder = http.post(&endpoint).json(&request_body);
         req_builder = auth.inject(req_builder)?;
-        
+
         // 伪装 UA 被要求的情况（按照 new-api 适配器中的参考值）
         req_builder = req_builder.header("User-Agent", "kling-sdk/1.0");
 
@@ -157,7 +157,11 @@ impl ProviderExtension for KlingExtension {
 
         let parsed: KlingGenericResponse = resp.json().await?;
         if parsed.code != 0 {
-            return Err(anyhow::anyhow!("Kling returned error code {}: {}", parsed.code, parsed.message));
+            return Err(anyhow::anyhow!(
+                "Kling returned error code {}: {}",
+                parsed.code,
+                parsed.message
+            ));
         }
 
         Ok(compose_task_handle(&base_url, &parsed.data.task_id))
@@ -202,7 +206,11 @@ impl ProviderExtension for KlingExtension {
 
         let parsed: KlingGenericResponse = resp.json().await?;
         if parsed.code != 0 {
-            return Err(anyhow::anyhow!("Kling fetch error {}: {}", parsed.code, parsed.message));
+            return Err(anyhow::anyhow!(
+                "Kling fetch error {}: {}",
+                parsed.code,
+                parsed.message
+            ));
         }
 
         let state = match parsed.data.task_status.as_str() {
@@ -232,7 +240,12 @@ impl ProviderExtension for KlingExtension {
 }
 
 fn compose_task_handle(base_url: &str, task_id: &str) -> String {
-    format!("{}{}{}", base_url.trim_end_matches('/'), TASK_ID_DELIMITER, task_id)
+    format!(
+        "{}{}{}",
+        base_url.trim_end_matches('/'),
+        TASK_ID_DELIMITER,
+        task_id
+    )
 }
 
 fn parse_task_handle(task_handle: &str) -> (String, String) {

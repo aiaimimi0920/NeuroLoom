@@ -1,8 +1,8 @@
+use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 use async_trait::async_trait;
 use reqwest::Client;
-use crate::auth::traits::Authenticator;
-use crate::provider::extension::{ProviderExtension, ModelInfo};
-use crate::concurrency::ConcurrencyConfig;
 use std::sync::Arc;
 
 /// Codex 静态模型列表扩展
@@ -27,11 +27,13 @@ fn codex_models() -> Vec<ModelInfo> {
     vec![
         ModelInfo {
             id: "gpt-5.1-codex-max".to_string(),
-            description: "GPT 5.1 Codex Max — Highest capability, 400K context, thinking xhigh".to_string(),
+            description: "GPT 5.1 Codex Max — Highest capability, 400K context, thinking xhigh"
+                .to_string(),
         },
         ModelInfo {
             id: "gpt-5.1-codex".to_string(),
-            description: "GPT 5.1 Codex — Best for coding and agentic tasks, 400K context".to_string(),
+            description: "GPT 5.1 Codex — Best for coding and agentic tasks, 400K context"
+                .to_string(),
         },
         ModelInfo {
             id: "gpt-5.1-codex-mini".to_string(),

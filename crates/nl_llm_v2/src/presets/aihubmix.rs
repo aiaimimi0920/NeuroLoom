@@ -40,6 +40,8 @@ pub fn builder() -> ClientBuilder {
         .site(OpenAiSite::new().with_base_url(AIHUBMIX_BASE_URL))
         .protocol(OpenAiProtocol {})
         .model_resolver(AiHubMixModelResolver::new())
-        .with_extension(Arc::new(AiHubMixExtension::new().with_base_url(AIHUBMIX_BASE_URL)))
+        .with_extension(Arc::new(
+            AiHubMixExtension::new().with_base_url(AIHUBMIX_BASE_URL),
+        ))
         .default_model("gpt-4o-free")
 }

@@ -51,6 +51,8 @@ pub fn builder() -> ClientBuilder {
         .site(OpenAiSite::new().with_base_url(MODELSCOPE_BASE_URL))
         .protocol(OpenAiProtocol {})
         .model_resolver(ModelScopeModelResolver::new())
-        .with_extension(Arc::new(ModelScopeExtension::new().with_base_url(MODELSCOPE_BASE_URL)))
+        .with_extension(Arc::new(
+            ModelScopeExtension::new().with_base_url(MODELSCOPE_BASE_URL),
+        ))
         .default_model("Qwen/Qwen3-235B-A22B")
 }

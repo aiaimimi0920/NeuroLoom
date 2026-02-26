@@ -1,5 +1,5 @@
 use super::default::DefaultModelResolver;
-use super::resolver::{ModelResolver, Capability};
+use super::resolver::{Capability, ModelResolver};
 
 /// OpenAI 模型解析器
 ///
@@ -41,18 +41,56 @@ impl OpenAiModelResolver {
         // === 能力配置 ===
         // GPT-4o 系列
         inner.extend_capabilities(vec![
-            ("gpt-4o", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING),
-            ("gpt-4o-mini", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING),
-            ("gpt-4-turbo", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING),
-            ("gpt-4-0125-preview", Capability::CHAT | Capability::TOOLS | Capability::STREAMING),
+            (
+                "gpt-4o",
+                Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "gpt-4o-mini",
+                Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "gpt-4-turbo",
+                Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "gpt-4-0125-preview",
+                Capability::CHAT | Capability::TOOLS | Capability::STREAMING,
+            ),
             // GPT-3.5 系列
-            ("gpt-3.5-turbo", Capability::CHAT | Capability::TOOLS | Capability::STREAMING),
-            ("gpt-3.5-turbo-0125", Capability::CHAT | Capability::TOOLS | Capability::STREAMING),
+            (
+                "gpt-3.5-turbo",
+                Capability::CHAT | Capability::TOOLS | Capability::STREAMING,
+            ),
+            (
+                "gpt-3.5-turbo-0125",
+                Capability::CHAT | Capability::TOOLS | Capability::STREAMING,
+            ),
             // 推理模型
-            ("o1", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("o1-mini", Capability::CHAT | Capability::STREAMING | Capability::THINKING),
-            ("o1-pro", Capability::CHAT | Capability::VISION | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("o3-mini", Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
+            (
+                "o1",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
+            (
+                "o1-mini",
+                Capability::CHAT | Capability::STREAMING | Capability::THINKING,
+            ),
+            (
+                "o1-pro",
+                Capability::CHAT
+                    | Capability::VISION
+                    | Capability::TOOLS
+                    | Capability::STREAMING
+                    | Capability::THINKING,
+            ),
+            (
+                "o3-mini",
+                Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::THINKING,
+            ),
         ]);
 
         // === 上下文长度 ===
@@ -98,6 +136,10 @@ impl ModelResolver for OpenAiModelResolver {
     fn context_window_hint(&self, model: &str) -> (usize, usize) {
         self.inner.context_window_hint(model)
     }
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
-
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
+        None
+    }
 }

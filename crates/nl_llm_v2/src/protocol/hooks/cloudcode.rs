@@ -22,8 +22,10 @@ impl ProtocolHook for CloudCodeHook {
         };
 
         let request_id = format!("agent-{}", Uuid::new_v4());
-        
-        let project_val = ctx.auth_extra.get("project_id")
+
+        let project_val = ctx
+            .auth_extra
+            .get("project_id")
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
             .unwrap_or(""); // 必须提供 project 字段，支持空字符串跳过计费校验

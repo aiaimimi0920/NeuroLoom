@@ -1,5 +1,5 @@
 use super::default::DefaultModelResolver;
-use super::resolver::{ModelResolver, Capability};
+use super::resolver::{Capability, ModelResolver};
 
 #[derive(Debug, Clone, Copy)]
 pub struct XaiModelMeta {
@@ -113,7 +113,12 @@ impl ModelResolver for XaiModelResolver {
         self.inner.context_window_hint(model)
     }
 
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
+        None
+    }
 }
 
 #[cfg(test)]

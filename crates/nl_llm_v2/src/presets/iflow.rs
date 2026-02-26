@@ -1,9 +1,9 @@
 use crate::client::ClientBuilder;
-use crate::site::base::iflow::IFlowSite;
+use crate::model::iflow::IFlowModelResolver;
 use crate::protocol::base::openai::OpenAiProtocol;
 use crate::protocol::hooks::iflow::IflowThinkingHook;
-use crate::model::iflow::IFlowModelResolver;
 use crate::provider::iflow::IFlowExtension;
+use crate::site::base::iflow::IFlowSite;
 use std::sync::Arc;
 
 /// iFlow (心流) API 预设

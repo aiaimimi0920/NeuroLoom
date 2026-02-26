@@ -49,18 +49,23 @@ impl AzureOpenAiModelResolver {
             ("o3", "o3-mini"),
         ]);
 
-        let gpt_caps = Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::VISION;
+        let gpt_caps =
+            Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::VISION;
         let reasoning = Capability::CHAT | Capability::STREAMING | Capability::THINKING;
 
         inner.extend_capabilities(vec![
-            ("gpt-4o", gpt_caps), ("gpt-4o-mini", gpt_caps),
-            ("gpt-4.1", gpt_caps), ("gpt-4.1-mini", gpt_caps),
+            ("gpt-4o", gpt_caps),
+            ("gpt-4o-mini", gpt_caps),
+            ("gpt-4.1", gpt_caps),
+            ("gpt-4.1-mini", gpt_caps),
             ("o3-mini", reasoning),
         ]);
 
         inner.extend_context_lengths(vec![
-            ("gpt-4o", 128_000), ("gpt-4o-mini", 128_000),
-            ("gpt-4.1", 1_000_000), ("gpt-4.1-mini", 1_000_000),
+            ("gpt-4o", 128_000),
+            ("gpt-4o-mini", 128_000),
+            ("gpt-4.1", 1_000_000),
+            ("gpt-4.1-mini", 1_000_000),
             ("o3-mini", 200_000),
         ]);
 
@@ -69,14 +74,28 @@ impl AzureOpenAiModelResolver {
 }
 
 impl Default for AzureOpenAiModelResolver {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ModelResolver for AzureOpenAiModelResolver {
-    fn resolve(&self, model: &str) -> String { self.inner.resolve(model) }
-    fn has_capability(&self, model: &str, cap: Capability) -> bool { self.inner.has_capability(model, cap) }
-    fn max_context(&self, model: &str) -> usize { self.inner.max_context(model) }
-    fn context_window_hint(&self, model: &str) -> (usize, usize) { self.inner.context_window_hint(model) }
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
-
+    fn resolve(&self, model: &str) -> String {
+        self.inner.resolve(model)
+    }
+    fn has_capability(&self, model: &str, cap: Capability) -> bool {
+        self.inner.has_capability(model, cap)
+    }
+    fn max_context(&self, model: &str) -> usize {
+        self.inner.max_context(model)
+    }
+    fn context_window_hint(&self, model: &str) -> (usize, usize) {
+        self.inner.context_window_hint(model)
+    }
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
+        None
+    }
 }

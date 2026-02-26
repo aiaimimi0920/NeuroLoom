@@ -1,4 +1,4 @@
-use crate::pipeline::traits::{Stage, PipelineContext};
+use crate::pipeline::traits::{PipelineContext, Stage};
 
 /// 核心 Pipeline 结构体，用于编排串联整个链条
 pub struct Pipeline {

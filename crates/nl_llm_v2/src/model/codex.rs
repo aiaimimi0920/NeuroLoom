@@ -1,5 +1,5 @@
 use crate::model::default::DefaultModelResolver;
-use crate::model::resolver::{ModelResolver, Capability};
+use crate::model::resolver::{Capability, ModelResolver};
 
 /// Codex 模型解析器
 ///
@@ -23,11 +23,26 @@ impl CodexModelResolver {
 
         // 能力配置
         inner.extend_capabilities(vec![
-            ("gpt-5.1-codex-max", Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("gpt-5.1-codex", Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("gpt-5.1-codex-mini", Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("gpt-5-codex", Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
-            ("gpt-5-codex-mini", Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::THINKING),
+            (
+                "gpt-5.1-codex-max",
+                Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::THINKING,
+            ),
+            (
+                "gpt-5.1-codex",
+                Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::THINKING,
+            ),
+            (
+                "gpt-5.1-codex-mini",
+                Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::THINKING,
+            ),
+            (
+                "gpt-5-codex",
+                Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::THINKING,
+            ),
+            (
+                "gpt-5-codex-mini",
+                Capability::CHAT | Capability::TOOLS | Capability::STREAMING | Capability::THINKING,
+            ),
         ]);
 
         // 上下文长度（所有模型 400K）
@@ -62,6 +77,10 @@ impl ModelResolver for CodexModelResolver {
     fn context_window_hint(&self, model: &str) -> (usize, usize) {
         self.inner.context_window_hint(model)
     }
-    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
-
+    fn intelligence_and_modality(
+        &self,
+        _model: &str,
+    ) -> Option<(f32, crate::model::resolver::Modality)> {
+        None
+    }
 }

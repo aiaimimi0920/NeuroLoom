@@ -17,12 +17,14 @@ async fn main() -> Result<()> {
 
     let default_prompt = "Hello, what is your custom model capabilities?".to_string();
     let prompt = args.get(2).cloned().unwrap_or(default_prompt);
-    
-    // 动态传入用户想要测试的任意模型名
-    let model = args.get(3).cloned().unwrap_or_else(|| "gpt-3.5-turbo".to_string());
 
-    let req = PrimitiveRequest::single_user_message(&prompt)
-        .with_model(&model);
+    // 动态传入用户想要测试的任意模型名
+    let model = args
+        .get(3)
+        .cloned()
+        .unwrap_or_else(|| "gpt-3.5-turbo".to_string());
+
+    let req = PrimitiveRequest::single_user_message(&prompt).with_model(&model);
 
     println!("User: {}", prompt);
     println!("Model Request: {}", model);
