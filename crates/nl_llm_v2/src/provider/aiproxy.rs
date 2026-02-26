@@ -46,9 +46,12 @@ impl ModelResolver for AiProxyModelResolver {
         128_000
     }
 
-    fn context_window_hint(&self, model: &str) -> (usize, usize) {
-        let max = self.max_context(model);
-        (max * 3 / 4, max / 4)
+    fn context_window_hint(&self, _model: &str) -> (usize, usize) {
+        (100_000, 28_000)
+    }
+
+    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> {
+        Some((3.5, crate::model::resolver::Modality::Text))
     }
 }
 

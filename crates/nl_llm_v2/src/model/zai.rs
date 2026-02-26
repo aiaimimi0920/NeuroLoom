@@ -125,4 +125,6 @@ impl ModelResolver for ZaiModelResolver {
     fn context_window_hint(&self, model: &str) -> (usize, usize) {
         self.inner.context_window_hint(model)
     }
+    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
+
 }

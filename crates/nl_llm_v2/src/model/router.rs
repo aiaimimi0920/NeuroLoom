@@ -60,7 +60,7 @@ pub trait Router: Send + Sync {
         &self, 
         mode: RoutingMode, 
         constraint: RouteConstraint,
-    ) -> crate::Result<RouteCandidate>;
+    ) -> anyhow::Result<RouteCandidate>;
     
     /// 反馈回路监控
     /// 当下游执行器遭遇某个渠道由于 429/500 限流崩溃时的回调。

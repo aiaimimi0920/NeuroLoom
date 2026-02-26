@@ -18,6 +18,7 @@ pub mod dify;
 pub mod jina;
 pub mod mistral;
 pub mod fastgpt;
+pub mod moka;
 
 pub use openai::OpenAiSite;
 pub use gemini::GeminiSite;

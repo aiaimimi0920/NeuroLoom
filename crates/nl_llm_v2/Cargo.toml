@@ -801,3 +801,15 @@ path = "examples/aiproxy/stream/main.rs"
 [[example]]
 name = "aiproxy_models"
 path = "examples/aiproxy/models/main.rs"
+
+[[example]]
+name = "moka_chat"
+path = "examples/moka/chat/main.rs"
+
+[[example]]
+name = "moka_stream"
+path = "examples/moka/stream/main.rs"
+
+[[example]]
+name = "moka_models"
+path = "examples/moka/models/main.rs"

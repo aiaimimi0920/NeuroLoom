@@ -68,6 +68,10 @@ impl ModelResolver for HunyuanModelResolver {
     fn context_window_hint(&self, model: &str) -> (usize, usize) {
         self.inner.context_window_hint(model)
     }
+
+    fn intelligence_and_modality(&self, model: &str) -> Option<(f32, crate::model::resolver::Modality)> {
+        self.inner.intelligence_and_modality(model)
+    }
 }
 
 /// 腾讯混元协议拦截器

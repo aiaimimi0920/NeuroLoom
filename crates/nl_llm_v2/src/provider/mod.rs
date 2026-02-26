@@ -49,6 +49,7 @@ pub mod mistral;
 pub mod custom;
 pub mod fastgpt;
 pub mod aiproxy;
+pub mod moka;
 
 // 显式导出类型，避免 extension() 函数名冲突
 pub use balance::*;

@@ -37,6 +37,10 @@ impl ModelResolver for DifyModelResolver {
         let output_limit = max - input_limit;
         (input_limit, output_limit)
     }
+
+    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> {
+        Some((3.5, crate::model::resolver::Modality::Text))
+    }
 }
 
 #[cfg(test)]

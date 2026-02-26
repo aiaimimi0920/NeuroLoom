@@ -40,6 +40,10 @@ impl ModelResolver for MistralModelResolver {
         let output_limit = max - input_limit;
         (input_limit, output_limit)
     }
+
+    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> {
+        Some((4.0, crate::model::resolver::Modality::Text))
+    }
 }
 
 /// Mistral 的专属请求拦截器（Hook）

@@ -56,4 +56,5 @@ pub mod mistral;
 pub mod custom;
 pub mod fastgpt;
 pub mod aiproxy;
+pub mod moka;
 pub use registry::{PresetRegistry, REGISTRY};

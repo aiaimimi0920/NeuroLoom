@@ -48,4 +48,6 @@ impl ModelResolver for AiCodeMirrorModelResolver {
     fn has_capability(&self, model: &str, cap: Capability) -> bool { self.inner.has_capability(model, cap) }
     fn max_context(&self, model: &str) -> usize { self.inner.max_context(model) }
     fn context_window_hint(&self, model: &str) -> (usize, usize) { self.inner.context_window_hint(model) }
+    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
+
 }

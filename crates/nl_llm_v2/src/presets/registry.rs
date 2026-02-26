@@ -76,6 +76,7 @@ impl PresetRegistry {
         self.builders.insert("custom", super::custom::builder);
         self.builders.insert("fastgpt", super::fastgpt::default_builder);
         self.builders.insert("aiproxy", super::aiproxy::builder);
+        self.builders.insert("moka", super::moka::builder);
     }
 
     pub fn get_builder(&self, preset_name: &str) -> Option<ClientBuilder> {
