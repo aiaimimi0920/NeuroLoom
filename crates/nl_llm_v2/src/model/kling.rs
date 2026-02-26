@@ -1,4 +1,3 @@
-use super::default::DefaultModelResolver;
 use super::resolver::{ModelResolver, Capability, Modality};
 
 /// 可灵 AI (Kling) 模型解析器
@@ -7,15 +6,11 @@ use super::resolver::{ModelResolver, Capability, Modality};
 /// - kling-v1
 /// - kling-v1-6
 /// - kling-v2-master
-pub struct KlingModelResolver {
-    default_resolver: DefaultModelResolver,
-}
+pub struct KlingModelResolver {}
 
 impl KlingModelResolver {
     pub fn new() -> Self {
-        Self {
-            default_resolver: DefaultModelResolver::new(),
-        }
+        Self {}
     }
 }
 
