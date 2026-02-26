@@ -20,7 +20,7 @@ impl CozeSite {
     pub fn new() -> Self {
         Self {
             id: "coze".to_string(),
-            base_url: "https://api.coze.com/v3".to_string(),
+            base_url: "https://api.coze.cn/v3".to_string(),
             extra_headers: std::collections::HashMap::new(),
             timeout: Duration::from_secs(60),
         }

@@ -132,6 +132,7 @@ impl ProtocolFormat for CozeProtocol {
             let mut byte_stream = resp.bytes_stream();
             let mut buffer = String::new();
             let mut current_event = String::new();
+            let mut first_chunk = true;
 
             while let Some(chunk_result) = byte_stream.next().await {
                 let bytes = match chunk_result {
@@ -144,6 +145,24 @@ impl ProtocolFormat for CozeProtocol {
 
                 let s = String::from_utf8_lossy(&bytes);
                 buffer.push_str(&s);
+
+                // [关键修复] Coze 在 HTTP 200 下也会返回 JSON 错误体（非 SSE）
+                // 例如 bot_id 不存在时返回 {"code":4200,"msg":"..."}
+                // 必须在第一个 chunk 中检测这种情况
+                if first_chunk {
+                    first_chunk = false;
+                    let trimmed = buffer.trim_start();
+                    if trimmed.starts_with('{') {
+                        // 可能是 JSON 错误而非 SSE 流
+                        if let Ok(v) = serde_json::from_str::<Value>(trimmed) {
+                            if let Some(code) = v.get("code").and_then(|c| c.as_i64()) {
+                                let msg = v.get("msg").and_then(|m| m.as_str()).unwrap_or("Unknown Coze error");
+                                yield Err(anyhow::anyhow!("Coze API Error ({}): {}", code, msg));
+                                return; // 立即终止流
+                            }
+                        }
+                    }
+                }
 
                 while let Some(pos) = buffer.find('\n') {
                     let line = buffer[..pos].trim().to_string();
@@ -182,8 +201,11 @@ impl ProtocolFormat for CozeProtocol {
                                 let msg = v.get("msg").and_then(|m| m.as_str()).unwrap_or("Unknown stream error");
                                 yield Err(anyhow::anyhow!("Coze Stream Error ({}): {}", code, msg));
                             }
+                        } else if current_event == "done" {
+                            // 流结束信号，可以安全退出
+                            return;
                         }
-                        
+
                         // "conversation.chat.completed" could be parsed for Usage tracking in the future
                         current_event.clear();
                     }
