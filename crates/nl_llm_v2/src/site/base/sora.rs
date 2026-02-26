@@ -1,6 +1,6 @@
-use std::time::Duration;
-use crate::site::traits::Site;
 use crate::site::context::UrlContext;
+use crate::site::traits::Site;
+use std::time::Duration;
 
 pub struct SoraSite {
     timeout: Duration,
@@ -23,7 +23,7 @@ impl SoraSite {
 
 impl Site for SoraSite {
     fn id(&self) -> &str {
-        "sora_video"
+        "sora"
     }
 
     fn base_url(&self) -> &str {
