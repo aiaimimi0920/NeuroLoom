@@ -846,3 +846,7 @@ path = "examples/kling/video/main.rs"
 [[example]]
 name = "jimeng_video"
 path = "examples/jimeng/video/main.rs"
+
+[[example]]
+name = "submodel_chat"
+path = "examples/submodel/chat/main.rs"

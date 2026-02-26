@@ -1,3 +1,4 @@
+pub mod submodel;
 pub mod jimeng;
 pub mod resolver;
 pub mod router;
