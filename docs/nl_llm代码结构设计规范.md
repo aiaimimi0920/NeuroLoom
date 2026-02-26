@@ -554,11 +554,44 @@ impl Site for VertexSite {
 
 ---
 
-## 6. 模型解析（新增）
+## 6. 任务编排与模型注册表 (Orchestration & Registry)
 
-### 6.1 模型解析器 Trait
+### 6.1 任务编排模式 (Routing Modes)
+系统在执行时，允许显式不指定具体模型名，交由路由引擎（Router）按需调度：
+- **SpeedFirst (速度优先)**: 选择 TTFT 最短或 TPS 最高的 `模型 + 渠道商` 组合。
+- **PriceFirst (价格优先)**: 根据认证模式（如 API Key 每 Token 计费，或 VIP 订阅 0 元等）估算，选择总价最低的组合。
+- **AccuracyFirst (准确/智能优先)**: 选择最新实际智能等级（基础智能减去渠道造假惩罚）最高的模型。同级时回退参考：信誉度（官方/无惩罚）优先 -> 速度优先 -> 价格优先。极高要求下可直接淘汰挂有造假惩罚的节点。
 
-用于处理模型别名和能力检测：
+### 6.2 模态分类 (Modalities)
+赋予模型具体的器官能力，以便路由时进行精准过滤：
+1. **Text (纯文本)**: 处理自然语言理解与生成逻辑的单模态。
+2. **Vision (视觉/图像)**: 看图模型（Image-to-Text），在特定领域的打标和 OCR 上极强。
+3. **Audio (语音)**: 听音或发音的模型（Speech-to-Text / Text-to-Speech）。
+4. **Multimodal (全模态/融合模态)**: 原生理解图文音（如 GPT-4o, Claude 3.5 Sonnet）。在 Price/Speed First 模式及单一文本任务可被路由特意规避，以选配便宜且聪明的专精模型。
+5. **Embedding**: 文本/图像向量化。
+6. **ImageGeneration**: 传统文生图/图生图。
+
+### 6.3 企业级稳定与安全四大约束维度 (Enterprise Constraints)
+1. **上下文窗口约束 (Context Length)**: 路由附带 `estimated_tokens` 估算值，剔除 `max_context` 小于该值的模型及渠道。
+2. **隐私与安全等级 (Security Clearance, L1-L3)**: 
+   - L1 (Untrusted Proxy): 廉价池，脱敏任务。
+   - L2 (Trusted Cloud): 官方/受信任云，不用于训练。
+   - L3 (Local/Private): 局域网物理隔离，处理核心机密。
+3. **特性能力约束 (Capability Check)**: 强制校验 `[Require: TOOLS]` / `[Require: JSON_MODE]` 等，预防阉割版 API 崩溃。
+4. **动态熔断与存活感知 (Circuit Breaker)**: 内存反馈回路。遇到致命错误（429/500）立即给节点打上 `Cooldown` 状态，强行降级次优节点避免并发雪崩。
+
+### 6.4 五阶智能基准与渠道惩罚 (Intelligence & Penalties)
+- **Base Score (1-5)**:
+  - **L1 (Basic)**: 极弱基础，简单提取、算术等。
+  - **L2 (Standard)**: 标准，常规闲聊、整理摘要。
+  - **L3 (Advanced)**: 进阶，编写一般代码、连贯逻辑推理。
+  - **L4 (Expert)**: 专家，边缘逻辑、工程架构设计。
+  - **L5 (Genius)**: 天才，最终裁决、地表最优 (如最新版 Claude/GPT)。
+- **Provider Intelligence Penalty (造假降智惩罚)**: 核心防伪。例如某渠道商套壳宣称 L5 实际只提供 Qwen-1.5，探测反馈后施加 `-4.0` 惩罚。其结算智能暴跌至 L1，直接被高端的 `AccuracyFirst` 淘汰，但可能凭借极低价格与 L1 算力在 `PriceFirst` 的基础清洗打标跑批中获得重新利用的机会。
+
+### 6.5 模型解析器 Trait
+
+用于处理模型别名和底层能力检测：
 
 ```rust
 /// 模型能力标志
@@ -590,7 +623,7 @@ pub trait ModelResolver: Send + Sync {
 }
 ```
 
-### 6.2 默认模型解析器实现
+### 6.5 默认模型解析器实现
 
 ```rust
 /// 默认模型解析器
@@ -676,7 +709,7 @@ impl ModelResolver for DefaultModelResolver {
 }
 ```
 
-### 6.3 预设级模型解析器
+### 6.6 预设级模型解析器
 
 > [!NOTE]
 > 不同预设可能需要不同的模型别名映射。例如 `claude-opus` 在官方 Claude API 和 Antigravity 平台解析为不同的模型名。
@@ -725,7 +758,7 @@ pub fn builder() -> ClientBuilder {
 }
 ```
 
-### 6.4 iFlow 平台模型解析器示例
+### 6.7 iFlow 平台模型解析器示例
 
 ```rust
 /// iFlow 平台专属模型解析器

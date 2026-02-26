@@ -1,4 +1,5 @@
 pub mod resolver;
+pub mod router;
 pub mod default;
 pub mod openai;
 pub mod anthropic;
@@ -40,7 +41,8 @@ pub mod perplexity;
 pub mod kat_coder;
 pub mod spark;
 
-pub use resolver::{ModelResolver, Capability};
+pub use resolver::{ModelResolver, Capability, Modality};
+pub use router::{RoutingMode, RouteConstraint, RouteCandidate, Router, SecurityClearance};
 pub use default::DefaultModelResolver;
 pub use openai::OpenAiModelResolver;
 pub use anthropic::AnthropicModelResolver;

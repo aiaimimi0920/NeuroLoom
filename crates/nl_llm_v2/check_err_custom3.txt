@@ -1,0 +1,41 @@
+warning: unused import: `std::sync::Arc`
+ --> crates\nl_llm_v2\src\presets\custom.rs:6:5
+  |
+6 | use std::sync::Arc;
+  |     ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `nl_llm_v2` (lib) generated 1 warning (run `cargo fix --lib -p nl_llm_v2` to apply 1 suggestion)
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\doubaoseed\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+    Checking nl_llm_v2 v0.1.0 (C:\Users\Public\nas_home\AI\GameEditor\NeuroLoom\crates\nl_llm_v2)
+warning: `nl_llm_v2` (example "doubaoseed_models") generated 1 warning (run `cargo fix --example "doubaoseed_models" -p nl_llm_v2` to apply 1 suggestion)
+crates\nl_llm_v2\examples\custom\models\main.rs:22:16: error[E0308]: mismatched types: expected `String`, found `Option<_>`
+crates\nl_llm_v2\examples\aicodemirror\chat\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\openrouter\auth\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\gemini_cli\stream\main.rs:13:9: warning: unused variable: `api_key`: help: if this is intentional, prefix it with an underscore: `_api_key`
+crates\nl_llm_v2\examples\gemini_cli\auth\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\gemini_cli\auth\main.rs:13:9: warning: unused variable: `api_key`: help: if this is intentional, prefix it with an underscore: `_api_key`
+crates\nl_llm_v2\examples\packycode\models\main.rs:25:9: warning: variable does not need to be mutable
+error: could not compile `nl_llm_v2` (example "custom_models") due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+crates\nl_llm_v2\examples\claude\models\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\longcat\models\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\openrouter\models\main.rs:25:9: warning: variable does not need to be mutable
+warning: `nl_llm_v2` (example "aicodemirror_chat") generated 1 warning (run `cargo fix --example "aicodemirror_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "gemini_cli_stream") generated 1 warning (run `cargo fix --example "gemini_cli_stream" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "openrouter_auth") generated 1 warning (run `cargo fix --example "openrouter_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "packycode_models") generated 1 warning (run `cargo fix --example "packycode_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "gemini_cli_auth") generated 2 warnings (run `cargo fix --example "gemini_cli_auth" -p nl_llm_v2` to apply 2 suggestions)
+warning: `nl_llm_v2` (example "claude_models") generated 1 warning (run `cargo fix --example "claude_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "longcat_models") generated 1 warning (run `cargo fix --example "longcat_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "openrouter_models") generated 1 warning (run `cargo fix --example "openrouter_models" -p nl_llm_v2` to apply 1 suggestion)

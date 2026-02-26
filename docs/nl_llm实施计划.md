@@ -268,10 +268,78 @@ pub trait ModelResolver: Send + Sync {
 
     /// 获取模型的上下文窗口建议（输入/输出分配）
     fn context_window_hint(&self, model: &str) -> (usize, usize);
+
+    /// 获取模型的基础智能评级与模态分类
+    fn intelligence_and_modality(&self, model: &str) -> Option<(f32, Modality)>;
+}
+
+/// 模型模态分类
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Modality {
+    Text,
+    Vision,
+    Audio,
+    Multimodal,
+    Embedding,
+    ImageGeneration,
+}
+
+### 2.2 路由引擎与计价策略 (新增)
+
+**文件**: `src/model/router.rs`
+
+```rust
+use crate::model::resolver::Modality;
+
+/// 任务路由模式
+#[derive(Debug, Clone)]
+pub enum RoutingMode {
+    SpeedFirst,
+    PriceFirst,
+    AccuracyFirst,
+}
+
+/// 统一的运行平台抽象（结合了 Provider 与 Model）
+pub struct RouteCandidate {
+    pub provider_id: String,
+    pub model_name: String,
+    pub actual_intelligence: f32, // Base Score 加上 Penalty
+    pub cost_estimate: f32,       // 动态结合 AuthType
+    pub speed_metrics: (u64, u64),// (TTFT_ms, TPS)
+}
+
+/// 安全与隐私等级
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SecurityClearance {
+    L1UntrustedProxy = 1,
+    L2TrustedCloud = 2,
+    L3LocalPrivate = 3,
+}
+
+/// 路由强制约束条件
+pub struct RouteConstraint {
+    pub modality: Modality,
+    pub min_intelligence: f32,
+    pub estimated_tokens: usize,
+    pub require_clearance: SecurityClearance,
+    pub require_capabilities: crate::model::resolver::Capability,
+}
+
+/// 路由调度器
+pub trait Router: Send + Sync {
+    /// 在不指定确切模型的前提下，挑选最佳候选者
+    fn route(
+        &self, 
+        mode: RoutingMode, 
+        constraint: RouteConstraint,
+    ) -> crate::Result<RouteCandidate>;
+    
+    /// 当节点发生 429/500 等严重错误时，调用该接口进行熔断降权冷却
+    fn report_failure(&self, provider_id: &str, model_name: &str);
 }
 ```
 
-### 2.2 默认实现
+### 2.3 默认实现
 
 **文件**: `src/model/default.rs`
 

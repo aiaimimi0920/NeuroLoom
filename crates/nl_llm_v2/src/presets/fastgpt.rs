@@ -1,13 +1,14 @@
-use crate::LlmClientBuilder;
-use crate::client::LlmClient;
-use crate::protocol::openai::OpenAiProtocol;
-use crate::site::base::fastgpt::FastGptSite;
-use crate::provider::fastgpt;
 use std::sync::Arc;
 
-pub fn default_builder() -> LlmClientBuilder {
-    LlmClient::builder()
-        .with_site(Arc::new(FastGptSite::new()))
-        .with_protocol(Arc::new(OpenAiProtocol::new("fastgpt")))
-        .with_extension(fastgpt::extension())
+use crate::client::ClientBuilder;
+use crate::protocol::base::openai::OpenAiProtocol;
+use crate::provider::fastgpt::FastGptExtension;
+use crate::site::base::fastgpt::FastGptSite;
+
+pub fn default_builder() -> ClientBuilder {
+    ClientBuilder::new()
+        .site(FastGptSite::new())
+        .protocol(OpenAiProtocol {})
+        .with_extension(Arc::new(FastGptExtension::new()))
+        .default_model("fastgpt-default")
 }

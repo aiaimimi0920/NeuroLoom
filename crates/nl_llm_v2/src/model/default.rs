@@ -18,6 +18,8 @@ pub struct DefaultModelResolver {
     capabilities: HashMap<String, Capability>,
     /// 模型上下文长度表
     context_lengths: HashMap<String, usize>,
+    /// 模型基础智能与模态表
+    intelligence_profiles: HashMap<String, (f32, crate::model::resolver::Modality)>,
 }
 
 impl DefaultModelResolver {
@@ -26,6 +28,7 @@ impl DefaultModelResolver {
             aliases: HashMap::new(),
             capabilities: HashMap::new(),
             context_lengths: HashMap::new(),
+            intelligence_profiles: HashMap::new(),
         }
     }
 
@@ -42,6 +45,11 @@ impl DefaultModelResolver {
     /// 设置模型上下文长度
     pub fn set_context_length(&mut self, model: impl Into<String>, length: usize) {
         self.context_lengths.insert(model.into(), length);
+    }
+    
+    /// 设置模型智能等级与模态
+    pub fn set_intelligence_profile(&mut self, model: impl Into<String>, score: f32, modality: crate::model::resolver::Modality) {
+        self.intelligence_profiles.insert(model.into(), (score, modality));
     }
 
     /// 批量设置别名
@@ -62,6 +70,13 @@ impl DefaultModelResolver {
     pub fn extend_context_lengths(&mut self, lengths: Vec<(impl Into<String>, usize)>) {
         for (model, length) in lengths {
             self.context_lengths.insert(model.into(), length);
+        }
+    }
+    
+    /// 批量设置智能剖析
+    pub fn extend_intelligence_profiles(&mut self, profiles: Vec<(impl Into<String>, f32, crate::model::resolver::Modality)>) {
+        for (model, score, modality) in profiles {
+            self.intelligence_profiles.insert(model.into(), (score, modality));
         }
     }
 }
@@ -93,5 +108,10 @@ impl ModelResolver for DefaultModelResolver {
         let max = self.max_context(model);
         // 默认保留 1/4 作为输出
         (max * 3 / 4, max / 4)
+    }
+
+    fn intelligence_and_modality(&self, model: &str) -> Option<(f32, crate::model::resolver::Modality)> {
+        let resolved = self.resolve(model);
+        self.intelligence_profiles.get(&resolved).cloned()
     }
 }

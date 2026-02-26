@@ -1,0 +1,159 @@
+    Checking nl_llm_v2 v0.1.0 (C:\Users\Public\nas_home\AI\GameEditor\NeuroLoom\crates\nl_llm_v2)
+crates\nl_llm_v2\examples\codex_oauth\auth\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\cloudflare\chat\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\aigocode\models\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\aws_claude\chat\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\rightcode\auth\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\codex_oauth\chat\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\aicodemirror\auth\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\vertex_api\models\main.rs:25:9: warning: variable does not need to be mutable
+warning: `nl_llm_v2` (example "cloudflare_chat") generated 1 warning (run `cargo fix --example "cloudflare_chat" -p nl_llm_v2` to apply 1 suggestion)
+crates\nl_llm_v2\examples\rightcode\models\main.rs:25:9: warning: variable does not need to be mutable
+warning: `nl_llm_v2` (example "codex_oauth_auth") generated 1 warning (run `cargo fix --example "codex_oauth_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\qianfan\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `nl_llm_v2` (example "qianfan_models") generated 1 warning (run `cargo fix --example "qianfan_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "aigocode_models") generated 1 warning (run `cargo fix --example "aigocode_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "rightcode_auth") generated 1 warning (run `cargo fix --example "rightcode_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "codex_oauth_chat") generated 1 warning (run `cargo fix --example "codex_oauth_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "aws_claude_chat") generated 1 warning (run `cargo fix --example "aws_claude_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "vertex_api_models") generated 1 warning (run `cargo fix --example "vertex_api_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "aicodemirror_auth") generated 1 warning (run `cargo fix --example "aicodemirror_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "rightcode_models") generated 1 warning (run `cargo fix --example "rightcode_models" -p nl_llm_v2` to apply 1 suggestion)
+crates\nl_llm_v2\examples\kat_coder\chat\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\openrouter\auth\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\azure_openai\auth\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\codex_api\models\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\cubence\models\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\minimax\chat\main.rs:25:9: warning: variable does not need to be mutable
+warning: `nl_llm_v2` (example "kat_coder_chat") generated 1 warning (run `cargo fix --example "kat_coder_chat" -p nl_llm_v2` to apply 1 suggestion)
+crates\nl_llm_v2\examples\packycode\chat\main.rs:25:9: warning: variable does not need to be mutable
+warning: `nl_llm_v2` (example "azure_openai_auth") generated 1 warning (run `cargo fix --example "azure_openai_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "openrouter_auth") generated 1 warning (run `cargo fix --example "openrouter_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "codex_api_models") generated 1 warning (run `cargo fix --example "codex_api_models" -p nl_llm_v2` to apply 1 suggestion)
+crates\nl_llm_v2\examples\zhipu\chat\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\claude_oauth\chat\main.rs:25:9: warning: variable does not need to be mutable
+warning: `nl_llm_v2` (example "minimax_chat") generated 1 warning (run `cargo fix --example "minimax_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "zhipu_chat") generated 1 warning (run `cargo fix --example "zhipu_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "cubence_models") generated 1 warning (run `cargo fix --example "cubence_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "packycode_chat") generated 1 warning (run `cargo fix --example "packycode_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "claude_oauth_chat") generated 1 warning (run `cargo fix --example "claude_oauth_chat" -p nl_llm_v2` to apply 1 suggestion)
+crates\nl_llm_v2\examples\longcat\chat\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\cubence\auth\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\minimax_cn\chat\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\kimi_coding\chat\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\packycode\models\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\zai\auth\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\dmxapi\models\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\gemini\models\main.rs:25:9: warning: variable does not need to be mutable
+warning: `nl_llm_v2` (example "minimax_cn_chat") generated 1 warning (run `cargo fix --example "minimax_cn_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "longcat_chat") generated 1 warning (run `cargo fix --example "longcat_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "kimi_coding_chat") generated 1 warning (run `cargo fix --example "kimi_coding_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "cubence_auth") generated 1 warning (run `cargo fix --example "cubence_auth" -p nl_llm_v2` to apply 1 suggestion)
+crates\nl_llm_v2\examples\zai\models\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\spark\models\main.rs:25:9: warning: variable does not need to be mutable
+warning: `nl_llm_v2` (example "packycode_models") generated 1 warning (run `cargo fix --example "packycode_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "zai_auth") generated 1 warning (run `cargo fix --example "zai_auth" -p nl_llm_v2` to apply 1 suggestion)
+crates\nl_llm_v2\examples\bailing\chat\main.rs:25:9: warning: variable does not need to be mutable
+warning: `nl_llm_v2` (example "dmxapi_models") generated 1 warning (run `cargo fix --example "dmxapi_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "spark_models") generated 1 warning (run `cargo fix --example "spark_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "gemini_models") generated 1 warning (run `cargo fix --example "gemini_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "zai_models") generated 1 warning (run `cargo fix --example "zai_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "bailing_chat") generated 1 warning (run `cargo fix --example "bailing_chat" -p nl_llm_v2` to apply 1 suggestion)
+crates\nl_llm_v2\examples\codex_api\auth\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\aws_claude\models\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\zhipu\models\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\aihubmix\chat\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\bailing\auth\main.rs:25:9: warning: variable does not need to be mutable
+warning: `nl_llm_v2` (example "codex_api_auth") generated 1 warning (run `cargo fix --example "codex_api_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "aws_claude_models") generated 1 warning (run `cargo fix --example "aws_claude_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "zhipu_models") generated 1 warning (run `cargo fix --example "zhipu_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\azure_openai\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `nl_llm_v2` (example "azure_openai_chat") generated 1 warning (run `cargo fix --example "azure_openai_chat" -p nl_llm_v2` to apply 1 suggestion)
+crates\nl_llm_v2\examples\minimax\auth\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\qwen\auth\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\aicodemirror\chat\main.rs:25:9: warning: variable does not need to be mutable
+warning: `nl_llm_v2` (example "aihubmix_chat") generated 1 warning (run `cargo fix --example "aihubmix_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "bailing_auth") generated 1 warning (run `cargo fix --example "bailing_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "minimax_auth") generated 1 warning (run `cargo fix --example "minimax_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "qwen_auth") generated 1 warning (run `cargo fix --example "qwen_auth" -p nl_llm_v2` to apply 1 suggestion)
+crates\nl_llm_v2\examples\minimax_cn\auth\main.rs:25:9: warning: variable does not need to be mutable
+warning: `nl_llm_v2` (example "aicodemirror_chat") generated 1 warning (run `cargo fix --example "aicodemirror_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "minimax_cn_auth") generated 1 warning (run `cargo fix --example "minimax_cn_auth" -p nl_llm_v2` to apply 1 suggestion)
+crates\nl_llm_v2\examples\aihubmix\models\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\amp\models\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\antigravity\stream\main.rs:13:9: warning: unused variable: `api_key`: help: if this is intentional, prefix it with an underscore: `_api_key`
+crates\nl_llm_v2\examples\dify\stream\main.rs:4:26: error[E0432]: unresolved import `nl_llm_v2::provider::traits`: could not find `traits` in `provider`
+crates\nl_llm_v2\examples\dmxapi\auth\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\deepseek\models\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\deepseek\auth\main.rs:25:9: warning: variable does not need to be mutable
+warning: `nl_llm_v2` (example "amp_models") generated 1 warning (run `cargo fix --example "amp_models" -p nl_llm_v2` to apply 1 suggestion)
+crates\nl_llm_v2\examples\dify\stream\main.rs:9:5: error[E0433]: failed to resolve: use of unresolved module or unlinked crate `tracing_subscriber`: use of unresolved module or unlinked crate `tracing_subscriber`
+crates\nl_llm_v2\examples\gemini_cli\stream\main.rs:13:9: warning: unused variable: `api_key`: help: if this is intentional, prefix it with an underscore: `_api_key`
+crates\nl_llm_v2\examples\longcat\auth\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\dify\stream\main.rs:17:32: error[E0433]: failed to resolve: could not find `Auth` in `site`: could not find `Auth` in `site`
+warning: `nl_llm_v2` (example "aihubmix_models") generated 1 warning (run `cargo fix --example "aihubmix_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "antigravity_stream") generated 1 warning (run `cargo fix --example "antigravity_stream" -p nl_llm_v2` to apply 1 suggestion)
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\kimi\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `nl_llm_v2` (example "kimi_chat") generated 1 warning (run `cargo fix --example "kimi_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "deepseek_models") generated 1 warning (run `cargo fix --example "deepseek_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "dmxapi_auth") generated 1 warning (run `cargo fix --example "dmxapi_auth" -p nl_llm_v2` to apply 1 suggestion)
+crates\nl_llm_v2\examples\dify\stream\main.rs:14:18: error[E0277]: the `?` operator can only be applied to values that implement `Try`: the `?` operator cannot be applied to type `LlmClient`
+warning: `nl_llm_v2` (example "deepseek_auth") generated 1 warning (run `cargo fix --example "deepseek_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\spark\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `nl_llm_v2` (example "spark_auth") generated 1 warning (run `cargo fix --example "spark_auth" -p nl_llm_v2` to apply 1 suggestion)
+crates\nl_llm_v2\examples\dify\stream\main.rs:14:9: error[E0282]: type annotations needed
+crates\nl_llm_v2\examples\dify\stream\main.rs:22:9: error[E0282]: type annotations needed
+warning: `nl_llm_v2` (example "longcat_auth") generated 1 warning (run `cargo fix --example "longcat_auth" -p nl_llm_v2` to apply 1 suggestion)
+error: could not compile `nl_llm_v2` (example "dify_stream") due to 6 previous errors
+warning: build failed, waiting for other jobs to finish...
+warning: `nl_llm_v2` (example "gemini_cli_stream") generated 1 warning (run `cargo fix --example "gemini_cli_stream" -p nl_llm_v2` to apply 1 suggestion)
+crates\nl_llm_v2\examples\doubaoseed\models\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\openrouter\chat\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\siliconflow\models\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\rightcode\chat\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\perplexity\models\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\cubence\chat\main.rs:25:9: warning: variable does not need to be mutable
+warning: `nl_llm_v2` (example "doubaoseed_models") generated 1 warning (run `cargo fix --example "doubaoseed_models" -p nl_llm_v2` to apply 1 suggestion)
+crates\nl_llm_v2\examples\claude_oauth\models\main.rs:25:9: warning: variable does not need to be mutable
+warning: `nl_llm_v2` (example "openrouter_chat") generated 1 warning (run `cargo fix --example "openrouter_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "siliconflow_models") generated 1 warning (run `cargo fix --example "siliconflow_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "rightcode_chat") generated 1 warning (run `cargo fix --example "rightcode_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "perplexity_models") generated 1 warning (run `cargo fix --example "perplexity_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "cubence_chat") generated 1 warning (run `cargo fix --example "cubence_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "claude_oauth_models") generated 1 warning (run `cargo fix --example "claude_oauth_models" -p nl_llm_v2` to apply 1 suggestion)

@@ -55,5 +55,5 @@ pub mod jina;
 pub mod mistral;
 pub mod custom;
 pub mod fastgpt;
-
+pub mod aiproxy;
 pub use registry::{PresetRegistry, REGISTRY};

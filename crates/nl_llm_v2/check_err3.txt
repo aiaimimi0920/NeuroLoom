@@ -1,0 +1,8 @@
+    Checking nl_llm_v2 v0.1.0 (C:\Users\Public\nas_home\AI\GameEditor\NeuroLoom\crates\nl_llm_v2)
+crates\nl_llm_v2\src\provider\jina.rs:2:22: error[E0432]: unresolved import `crate::provider::types`: could not find `types` in `provider`
+crates\nl_llm_v2\src\site\base\jina.rs:30:46: error[E0053]: method `build_url` has an incompatible type for trait: expected `std::string::String`, found `Result<Cow<'_, str>, anyhow::Error>`
+crates\nl_llm_v2\src\site\base\jina.rs:21:1: error[E0046]: not all trait items implemented, missing: `extra_headers`, `timeout`: missing `extra_headers`, `timeout` in implementation
+crates\nl_llm_v2\src\presets\jina.rs:14:15: error[E0277]: the trait bound `Arc<JinaSite>: Site` is not satisfied: the trait `Site` is not implemented for `Arc<JinaSite>`
+crates\nl_llm_v2\src\presets\jina.rs:15:19: error[E0277]: the trait bound `Arc<OpenAiProtocol>: ProtocolFormat` is not satisfied: the trait `ProtocolFormat` is not implemented for `Arc<OpenAiProtocol>`
+crates\nl_llm_v2\src\presets\jina.rs:16:25: error[E0277]: the trait bound `Box<JinaModelResolver>: ModelResolver` is not satisfied: the trait `ModelResolver` is not implemented for `Box<JinaModelResolver>`
+error: could not compile `nl_llm_v2` (lib) due to 6 previous errors

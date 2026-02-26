@@ -789,3 +789,15 @@ path = "examples/fastgpt/stream/main.rs"
 [[example]]
 name = "fastgpt_models"
 path = "examples/fastgpt/models/main.rs"
+
+[[example]]
+name = "aiproxy_chat"
+path = "examples/aiproxy/chat/main.rs"
+
+[[example]]
+name = "aiproxy_stream"
+path = "examples/aiproxy/stream/main.rs"
+
+[[example]]
+name = "aiproxy_models"
+path = "examples/aiproxy/models/main.rs"

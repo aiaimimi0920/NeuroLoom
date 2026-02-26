@@ -30,11 +30,8 @@ impl Site for FastGptSite {
     fn build_url(&self, ctx: &UrlContext) -> String {
         let base = self.base_url();
         match ctx.action {
-            Action::Generate | Action::Stream => {
+             Action::Generate | Action::Stream => {
                 format!("{}/chat/completions", base)
-            }
-            Action::Models => {
-                format!("{}/models", base)
             }
             _ => base.to_string(),
         }

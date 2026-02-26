@@ -1,0 +1,15 @@
+    Checking nl_llm_v2 v0.1.0 (C:\Users\Public\nas_home\AI\GameEditor\NeuroLoom\crates\nl_llm_v2)
+error[E0432]: unresolved import `crate::model::traits`
+ --> crates\nl_llm_v2\src\provider\aiproxy.rs:1:19
+  |
+1 | use crate::model::traits::ModelResolver;
+  |                   ^^^^^^ could not find `traits` in `model`
+
+error[E0432]: unresolved import `crate::model::capability`
+ --> crates\nl_llm_v2\src\provider\aiproxy.rs:2:19
+  |
+2 | use crate::model::capability::Capability;
+  |                   ^^^^^^^^^^ could not find `capability` in `model`
+
+For more information about this error, try `rustc --explain E0432`.
+error: could not compile `nl_llm_v2` (lib) due to 2 previous errors

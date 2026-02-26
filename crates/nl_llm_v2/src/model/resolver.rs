@@ -122,16 +122,29 @@ pub trait ModelResolver: Send + Sync {
     /// ```
     fn max_context(&self, model: &str) -> usize;
 
-    /// 获取模型的上下文窗口建议（输入/输出分配）
-    ///
-    /// 返回 (输入限制, 输出限制) 元组。
-    /// 默认按 3:1 比例分配。
-    ///
-    /// # 示例
-    ///
-    /// ```
-    /// let (input, output) = resolver.context_window_hint("gpt-4o");
-    /// // input = 96000, output = 32000
-    /// ```
     fn context_window_hint(&self, model: &str) -> (usize, usize);
+
+    /// 获取模型的基础智能评级与模态分类
+    /// 
+    /// 返回 (智能等级 1.0~5.0, 所属模态)
+    fn intelligence_and_modality(&self, model: &str) -> Option<(f32, Modality)>;
+}
+
+/// 模型模态分类
+/// 
+/// 决定了模型能处理的数据类型或擅长的具体领域
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Modality {
+    /// 纯文本模型，专精语言逻辑
+    Text,
+    /// 视觉理解模型 (Image-to-Text)
+    Vision,
+    /// 语音识别与生成模型
+    Audio,
+    /// 全模态大融合模型
+    Multimodal,
+    /// 向量化模型
+    Embedding,
+    /// 图像生成模型 (Text-to-Image)
+    ImageGeneration,
 }

@@ -1,0 +1,1318 @@
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\cubence\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\dmxapi\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\cloudflare\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\zai\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\siliconflow_en\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\zai\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+crates\nl_llm_v2\examples\perplexity\chat\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\rightcode\chat\main.rs:25:9: warning: variable does not need to be mutable
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\kat_coder\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `nl_llm_v2` (example "cubence_chat") generated 1 warning (run `cargo fix --example "cubence_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "dmxapi_chat") generated 1 warning (run `cargo fix --example "dmxapi_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "cloudflare_chat") generated 1 warning (run `cargo fix --example "cloudflare_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "zai_auth") generated 1 warning (run `cargo fix --example "zai_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "siliconflow_en_chat") generated 1 warning (run `cargo fix --example "siliconflow_en_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "zai_models") generated 1 warning (run `cargo fix --example "zai_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "perplexity_chat") generated 1 warning (run `cargo fix --example "perplexity_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "rightcode_chat") generated 1 warning (run `cargo fix --example "rightcode_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "kat_coder_models") generated 1 warning (run `cargo fix --example "kat_coder_models" -p nl_llm_v2` to apply 1 suggestion)
+crates\nl_llm_v2\examples\claude\chat\main.rs:25:9: warning: variable does not need to be mutable
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\amp\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\azure_openai\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\codex_oauth\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `api_key`
+  --> crates\nl_llm_v2\examples\gemini_cli\stream\main.rs:13:9
+   |
+13 |     let api_key = std::env::var("GEMINI_CLI_API_KEY...
+   |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_api_key`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\minimax_cn\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `nl_llm_v2` (example "claude_chat") generated 1 warning (run `cargo fix --example "claude_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "amp_chat") generated 1 warning (run `cargo fix --example "amp_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "azure_openai_chat") generated 1 warning (run `cargo fix --example "azure_openai_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "codex_oauth_auth") generated 1 warning (run `cargo fix --example "codex_oauth_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "gemini_cli_stream") generated 1 warning (run `cargo fix --example "gemini_cli_stream" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "minimax_cn_chat") generated 1 warning (run `cargo fix --example "minimax_cn_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\codex_api\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\claude_oauth\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\aigocode\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\vertex\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\openrouter\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\deepseek\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\kimi\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+crates\nl_llm_v2\examples\qwen\auth\main.rs:25:9: warning: variable does not need to be mutable
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\packycode\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `nl_llm_v2` (example "codex_api_models") generated 1 warning (run `cargo fix --example "codex_api_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "claude_oauth_chat") generated 1 warning (run `cargo fix --example "claude_oauth_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "aigocode_models") generated 1 warning (run `cargo fix --example "aigocode_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "vertex_chat") generated 1 warning (run `cargo fix --example "vertex_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "openrouter_auth") generated 1 warning (run `cargo fix --example "openrouter_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "deepseek_chat") generated 1 warning (run `cargo fix --example "deepseek_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "kimi_chat") generated 1 warning (run `cargo fix --example "kimi_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "qwen_auth") generated 1 warning (run `cargo fix --example "qwen_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "packycode_chat") generated 1 warning (run `cargo fix --example "packycode_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\vertex\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\aws_claude_ak\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\aicodemirror\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\claude_oauth\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\kat_coder\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\modelscope\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+crates\nl_llm_v2\examples\nvidia\auth\main.rs:25:9: warning: variable does not need to be mutable
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\vertex\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\codex_oauth\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\mimo\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mess...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `nl_llm_v2` (example "vertex_auth") generated 1 warning (run `cargo fix --example "vertex_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "aws_claude_ak_models") generated 1 warning (run `cargo fix --example "aws_claude_ak_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "aicodemirror_auth") generated 1 warning (run `cargo fix --example "aicodemirror_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "claude_oauth_models") generated 1 warning (run `cargo fix --example "claude_oauth_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "kat_coder_auth") generated 1 warning (run `cargo fix --example "kat_coder_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "modelscope_models") generated 1 warning (run `cargo fix --example "modelscope_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "nvidia_auth") generated 1 warning (run `cargo fix --example "nvidia_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "vertex_models") generated 1 warning (run `cargo fix --example "vertex_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "codex_oauth_models") generated 1 warning (run `cargo fix --example "codex_oauth_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "mimo_auth") generated 1 warning (run `cargo fix --example "mimo_auth" -p nl_llm_v2` to apply 1 suggestion)
+crates\nl_llm_v2\examples\modelscope\chat\main.rs:25:9: warning: variable does not need to be mutable
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\cohere\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+    Checking nl_llm_v2 v0.1.0 (C:\Users\Public\nas_home\AI\GameEditor\NeuroLoom\crates\nl_llm_v2)
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\cloudflare\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\qianfan\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\spark\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+crates\nl_llm_v2\examples\rightcode\models\main.rs:25:9: warning: variable does not need to be mutable
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\aws_claude_ak\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\openai\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `nl_llm_v2` (example "modelscope_chat") generated 1 warning (run `cargo fix --example "modelscope_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "cohere_chat") generated 1 warning (run `cargo fix --example "cohere_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "cloudflare_models") generated 1 warning (run `cargo fix --example "cloudflare_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "qianfan_models") generated 1 warning (run `cargo fix --example "qianfan_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "spark_chat") generated 1 warning (run `cargo fix --example "spark_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "rightcode_models") generated 1 warning (run `cargo fix --example "rightcode_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "aws_claude_ak_chat") generated 1 warning (run `cargo fix --example "aws_claude_ak_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "openai_auth") generated 1 warning (run `cargo fix --example "openai_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\qwen\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\gemini\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\siliconflow_en\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mess...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+crates\nl_llm_v2\examples\gemini_cli\chat\main.rs:25:9: warning: variable does not need to be mutable
+crates\nl_llm_v2\examples\gemini_cli\chat\main.rs:13:9: warning: unused variable: `api_key`: help: if this is intentional, prefix it with an underscore: `_api_key`
+crates\nl_llm_v2\examples\kat_coder\chat\main.rs:25:9: warning: variable does not need to be mutable
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\kimi_oauth\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `nl_llm_v2` (example "qwen_chat") generated 1 warning (run `cargo fix --example "qwen_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "gemini_models") generated 1 warning (run `cargo fix --example "gemini_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "siliconflow_en_models") generated 1 warning (run `cargo fix --example "siliconflow_en_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "gemini_cli_chat") generated 2 warnings (run `cargo fix --example "gemini_cli_chat" -p nl_llm_v2` to apply 2 suggestions)
+warning: `nl_llm_v2` (example "kat_coder_chat") generated 1 warning (run `cargo fix --example "kat_coder_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "kimi_oauth_chat") generated 1 warning (run `cargo fix --example "kimi_oauth_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\hunyuan\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `api_key`
+  --> crates\nl_llm_v2\examples\antigravity\stream\main.rs:13:9
+   |
+13 |     let api_key = std::env::var("ANTIGRAVITY_API_KE...
+   |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_api_key`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\aihubmix\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\codex_oauth\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\qwen\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\vertex_api\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+crates\nl_llm_v2\examples\minimax\auth\main.rs:25:9: warning: variable does not need to be mutable
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\perplexity\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+crates\nl_llm_v2\examples\aigocode\auth\main.rs:25:9: warning: variable does not need to be mutable
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\siliconflow_en\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `nl_llm_v2` (example "hunyuan_chat") generated 1 warning (run `cargo fix --example "hunyuan_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "antigravity_stream") generated 1 warning (run `cargo fix --example "antigravity_stream" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "aihubmix_auth") generated 1 warning (run `cargo fix --example "aihubmix_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "codex_oauth_chat") generated 1 warning (run `cargo fix --example "codex_oauth_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "qwen_models") generated 1 warning (run `cargo fix --example "qwen_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "vertex_api_models") generated 1 warning (run `cargo fix --example "vertex_api_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "minimax_auth") generated 1 warning (run `cargo fix --example "minimax_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "perplexity_models") generated 1 warning (run `cargo fix --example "perplexity_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "aigocode_auth") generated 1 warning (run `cargo fix --example "aigocode_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "siliconflow_en_auth") generated 1 warning (run `cargo fix --example "siliconflow_en_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\qwen_oauth\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\kimi\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\azure_openai\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\aigocode\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\bailing\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\doubaoseed\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\hunyuan\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\iflow\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\minimax_cn\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\nvidia\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `nl_llm_v2` (example "qwen_oauth_chat") generated 1 warning (run `cargo fix --example "qwen_oauth_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "kimi_auth") generated 1 warning (run `cargo fix --example "kimi_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "azure_openai_auth") generated 1 warning (run `cargo fix --example "azure_openai_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "aigocode_chat") generated 1 warning (run `cargo fix --example "aigocode_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "bailing_models") generated 1 warning (run `cargo fix --example "bailing_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "doubaoseed_auth") generated 1 warning (run `cargo fix --example "doubaoseed_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "hunyuan_models") generated 1 warning (run `cargo fix --example "hunyuan_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "iflow_auth") generated 1 warning (run `cargo fix --example "iflow_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "minimax_cn_auth") generated 1 warning (run `cargo fix --example "minimax_cn_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "nvidia_chat") generated 1 warning (run `cargo fix --example "nvidia_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\amp\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\longcat\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\cubence\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\minimax_cn\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+crates\nl_llm_v2\examples\bailing\chat\main.rs:25:9: warning: variable does not need to be mutable
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\mimo\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `nl_llm_v2` (example "amp_models") generated 1 warning (run `cargo fix --example "amp_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "longcat_auth") generated 1 warning (run `cargo fix --example "longcat_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "cubence_models") generated 1 warning (run `cargo fix --example "cubence_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "minimax_cn_models") generated 1 warning (run `cargo fix --example "minimax_cn_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "bailing_chat") generated 1 warning (run `cargo fix --example "bailing_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "mimo_models") generated 1 warning (run `cargo fix --example "mimo_models" -p nl_llm_v2` to apply 1 suggestion)
+crates\nl_llm_v2\examples\zhipu\auth\main.rs:25:9: warning: variable does not need to be mutable
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\bailing\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\spark\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\amp\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\openai\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\deepseek\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `nl_llm_v2` (example "zhipu_auth") generated 1 warning (run `cargo fix --example "zhipu_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "bailing_auth") generated 1 warning (run `cargo fix --example "bailing_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "spark_auth") generated 1 warning (run `cargo fix --example "spark_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "amp_auth") generated 1 warning (run `cargo fix --example "amp_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "openai_models") generated 1 warning (run `cargo fix --example "openai_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "deepseek_models") generated 1 warning (run `cargo fix --example "deepseek_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\kimi_coding\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\aihubmix\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+crates\nl_llm_v2\examples\modelscope\auth\main.rs:25:9: warning: variable does not need to be mutable
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\packycode\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\openrouter\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `nl_llm_v2` (example "kimi_coding_chat") generated 1 warning (run `cargo fix --example "kimi_coding_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "aihubmix_models") generated 1 warning (run `cargo fix --example "aihubmix_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "modelscope_auth") generated 1 warning (run `cargo fix --example "modelscope_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "packycode_auth") generated 1 warning (run `cargo fix --example "packycode_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "openrouter_models") generated 1 warning (run `cargo fix --example "openrouter_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\cohere\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\rightcode\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\zhipu\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\cubence\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `nl_llm_v2` (example "cohere_models") generated 1 warning (run `cargo fix --example "cohere_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "rightcode_auth") generated 1 warning (run `cargo fix --example "rightcode_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "zhipu_models") generated 1 warning (run `cargo fix --example "zhipu_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "cubence_auth") generated 1 warning (run `cargo fix --example "cubence_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\codex_api\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\deepseek\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\longcat\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\longcat\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\siliconflow\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\mimo\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+crates\nl_llm_v2\examples\nvidia\models\main.rs:25:9: warning: variable does not need to be mutable
+warning: `nl_llm_v2` (example "codex_api_auth") generated 1 warning (run `cargo fix --example "codex_api_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "deepseek_auth") generated 1 warning (run `cargo fix --example "deepseek_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "longcat_chat") generated 1 warning (run `cargo fix --example "longcat_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "longcat_models") generated 1 warning (run `cargo fix --example "longcat_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "siliconflow_models") generated 1 warning (run `cargo fix --example "siliconflow_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "mimo_chat") generated 1 warning (run `cargo fix --example "mimo_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "nvidia_models") generated 1 warning (run `cargo fix --example "nvidia_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\iflow\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\antigravity\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mess...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `api_key`
+  --> crates\nl_llm_v2\examples\antigravity\auth\main.rs:13:9
+   |
+13 |     let api_key = std::env::var("ANTIGRAVITY_API_KEY...
+   |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_api_key`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\antigravity\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `api_key`
+  --> crates\nl_llm_v2\examples\antigravity\chat\main.rs:13:9
+   |
+13 |     let api_key = std::env::var("ANTIGRAVITY_API_KE...
+   |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_api_key`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\aws_claude\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\dmxapi\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\doubaoseed\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `nl_llm_v2` (example "iflow_models") generated 1 warning (run `cargo fix --example "iflow_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "antigravity_auth") generated 2 warnings (run `cargo fix --example "antigravity_auth" -p nl_llm_v2` to apply 2 suggestions)
+warning: `nl_llm_v2` (example "antigravity_chat") generated 2 warnings (run `cargo fix --example "antigravity_chat" -p nl_llm_v2` to apply 2 suggestions)
+warning: `nl_llm_v2` (example "aws_claude_chat") generated 1 warning (run `cargo fix --example "aws_claude_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "dmxapi_models") generated 1 warning (run `cargo fix --example "dmxapi_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "doubaoseed_chat") generated 1 warning (run `cargo fix --example "doubaoseed_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\kimi\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\qianfan\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\siliconflow\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mess...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\gemini_cli\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `api_key`
+  --> crates\nl_llm_v2\examples\gemini_cli\auth\main.rs:13:9
+   |
+13 |     let api_key = std::env::var("GEMINI_CLI_API_KEY...
+   |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_api_key`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\iflow\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\vertex_api\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mess...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `nl_llm_v2` (example "kimi_models") generated 1 warning (run `cargo fix --example "kimi_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "qianfan_chat") generated 1 warning (run `cargo fix --example "qianfan_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "siliconflow_chat") generated 1 warning (run `cargo fix --example "siliconflow_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "gemini_cli_auth") generated 2 warnings (run `cargo fix --example "gemini_cli_auth" -p nl_llm_v2` to apply 2 suggestions)
+warning: `nl_llm_v2` (example "iflow_chat") generated 1 warning (run `cargo fix --example "iflow_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "vertex_api_chat") generated 1 warning (run `cargo fix --example "vertex_api_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\openai\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\spark\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\siliconflow\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\doubaoseed\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\aicodemirror\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mess...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\aicodemirror\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\antigravity\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `api_key`
+  --> crates\nl_llm_v2\examples\antigravity\models\main.rs:13:9
+   |
+13 |     let api_key = std::env::var("ANTIGRAVITY_API_KE...
+   |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_api_key`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\codex_api\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `nl_llm_v2` (example "openai_chat") generated 1 warning (run `cargo fix --example "openai_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "spark_models") generated 1 warning (run `cargo fix --example "spark_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "siliconflow_auth") generated 1 warning (run `cargo fix --example "siliconflow_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "doubaoseed_models") generated 1 warning (run `cargo fix --example "doubaoseed_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "aicodemirror_models") generated 1 warning (run `cargo fix --example "aicodemirror_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "aicodemirror_chat") generated 1 warning (run `cargo fix --example "aicodemirror_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "antigravity_models") generated 2 warnings (run `cargo fix --example "antigravity_models" -p nl_llm_v2` to apply 2 suggestions)
+warning: `nl_llm_v2` (example "codex_api_chat") generated 1 warning (run `cargo fix --example "codex_api_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\gemini_cli\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `api_key`
+  --> crates\nl_llm_v2\examples\gemini_cli\models\main.rs:13:9
+   |
+13 |     let api_key = std::env::var("GEMINI_CLI_API_KEY...
+   |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_api_key`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\packycode\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\aws_claude\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\dmxapi\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\openrouter\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `nl_llm_v2` (example "gemini_cli_models") generated 2 warnings (run `cargo fix --example "gemini_cli_models" -p nl_llm_v2` to apply 2 suggestions)
+warning: `nl_llm_v2` (example "packycode_models") generated 1 warning (run `cargo fix --example "packycode_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "aws_claude_models") generated 1 warning (run `cargo fix --example "aws_claude_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "dmxapi_auth") generated 1 warning (run `cargo fix --example "dmxapi_auth" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "openrouter_chat") generated 1 warning (run `cargo fix --example "openrouter_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\claude\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\zai\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\minimax\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\gemini\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+crates\nl_llm_v2\examples\zhipu\chat\main.rs:25:9: warning: variable does not need to be mutable
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\minimax\models\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\aihubmix\chat\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> crates\nl_llm_v2\examples\claude_oauth\auth\main.rs:25:9
+   |
+25 |     let mut req = PrimitiveRequest::single_user_mes...
+   |         ----^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `nl_llm_v2` (example "claude_models") generated 1 warning (run `cargo fix --example "claude_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "zai_chat") generated 1 warning (run `cargo fix --example "zai_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "minimax_chat") generated 1 warning (run `cargo fix --example "minimax_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "gemini_chat") generated 1 warning (run `cargo fix --example "gemini_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "zhipu_chat") generated 1 warning (run `cargo fix --example "zhipu_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "minimax_models") generated 1 warning (run `cargo fix --example "minimax_models" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "aihubmix_chat") generated 1 warning (run `cargo fix --example "aihubmix_chat" -p nl_llm_v2` to apply 1 suggestion)
+warning: `nl_llm_v2` (example "claude_oauth_auth") generated 1 warning (run `cargo fix --example "claude_oauth_auth" -p nl_llm_v2` to apply 1 suggestion)
+crates\nl_llm_v2\examples\aiproxy\models\main.rs:25:44: error[E0382]: borrow of moved value: `models`: value borrowed here after move
+crates\nl_llm_v2\examples\azure_openai\models\main.rs:25:9: warning: variable does not need to be mutable
+error: could not compile `nl_llm_v2` (example "aiproxy_models") due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+warning: `nl_llm_v2` (example "azure_openai_models") generated 1 warning (run `cargo fix --example "azure_openai_models" -p nl_llm_v2` to apply 1 suggestion)
