@@ -1,6 +1,49 @@
 use super::default::DefaultModelResolver;
 use super::resolver::{ModelResolver, Capability};
 
+#[derive(Debug, Clone, Copy)]
+pub struct XaiModelMeta {
+    pub id: &'static str,
+    pub context: usize,
+    pub vision: bool,
+}
+
+pub const XAI_MODEL_META: &[XaiModelMeta] = &[
+    XaiModelMeta {
+        id: "grok-4-latest",
+        context: 131_072,
+        vision: false,
+    },
+    XaiModelMeta {
+        id: "grok-3-latest",
+        context: 131_072,
+        vision: false,
+    },
+    XaiModelMeta {
+        id: "grok-3-mini",
+        context: 131_072,
+        vision: false,
+    },
+    XaiModelMeta {
+        id: "grok-2-latest",
+        context: 131_072,
+        vision: false,
+    },
+    XaiModelMeta {
+        id: "grok-vision-latest",
+        context: 8_192,
+        vision: true,
+    },
+];
+
+fn capability_for(meta: &XaiModelMeta) -> Capability {
+    let mut caps = Capability::CHAT | Capability::STREAMING | Capability::TOOLS;
+    if meta.vision {
+        caps |= Capability::VISION;
+    }
+    caps
+}
+
 /// x.AI (Grok) 模型解析器
 ///
 /// 支持的模型（参考 x.AI API 文档）：
@@ -27,23 +70,21 @@ impl XaiModelResolver {
         ]);
 
         // === 能力配置 ===
-        inner.extend_capabilities(vec![
-            ("grok-4-latest", Capability::CHAT | Capability::STREAMING | Capability::TOOLS),
-            ("grok-3-latest", Capability::CHAT | Capability::STREAMING | Capability::TOOLS),
-            ("grok-3-mini", Capability::CHAT | Capability::STREAMING | Capability::TOOLS),
-            ("grok-2-latest", Capability::CHAT | Capability::STREAMING | Capability::TOOLS),
-            ("grok-vision-latest", Capability::CHAT | Capability::STREAMING | Capability::TOOLS | Capability::VISION),
-        ]);
+        inner.extend_capabilities(
+            XAI_MODEL_META
+                .iter()
+                .map(|meta| (meta.id, capability_for(meta)))
+                .collect(),
+        );
 
         // === 上下文长度 ===
         // Note: setting context lengths based on typical Grok specs (131k context window)
-        inner.extend_context_lengths(vec![
-            ("grok-4-latest", 131_072),
-            ("grok-3-latest", 131_072),
-            ("grok-3-mini", 131_072),
-            ("grok-2-latest", 131_072),
-            ("grok-vision-latest", 8_192),
-        ]);
+        inner.extend_context_lengths(
+            XAI_MODEL_META
+                .iter()
+                .map(|meta| (meta.id, meta.context))
+                .collect(),
+        );
 
         Self { inner }
     }
@@ -73,4 +114,35 @@ impl ModelResolver for XaiModelResolver {
     }
 
     fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, crate::model::resolver::Modality)> { None }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn aliases_resolve_to_expected_models() {
+        let resolver = XaiModelResolver::new();
+        assert_eq!(resolver.resolve("grok"), "grok-4-latest");
+        assert_eq!(resolver.resolve("grok-3"), "grok-3-latest");
+        assert_eq!(resolver.resolve("grok-vision"), "grok-vision-latest");
+    }
+
+    #[test]
+    fn capability_and_context_follow_metadata() {
+        let resolver = XaiModelResolver::new();
+
+        for meta in XAI_MODEL_META {
+            assert!(resolver.has_capability(meta.id, Capability::CHAT));
+            assert!(resolver.has_capability(meta.id, Capability::STREAMING));
+            assert!(resolver.has_capability(meta.id, Capability::TOOLS));
+            assert_eq!(
+                resolver.has_capability(meta.id, Capability::VISION),
+                meta.vision,
+                "model {} vision capability mismatch",
+                meta.id
+            );
+            assert_eq!(resolver.max_context(meta.id), meta.context);
+        }
+    }
 }
