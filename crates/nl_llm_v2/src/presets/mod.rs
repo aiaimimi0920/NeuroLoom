@@ -1,3 +1,4 @@
+pub mod jimeng;
 pub mod registry;
 
 // 各预设平台独立模块

@@ -1,3 +1,4 @@
+pub mod jimeng;
 // 用于兼容文档中的 crate::provider::LlmResponse 引用
 use futures::stream::BoxStream;
 

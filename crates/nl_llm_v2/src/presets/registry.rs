@@ -80,6 +80,7 @@ impl PresetRegistry {
         self.builders.insert("coze", super::coze::default_builder);
         self.builders.insert("xai", super::xai::builder);
         self.builders.insert("kling", super::kling::builder);
+        self.builders.insert("jimeng", super::jimeng::default_preset);
     }
 
     pub fn get_builder(&self, preset_name: &str) -> Option<ClientBuilder> {

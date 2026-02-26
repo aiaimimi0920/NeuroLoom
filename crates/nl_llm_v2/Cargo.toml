@@ -842,3 +842,7 @@ path = "examples/coze/models/main.rs"
 name = "kling_video"
 path = "examples/kling/video/main.rs"
 
+
+[[example]]
+name = "jimeng_video"
+path = "examples/jimeng/video/main.rs"

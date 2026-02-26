@@ -1,3 +1,4 @@
+pub mod jimeng;
 pub mod openai;
 pub mod gemini;
 pub mod iflow;
