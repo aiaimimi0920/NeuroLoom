@@ -1,7 +1,12 @@
-use crate::pipeline::traits::{PipelineContext, PipelineInput};
-use crate::model::{Capability, DefaultModelResolver, ModelResolver};
-use crate::protocol::traits::ProtocolHook;
+use async_trait::async_trait;
 use serde_json::{json, Value};
+
+use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
+use crate::model::{Capability, DefaultModelResolver, ModelResolver};
+use crate::pipeline::traits::{PipelineContext, PipelineInput};
+use crate::protocol::traits::ProtocolHook;
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 
 /// 腾讯混元模型解析器
 pub struct HunyuanModelResolver {
@@ -28,35 +33,20 @@ impl HunyuanModelResolver {
             ("hunyuan-code", "hunyuan-code"),
         ]);
 
-        // 混元模型能力
-        inner.extend_capabilities(vec![
-            (
-                "hunyuan-turbos-latest",
-                Capability::CHAT | Capability::STREAMING | Capability::TOOLS,
-            ),
-            (
-                "hunyuan-pro",
-                Capability::CHAT | Capability::STREAMING | Capability::TOOLS,
-            ),
-            (
-                "hunyuan-standard",
-                Capability::CHAT | Capability::STREAMING | Capability::TOOLS,
-            ),
-            (
-                "hunyuan-vision",
-                Capability::CHAT | Capability::STREAMING | Capability::VISION,
-            ),
-            ("hunyuan-code", Capability::CHAT | Capability::STREAMING),
-        ]);
+        // 模型能力与上下文窗口集中定义，避免 resolver / extension 漂移
+        inner.extend_capabilities(
+            hunyuan_model_metadata()
+                .iter()
+                .map(|(id, _, _, cap)| (*id, *cap))
+                .collect::<Vec<_>>(),
+        );
 
-        // 上下文长度 (基于一般大模型标准，具体可查阅官方文档)
-        inner.extend_context_lengths(vec![
-            ("hunyuan-turbos-latest", 128_000),
-            ("hunyuan-pro", 32_000),
-            ("hunyuan-standard", 128_000),
-            ("hunyuan-vision", 8_000),
-            ("hunyuan-code", 32_000),
-        ]);
+        inner.extend_context_lengths(
+            hunyuan_model_metadata()
+                .iter()
+                .map(|(id, _, context, _)| (*id, *context))
+                .collect::<Vec<_>>(),
+        );
 
         Self { inner }
     }
@@ -84,10 +74,6 @@ impl ModelResolver for HunyuanModelResolver {
 /// 负责在发送 OpenAI 标准协议 JSON 前，注入混元特有的参数（如 enable_enhancement: true）
 pub struct HunyuanHook;
 
-use async_trait::async_trait;
-use crate::provider::extension::{ModelInfo, ProviderExtension};
-use crate::auth::traits::Authenticator;
-
 #[async_trait]
 impl ProviderExtension for HunyuanHook {
     fn id(&self) -> &str {
@@ -99,36 +85,122 @@ impl ProviderExtension for HunyuanHook {
         _http: &reqwest::Client,
         _auth: &mut dyn Authenticator,
     ) -> anyhow::Result<Vec<ModelInfo>> {
-        Ok(vec![
-            ModelInfo {
-                id: "hunyuan-turbos-latest".to_string(),
-                description: "Tencent Hunyuan Turbo Stream Latest".to_string(),
-            },
-            ModelInfo {
-                id: "hunyuan-pro".to_string(),
-                description: "Tencent Hunyuan Pro".to_string(),
-            },
-            ModelInfo {
-                id: "hunyuan-standard".to_string(),
-                description: "Tencent Hunyuan Standard".to_string(),
-            },
-            ModelInfo {
-                id: "hunyuan-vision".to_string(),
-                description: "Tencent Hunyuan Vision".to_string(),
-            },
-            ModelInfo {
-                id: "hunyuan-code".to_string(),
-                description: "Tencent Hunyuan Code".to_string(),
-            },
-        ])
+        Ok(hunyuan_model_metadata()
+            .iter()
+            .map(|(id, description, _, _)| ModelInfo {
+                id: (*id).to_string(),
+                description: (*description).to_string(),
+            })
+            .collect())
+    }
+
+    fn concurrency_config(&self) -> ConcurrencyConfig {
+        // 官方未公开明确并发上限；这里提供保守的默认值，配合 AIMD 自适应探测。
+        ConcurrencyConfig {
+            official_max: 20,
+            initial_limit: 5,
+            min_limit: 1,
+            max_limit: 30,
+            ..Default::default()
+        }
     }
 }
 
 impl ProtocolHook for HunyuanHook {
     fn after_pack(&self, ctx: &mut PipelineContext, packed: &mut Value) {
         if let PipelineInput::Primitive(_) = &ctx.input {
-            // Hunyuan 需要在 body 中添加 enable_enhancement: true
-            packed["enable_enhancement"] = json!(true);
+            // Hunyuan 支持增强开关：默认开启，但尊重调用方显式传入值。
+            if packed.get("enable_enhancement").is_none() {
+                packed["enable_enhancement"] = json!(true);
+            }
         }
+    }
+}
+
+fn hunyuan_model_metadata() -> Vec<(&'static str, &'static str, usize, Capability)> {
+    vec![
+        (
+            "hunyuan-turbos-latest",
+            "Tencent Hunyuan Turbo Stream Latest",
+            128_000,
+            Capability::CHAT | Capability::STREAMING | Capability::TOOLS,
+        ),
+        (
+            "hunyuan-pro",
+            "Tencent Hunyuan Pro",
+            32_000,
+            Capability::CHAT | Capability::STREAMING | Capability::TOOLS,
+        ),
+        (
+            "hunyuan-standard",
+            "Tencent Hunyuan Standard",
+            128_000,
+            Capability::CHAT | Capability::STREAMING | Capability::TOOLS,
+        ),
+        (
+            "hunyuan-vision",
+            "Tencent Hunyuan Vision",
+            8_000,
+            Capability::CHAT | Capability::STREAMING | Capability::VISION,
+        ),
+        (
+            "hunyuan-code",
+            "Tencent Hunyuan Code",
+            32_000,
+            Capability::CHAT | Capability::STREAMING,
+        ),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::primitive::PrimitiveRequest;
+    use crate::site::context::{Action, AuthType, UrlContext};
+
+    fn test_ctx(req: PrimitiveRequest) -> PipelineContext<'static> {
+        PipelineContext::from_primitive(
+            req,
+            UrlContext {
+                model: "hunyuan",
+                auth_type: AuthType::ApiKey,
+                action: Action::Generate,
+                tenant: None,
+            },
+        )
+    }
+
+    #[test]
+    fn hook_sets_default_enhancement() {
+        let hook = HunyuanHook;
+        let req = PrimitiveRequest::single_user_message("hello").with_model("hunyuan");
+        let mut ctx = test_ctx(req);
+        let mut packed = json!({"model": "hunyuan"});
+
+        hook.after_pack(&mut ctx, &mut packed);
+
+        assert_eq!(packed["enable_enhancement"], json!(true));
+    }
+
+    #[test]
+    fn hook_keeps_user_defined_enhancement() {
+        let hook = HunyuanHook;
+        let req = PrimitiveRequest::single_user_message("hello").with_model("hunyuan");
+        let mut ctx = test_ctx(req);
+        let mut packed = json!({
+            "model": "hunyuan",
+            "enable_enhancement": false
+        });
+
+        hook.after_pack(&mut ctx, &mut packed);
+
+        assert_eq!(packed["enable_enhancement"], json!(false));
+    }
+
+    #[test]
+    fn resolver_supports_known_alias_and_capability() {
+        let resolver = HunyuanModelResolver::new();
+        assert_eq!(resolver.resolve("hunyuan-turbo"), "hunyuan-turbos-latest");
+        assert!(resolver.has_capability("hunyuan-vision", Capability::VISION));
     }
 }
