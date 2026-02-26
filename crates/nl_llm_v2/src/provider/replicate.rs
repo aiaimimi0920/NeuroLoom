@@ -31,6 +31,77 @@ struct ReplicateFetchResponse {
     error: Option<String>,
 }
 
+#[derive(Deserialize, Debug)]
+struct ReplicateModelListResponse {
+    results: Vec<ReplicateModelItem>,
+}
+
+#[derive(Deserialize, Debug)]
+struct ReplicateModelItem {
+    owner: Option<String>,
+    name: Option<String>,
+    description: Option<String>,
+}
+
+fn static_models() -> Vec<ModelInfo> {
+    vec![
+        ModelInfo {
+            id: "minimax/video-01".to_string(),
+            description: "Minimax Video 01 via Replicate".to_string(),
+        },
+        ModelInfo {
+            id: "luma/ray".to_string(),
+            description: "Luma Ray Video via Replicate".to_string(),
+        },
+    ]
+}
+
+fn collect_prompt(req: &crate::primitive::PrimitiveRequest) -> String {
+    let mut prompt = String::new();
+    for msg in &req.messages {
+        for content in &msg.content {
+            if let crate::primitive::PrimitiveContent::Text { text } = content {
+                if !prompt.is_empty() {
+                    prompt.push('\n');
+                }
+                prompt.push_str(text);
+            }
+        }
+    }
+    prompt
+}
+
+fn extract_video_urls(output: Option<serde_json::Value>) -> Vec<String> {
+    let Some(output) = output else {
+        return vec![];
+    };
+
+    if let Some(url) = output.as_str() {
+        return vec![url.to_string()];
+    }
+
+    if let Some(arr) = output.as_array() {
+        return arr
+            .iter()
+            .filter_map(|v| {
+                if let Some(url) = v.as_str() {
+                    return Some(url.to_string());
+                }
+
+                v.get("url")
+                    .and_then(|url| url.as_str())
+                    .map(|url| url.to_string())
+            })
+            .collect();
+    }
+
+    output
+        .get("url")
+        .and_then(|url| url.as_str())
+        .map(|url| vec![url.to_string()])
+        .unwrap_or_default()
+}
+
 pub struct ReplicateExtension {
     base_url: String,
 }
@@ -51,24 +122,49 @@ impl ReplicateExtension {
 #[async_trait]
 impl ProviderExtension for ReplicateExtension {
     fn id(&self) -> &str {
-        "replicate_video"
+        "replicate"
     }
 
     async fn list_models(
         &self,
-        _http: &reqwest::Client,
-        _auth: &mut dyn Authenticator,
+        http: &reqwest::Client,
+        auth: &mut dyn Authenticator,
     ) -> Result<Vec<ModelInfo>> {
-        Ok(vec![
-            ModelInfo {
-                id: "minimax/video-01".to_string(),
-                description: "Minimax Video 01 via Replicate".to_string(),
-            },
-            ModelInfo {
-                id: "luma/ray".to_string(),
-                description: "Luma Ray Video via Replicate".to_string(),
-            },
-        ])
+        let endpoint = format!("{}/v1/models", self.base_url.trim_end_matches('/'));
+
+        let mut builder = http.get(endpoint);
+        builder = auth.inject(builder)?;
+
+        let response = http.execute(builder.build()?).await;
+        let Ok(response) = response else {
+            return Ok(static_models());
+        };
+
+        if !response.status().is_success() {
+            return Ok(static_models());
+        }
+
+        let parsed: ReplicateModelListResponse = response.json().await?;
+        let models: Vec<ModelInfo> = parsed
+            .results
+            .into_iter()
+            .filter_map(|item| {
+                let owner = item.owner?;
+                let name = item.name?;
+                Some(ModelInfo {
+                    id: format!("{owner}/{name}"),
+                    description: item
+                        .description
+                        .unwrap_or_else(|| format!("{name} via Replicate")),
+                })
+            })
+            .collect();
+
+        if models.is_empty() {
+            Ok(static_models())
+        } else {
+            Ok(models)
+        }
     }
 
     async fn submit_video_task(
@@ -84,17 +180,7 @@ impl ProviderExtension for ReplicateExtension {
             req.model
         );
 
-        let mut prompt = String::new();
-        for msg in &req.messages {
-            for content in &msg.content {
-                if let crate::primitive::PrimitiveContent::Text { text } = content {
-                    if !prompt.is_empty() {
-                        prompt.push('\n');
-                    }
-                    prompt.push_str(text);
-                }
-            }
-        }
+        let prompt = collect_prompt(req);
 
         let request_body = ReplicateVideoRequest {
             input: ReplicateInput { prompt },
@@ -179,20 +265,11 @@ impl ProviderExtension for ReplicateExtension {
             _ => VideoTaskState::Processing,
         };
 
-        let mut urls = vec![];
-        if state == VideoTaskState::Succeed {
-            if let Some(output) = task_resp.output {
-                if let Some(url) = output.as_str() {
-                    urls.push(url.to_string());
-                } else if let Some(arr) = output.as_array() {
-                    for v in arr {
-                        if let Some(url) = v.as_str() {
-                            urls.push(url.to_string());
-                        }
-                    }
-                }
-            }
-        }
+        let urls = if state == VideoTaskState::Succeed {
+            extract_video_urls(task_resp.output)
+        } else {
+            vec![]
+        };
 
         Ok(VideoTaskStatus {
             id: task_id.to_string(),
@@ -200,5 +277,36 @@ impl ProviderExtension for ReplicateExtension {
             message: task_resp.error,
             video_urls: urls,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_video_urls;
+    use serde_json::json;
+
+    #[test]
+    fn extract_urls_from_string_or_array_or_object() {
+        assert_eq!(
+            extract_video_urls(Some(json!("https://example.com/a.mp4"))),
+            vec!["https://example.com/a.mp4".to_string()]
+        );
+
+        assert_eq!(
+            extract_video_urls(Some(json!([
+                "https://example.com/a.mp4",
+                {"url": "https://example.com/b.mp4"},
+                123
+            ]))),
+            vec![
+                "https://example.com/a.mp4".to_string(),
+                "https://example.com/b.mp4".to_string()
+            ]
+        );
+
+        assert_eq!(
+            extract_video_urls(Some(json!({"url": "https://example.com/c.mp4"}))),
+            vec!["https://example.com/c.mp4".to_string()]
+        );
     }
 }
