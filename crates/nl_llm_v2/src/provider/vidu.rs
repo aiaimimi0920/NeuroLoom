@@ -81,8 +81,8 @@ struct ViduSubmitResponse {
 
 #[derive(Debug, Deserialize)]
 struct ViduTaskCreation {
-    id: String,
-    url: String,
+    #[serde(default)]
+    url: Option<String>,
 
     #[serde(default)]
     cover_url: Option<String>,
@@ -285,8 +285,13 @@ impl ProviderExtension for ViduExtension {
         let mut urls = Vec::new();
         if state == VideoTaskState::Succeed {
             for c in &parsed.creations {
-                if !c.url.trim().is_empty() {
-                    urls.push(c.url.clone());
+                if let Some(url) = c.url.as_deref().filter(|u| !u.trim().is_empty()) {
+                    urls.push(url.to_string());
+                    continue;
+                }
+
+                if let Some(cover) = c.cover_url.as_deref().filter(|u| !u.trim().is_empty()) {
+                    urls.push(cover.to_string());
                 }
             }
         }

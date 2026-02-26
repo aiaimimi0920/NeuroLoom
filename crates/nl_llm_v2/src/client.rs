@@ -609,12 +609,27 @@ impl ClientBuilder {
     pub fn with_base_url(self, url: impl Into<String>) -> Self {
         let url = url.into();
         match self.site {
-            Some(inner) => Self {
-                site: Some(Arc::new(crate::site::base::proxy::ProxySite::new(
-                    inner, url,
-                ))),
-                ..self
-            },
+            Some(inner) => {
+                let site_id = inner.id().to_string();
+
+                let mut builder = Self {
+                    site: Some(Arc::new(crate::site::base::proxy::ProxySite::new(
+                        inner,
+                        url.clone(),
+                    ))),
+                    ..self
+                };
+
+                // 对于 Vidu 这类主要依赖 Extension API 的平台，
+                // 需要同步更新 extension 的 base_url，确保 submit/fetch 视频任务走同一代理地址。
+                if site_id == "vidu" {
+                    builder.extension = Some(Arc::new(
+                        crate::provider::vidu::ViduExtension::new().with_base_url(url),
+                    ));
+                }
+
+                builder
+            }
             None => {
                 // 如果还没设置 site，使用 SimpleSite 作为基础
                 use crate::site::traits::SimpleSite;
