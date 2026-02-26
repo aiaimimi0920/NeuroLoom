@@ -11,3 +11,4 @@ pub use base::cloudcode::CloudCodeSite;
 pub use base::vertex::VertexSite;
 pub use base::proxy::ProxySite;
 pub use base::amp::AmpSite;
+pub use base::fastgpt::FastGptSite;

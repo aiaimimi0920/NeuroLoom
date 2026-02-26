@@ -3,17 +3,18 @@ use nl_llm_v2::LlmClient;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // tracing_subscriber::fmt::init();
+    let args: Vec<String> = std::env::args().collect();
+    let api_key = std::env::var("CUSTOM_API_KEY")
+        .ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "sk-dummy-custom-key".to_string());
 
-    let api_key = std::env::var("JINA_API_KEY")
-        .expect("JINA_API_KEY 环境变量未设置");
-
-    let client = LlmClient::from_preset("jina")
-        .expect("找不到 Jina 预设")
+    let client = LlmClient::from_preset("custom")
+        .expect("找不到 custom 预设")
         .with_api_key(api_key)
         .build();
 
-    println!("Fetching Jina models...\n");
+    println!("Fetching Custom provider models...\n");
     let models = client.list_models().await?;
 
     for model in models {

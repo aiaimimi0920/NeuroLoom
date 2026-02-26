@@ -1,40 +1,45 @@
+//! dify 平台测试 - stream
+//!
+//! 运行方式: cargo run -p nl_llm_v2 --example dify_stream
+
 use anyhow::Result;
-use futures::StreamExt;
 use nl_llm_v2::{LlmClient, PrimitiveRequest};
-use std::io::{self, Write};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let api_key = std::env::var("DIFY_API_KEY")
-        .expect("DIFY_API_KEY 环境变量未设置");
+    let args: Vec<String> = std::env::args().collect();
 
-    // The API URL inside the proxy might require the Dify user
+    let api_key = std::env::var("DIFY_API_KEY")
+        .ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
+
     let client = LlmClient::from_preset("dify")
-        .expect("找不到 Dify 预设")
+        .expect("Preset should exist")
         .with_api_key(api_key)
         .build();
 
-    println!("Streaming from Dify...");
-    
-    let prompt = "给我讲一个短笑话";
-    let req = PrimitiveRequest::single_user_message(prompt)
-        .with_model("dify");
-        
-    let mut stream = client.stream(&req).await?;
+    let prompt = args
+        .get(2)
+        .cloned()
+        .unwrap_or_else(|| "给我讲一个短笑话".to_string());
 
-    while let Some(chunk_result) = stream.next().await {
-        match chunk_result {
-            Ok(chunk) => {
-                print!("{}", chunk.content);
-                io::stdout().flush().unwrap();
-            }
-            Err(e) => {
-                eprintln!("\n流读取错误: {:?}", e);
-                break;
-            }
+    let mut req = PrimitiveRequest::single_user_message(&prompt).with_model("dify");
+    req.stream = true;
+    // 演示 metadata.user_id -> dify body.user 推导逻辑
+    req.metadata.user_id = Some("demo-user".into());
+
+    println!("用户: {}\n", prompt);
+    println!("AI (Stream):");
+
+    let mut stream = client.stream(&req).await?;
+    use tokio_stream::StreamExt;
+    while let Some(chunk) = stream.next().await {
+        if let Ok(c) = chunk {
+            print!("{}", c.content);
         }
     }
+    println!();
 
-    println!("\nStream complete.");
     Ok(())
 }

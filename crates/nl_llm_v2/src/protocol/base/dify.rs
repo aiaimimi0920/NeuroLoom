@@ -9,6 +9,113 @@ use crate::protocol::error::{StandardError, ErrorKind, FallbackHint};
 
 pub struct DifyProtocol {}
 
+impl DifyProtocol {
+    fn infer_user(req: &PrimitiveRequest) -> String {
+        req.metadata
+            .user_id
+            .as_deref()
+            .or_else(|| req.metadata.session_id.as_deref())
+            .unwrap_or("nl_llm_v2")
+            .to_string()
+    }
+
+    fn body_error(v: &Value) -> Option<StandardError> {
+        // Dify 可能出现 HTTP 200 但 JSON body 内携带业务错误：{ code, message }
+        // 为避免误判，仅在 code + message 同时存在时认为是错误。
+        let code = v.get("code").and_then(Self::value_to_code)?;
+        let message = v.get("message").and_then(Self::value_to_message)?;
+        Some(Self::standard_error_from_code_message(Some(code), message))
+    }
+
+    fn value_to_code(v: &Value) -> Option<String> {
+        match v {
+            Value::String(s) => Some(s.clone()),
+            Value::Number(n) => Some(n.to_string()),
+            _ => None,
+        }
+    }
+
+    fn value_to_message(v: &Value) -> Option<String> {
+        match v {
+            Value::String(s) => Some(s.clone()),
+            _ => Some(v.to_string()),
+        }
+    }
+
+    fn standard_error_from_code_message(code: Option<String>, message: String) -> StandardError {
+        let msg = message.to_lowercase();
+        let code_str = code.as_deref().unwrap_or("");
+        let code_lc = code_str.to_lowercase();
+
+        let is_5xx = match code_str.parse::<u16>() {
+            Ok(s) => s >= 500,
+            Err(_) => false,
+        };
+
+        let kind = if code_str == "401"
+            || code_str == "403"
+            || msg.contains("unauthorized")
+            || msg.contains("forbidden")
+            || msg.contains("api key")
+            || msg.contains("invalid_api_key")
+            || msg.contains("invalid api key")
+            || msg.contains("authentication")
+            || code_lc.contains("unauthorized")
+            || code_lc.contains("invalid_api_key")
+        {
+            ErrorKind::Authentication
+        } else if code_str == "429"
+            || msg.contains("429")
+            || msg.contains("rate limit")
+            || msg.contains("too many requests")
+            || code_lc.contains("rate_limit")
+            || code_lc.contains("quota")
+        {
+            ErrorKind::RateLimit
+        } else if msg.contains("timeout") || msg.contains("timed out") || code_lc.contains("timeout") {
+            ErrorKind::Timeout
+        } else if msg.contains("connection") || msg.contains("network") || msg.contains("dns") {
+            ErrorKind::Network
+        } else if is_5xx || msg.contains("server error") || msg.contains("internal") || msg.contains("502") || msg.contains("503") {
+            ErrorKind::ServerError
+        } else if msg.contains("not found") || code_lc.contains("not_found") {
+            ErrorKind::ModelUnavailable
+        } else if (msg.contains("context") && msg.contains("length"))
+            || msg.contains("maximum context")
+            || code_lc.contains("context_length")
+        {
+            ErrorKind::ContextLengthExceeded
+        } else if msg.contains("content filter") || msg.contains("safety") || code_lc.contains("content_filter") {
+            ErrorKind::ContentFilter
+        } else {
+            ErrorKind::Other
+        };
+
+        let retryable = matches!(
+            kind,
+            ErrorKind::RateLimit | ErrorKind::Timeout | ErrorKind::ServerError | ErrorKind::Network
+        );
+
+        let fallback_hint = match kind {
+            ErrorKind::RateLimit | ErrorKind::Timeout | ErrorKind::ServerError | ErrorKind::Network => {
+                Some(FallbackHint::Retry)
+            }
+            ErrorKind::ContextLengthExceeded | ErrorKind::ModelUnavailable => {
+                Some(FallbackHint::DowngradeModel)
+            }
+            _ => None,
+        };
+
+        StandardError {
+            kind,
+            message,
+            code,
+            retryable,
+            fallback_hint,
+        }
+    }
+}
+
 impl ProtocolFormat for DifyProtocol {
     fn id(&self) -> &str {
         "dify"
@@ -56,16 +163,15 @@ impl ProtocolFormat for DifyProtocol {
             "inputs": {},
             "query": query.trim(),
             "response_mode": if is_stream { "streaming" } else { "blocking" },
-            "user": "nl_llm_v2_user"
+            "user": Self::infer_user(req)
         })
     }
 
     fn unpack_response(&self, raw: &str) -> anyhow::Result<LlmResponse> {
         let v: Value = serde_json::from_str(raw)?;
 
-        if let Some(err_code) = v.get("code") {
-            let message = v.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown Dify error");
-            return Err(anyhow::anyhow!("Dify API Error [{}]: {}", err_code, message));
+        if let Some(se) = Self::body_error(&v) {
+            return Err(anyhow::anyhow!("{}", se));
         }
 
         let answer = v.get("answer").and_then(|a| a.as_str()).unwrap_or_default();
@@ -108,7 +214,24 @@ impl ProtocolFormat for DifyProtocol {
                         }
 
                         if let Ok(v) = serde_json::from_str::<Value>(data) {
+                            if let Some(se) = DifyProtocol::body_error(&v) {
+                                yield Err(anyhow::anyhow!("{}", se));
+                                break;
+                            }
+
                             if let Some(event) = v.get("event").and_then(|e| e.as_str()) {
+                                if event == "error" {
+                                    // 部分 Dify SSE 可能通过 event=error 输出错误 payload
+                                    let code = v.get("code").and_then(DifyProtocol::value_to_code);
+                                    let msg = v
+                                        .get("message")
+                                        .and_then(DifyProtocol::value_to_message)
+                                        .unwrap_or_else(|| "Unknown Dify error".to_string());
+                                    let se = DifyProtocol::standard_error_from_code_message(code, msg);
+                                    yield Err(anyhow::anyhow!("{}", se));
+                                    break;
+                                }
+
                                 if event == "message" || event == "agent_message" {
                                     if let Some(answer) = v.get("answer").and_then(|a| a.as_str()) {
                                         if !answer.is_empty() {
@@ -153,11 +276,18 @@ impl ProtocolFormat for DifyProtocol {
             kind,
             message,
             code: Some(status.to_string()),
-            retryable: matches!(kind, ErrorKind::RateLimit | ErrorKind::ServerError),
-            fallback_hint: if status == 429 || status >= 500 {
-                Some(FallbackHint::Retry)
-            } else {
-                None
+            retryable: matches!(
+                kind,
+                ErrorKind::RateLimit | ErrorKind::ServerError | ErrorKind::Network | ErrorKind::Timeout
+            ),
+            fallback_hint: match kind {
+                ErrorKind::RateLimit | ErrorKind::ServerError | ErrorKind::Network | ErrorKind::Timeout => {
+                    Some(FallbackHint::Retry)
+                }
+                ErrorKind::ContextLengthExceeded | ErrorKind::ModelUnavailable => {
+                    Some(FallbackHint::DowngradeModel)
+                }
+                _ => None,
             },
         })
     }

@@ -53,5 +53,7 @@ pub mod spark;
 pub mod dify;
 pub mod jina;
 pub mod mistral;
+pub mod custom;
+pub mod fastgpt;
 
 pub use registry::{PresetRegistry, REGISTRY};

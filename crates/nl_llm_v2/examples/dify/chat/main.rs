@@ -1,26 +1,38 @@
+//! dify 平台测试 - chat
+//!
+//! 运行方式: cargo run -p nl_llm_v2 --example dify_chat
+
 use anyhow::Result;
-use nl_llm_v2::presets;
-use nl_llm_v2::provider::traits::LlmClient;
+use nl_llm_v2::{LlmClient, PrimitiveRequest};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // 默认开启控制台日志
-    tracing_subscriber::fmt::init();
+    let args: Vec<String> = std::env::args().collect();
 
     let api_key = std::env::var("DIFY_API_KEY")
-        .expect("DIFY_API_KEY 环境变量未设置");
+        .ok()
+        .or_else(|| args.get(1).cloned())
+        .unwrap_or_else(|| "dummy_credential".to_string());
 
-    let client = presets::REGISTRY
-        .get_builder("dify")
-        .expect("找不到 Dify 预设")
-        .auth(nl_llm_v2::site::Auth::api_key(api_key))
-        .build()?;
+    let client = LlmClient::from_preset("dify")
+        .expect("Preset should exist")
+        .with_api_key(api_key)
+        .build();
 
-    println!("Sending message to Dify...");
-    let response = client.complete("dify", "你好，请用一句话介绍自己").await?;
+    let prompt = args
+        .get(2)
+        .cloned()
+        .unwrap_or_else(|| "你好，请用一句话介绍自己".to_string());
 
-    println!("\nResponse:");
-    println!("{}", response.content);
+    let mut req = PrimitiveRequest::single_user_message(&prompt).with_model("dify");
+    // 演示 metadata.user_id -> dify body.user 推导逻辑
+    req.metadata.user_id = Some("demo-user".into());
+
+    println!("用户: {}\n", prompt);
+    println!("AI:");
+
+    let resp = client.complete(&req).await?;
+    println!("{}", resp.content);
 
     Ok(())
 }

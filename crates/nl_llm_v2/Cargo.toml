@@ -38,6 +38,18 @@ name = "openai_chat"
 path = "examples/openai/chat/main.rs"
 
 [[example]]
+name = "custom_chat"
+path = "examples/custom/chat/main.rs"
+
+[[example]]
+name = "custom_stream"
+path = "examples/custom/stream/main.rs"
+
+[[example]]
+name = "custom_models"
+path = "examples/custom/models/main.rs"
+
+[[example]]
 name = "gemini_chat"
 path = "examples/gemini/chat/main.rs"
 
@@ -766,3 +778,14 @@ path = "examples/mistral/stream/main.rs"
 name = "mistral_models"
 path = "examples/mistral/models/main.rs"
 
+[[example]]
+name = "fastgpt_chat"
+path = "examples/fastgpt/chat/main.rs"
+
+[[example]]
+name = "fastgpt_stream"
+path = "examples/fastgpt/stream/main.rs"
+
+[[example]]
+name = "fastgpt_models"
+path = "examples/fastgpt/models/main.rs"

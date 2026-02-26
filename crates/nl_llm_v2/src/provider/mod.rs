@@ -46,6 +46,8 @@ pub mod hunyuan;
 pub mod dify;
 pub mod jina;
 pub mod mistral;
+pub mod custom;
+pub mod fastgpt;
 
 // 显式导出类型，避免 extension() 函数名冲突
 pub use balance::*;
@@ -89,6 +91,7 @@ pub use qwen::QwenExtension;
 pub use vertex::VertexExtension;
 pub use zai::ZaiExtension;
 pub use zhipu::ZhipuExtension;
+pub use fastgpt::FastGptExtension;
 
 #[derive(Debug, Clone)]
 pub struct LlmResponse {

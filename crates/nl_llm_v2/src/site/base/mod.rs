@@ -17,6 +17,7 @@ pub mod hunyuan;
 pub mod dify;
 pub mod jina;
 pub mod mistral;
+pub mod fastgpt;
 
 pub use openai::OpenAiSite;
 pub use gemini::GeminiSite;
@@ -33,3 +34,4 @@ pub use proxy::ProxySite;
 pub use amp::AmpSite;
 pub use azure::AzureOpenAiSite;
 pub use bedrock::BedrockSite;
+pub use fastgpt::FastGptSite;

@@ -18,8 +18,11 @@ impl ModelResolver for DifyModelResolver {
     }
 
     fn has_capability(&self, _model: &str, cap: Capability) -> bool {
-        // Dify 默认应用都支持标准的聊天和流式返回
-        cap.contains(Capability::CHAT) || cap.contains(Capability::STREAMING)
+        // Dify 默认应用都支持标准的聊天和流式返回。
+        // 注意：这里的 `cap` 可能是组合能力（例如 CHAT|TOOLS），因此必须用
+        // `supported.contains(cap)` 语义来保证“请求的每一项能力都被支持”。
+        let supported = Capability::CHAT | Capability::STREAMING;
+        supported.contains(cap)
     }
 
     fn max_context(&self, _model: &str) -> usize {
@@ -33,5 +36,22 @@ impl ModelResolver for DifyModelResolver {
         let input_limit = max * 3 / 4;
         let output_limit = max - input_limit;
         (input_limit, output_limit)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn supports_chat_and_streaming_only() {
+        let resolver = DifyModelResolver::new();
+
+        assert!(resolver.has_capability("dify", Capability::CHAT));
+        assert!(resolver.has_capability("dify", Capability::STREAMING));
+
+        assert!(!resolver.has_capability("dify", Capability::TOOLS));
+        assert!(!resolver.has_capability("dify", Capability::VISION));
+        assert!(!resolver.has_capability("dify", Capability::CHAT | Capability::TOOLS));
     }
 }

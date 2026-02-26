@@ -73,6 +73,8 @@ impl PresetRegistry {
         self.builders.insert("dify", super::dify::builder);
         self.builders.insert("jina", super::jina::builder);
         self.builders.insert("mistral", super::mistral::builder);
+        self.builders.insert("custom", super::custom::builder);
+        self.builders.insert("fastgpt", super::fastgpt::default_builder);
     }
 
     pub fn get_builder(&self, preset_name: &str) -> Option<ClientBuilder> {
