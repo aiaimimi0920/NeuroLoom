@@ -1,8 +1,8 @@
-use std::sync::Arc;
 use crate::client::ClientBuilder;
-use crate::site::base::replicate::ReplicateSite;
 use crate::model::replicate::ReplicateModelResolver;
 use crate::provider::replicate::ReplicateExtension;
+use crate::site::base::replicate::ReplicateSite;
+use std::sync::Arc;
 
 /// Replicate 预设
 ///

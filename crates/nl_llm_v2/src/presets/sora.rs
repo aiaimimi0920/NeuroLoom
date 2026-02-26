@@ -1,8 +1,8 @@
-use std::sync::Arc;
 use crate::client::ClientBuilder;
-use crate::site::base::sora::SoraSite;
 use crate::model::sora::SoraModelResolver;
 use crate::provider::sora::SoraExtension;
+use crate::site::base::sora::SoraSite;
+use std::sync::Arc;
 
 /// Sora Video 预设
 ///

@@ -12,5 +12,6 @@ pub fn builder() -> ClientBuilder {
         .site(DoubaoSite::new())
         .model_resolver(DoubaoModelResolver::new())
         .with_extension(Arc::new(DoubaoExtension::new()))
-        .default_model("doubao-video")
+        .protocol(crate::protocol::base::openai::OpenAiProtocol)
+        .default_model("ep-20250226210255-h4249")
 }
