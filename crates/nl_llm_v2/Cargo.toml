@@ -850,3 +850,7 @@ path = "examples/jimeng/video/main.rs"
 [[example]]
 name = "submodel_chat"
 path = "examples/submodel/chat/main.rs"
+
+[[example]]
+name = "doubao_video"
+path = "examples/doubao/video/main.rs"

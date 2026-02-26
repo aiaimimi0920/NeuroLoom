@@ -1,3 +1,4 @@
+pub mod doubao;
 pub mod submodel;
 pub mod jimeng;
 pub mod resolver;

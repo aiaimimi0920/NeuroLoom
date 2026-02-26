@@ -82,6 +82,7 @@ impl PresetRegistry {
         self.builders.insert("kling", super::kling::builder);
         self.builders.insert("jimeng", super::jimeng::default_preset);
         self.builders.insert("submodel", super::submodel::builder);
+        self.builders.insert("doubao", super::doubao::builder);
     }
 
     pub fn get_builder(&self, preset_name: &str) -> Option<ClientBuilder> {
