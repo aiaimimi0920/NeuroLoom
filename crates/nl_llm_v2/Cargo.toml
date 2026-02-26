@@ -854,3 +854,7 @@ path = "examples/submodel/chat/main.rs"
 [[example]]
 name = "doubao_video"
 path = "examples/doubao/video/main.rs"
+
+[[example]]
+name = "sora_video"
+path = "examples/sora/video/main.rs"

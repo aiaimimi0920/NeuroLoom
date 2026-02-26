@@ -1,3 +1,4 @@
+pub mod sora;
 pub mod doubao;
 pub mod jimeng;
 pub mod openai;
