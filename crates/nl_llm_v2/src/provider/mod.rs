@@ -50,6 +50,7 @@ pub mod custom;
 pub mod fastgpt;
 pub mod aiproxy;
 pub mod moka;
+pub mod coze;
 
 // 显式导出类型，避免 extension() 函数名冲突
 pub use balance::*;
@@ -94,6 +95,7 @@ pub use vertex::VertexExtension;
 pub use zai::ZaiExtension;
 pub use zhipu::ZhipuExtension;
 pub use fastgpt::FastGptExtension;
+pub use coze::CozeExtension;
 
 #[derive(Debug, Clone)]
 pub struct LlmResponse {

@@ -41,6 +41,7 @@ pub mod qianfan;
 pub mod perplexity;
 pub mod kat_coder;
 pub mod spark;
+pub mod xai;
 
 pub use resolver::{ModelResolver, Capability, Modality};
 pub use router::{RoutingMode, RouteConstraint, RouteCandidate, Router, SecurityClearance};
@@ -84,3 +85,4 @@ pub use qianfan::QianfanModelResolver;
 pub use perplexity::PerplexityModelResolver;
 pub use kat_coder::KatCoderModelResolver;
 pub use spark::SparkModelResolver;
+pub use xai::XaiModelResolver;

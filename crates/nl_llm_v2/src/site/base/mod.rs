@@ -19,6 +19,7 @@ pub mod jina;
 pub mod mistral;
 pub mod fastgpt;
 pub mod moka;
+pub mod coze;
 
 pub use openai::OpenAiSite;
 pub use gemini::GeminiSite;
@@ -36,3 +37,4 @@ pub use amp::AmpSite;
 pub use azure::AzureOpenAiSite;
 pub use bedrock::BedrockSite;
 pub use fastgpt::FastGptSite;
+pub use coze::CozeSite;

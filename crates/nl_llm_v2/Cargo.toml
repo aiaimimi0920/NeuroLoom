@@ -799,6 +799,18 @@ name = "aiproxy_stream"
 path = "examples/aiproxy/stream/main.rs"
 
 [[example]]
+name = "xai_chat"
+path = "examples/xai/chat/main.rs"
+
+[[example]]
+name = "xai_stream"
+path = "examples/xai/stream/main.rs"
+
+[[example]]
+name = "xai_models"
+path = "examples/xai/models/main.rs"
+
+[[example]]
 name = "aiproxy_models"
 path = "examples/aiproxy/models/main.rs"
 
@@ -813,3 +825,15 @@ path = "examples/moka/stream/main.rs"
 [[example]]
 name = "moka_models"
 path = "examples/moka/models/main.rs"
+
+[[example]]
+name = "coze_chat"
+path = "examples/coze/chat/main.rs"
+
+[[example]]
+name = "coze_stream"
+path = "examples/coze/stream/main.rs"
+
+[[example]]
+name = "coze_models"
+path = "examples/coze/models/main.rs"
