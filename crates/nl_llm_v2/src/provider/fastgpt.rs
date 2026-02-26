@@ -1,8 +1,10 @@
 use async_trait::async_trait;
 use reqwest::Client;
+use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
 use crate::provider::balance::BalanceStatus;
 use crate::provider::extension::{ModelInfo, ProviderExtension};
 
@@ -24,6 +26,23 @@ impl FastGptExtension {
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct OpenAiModelsResponse {
+    data: Vec<OpenAiModel>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiModel {
+    id: String,
+}
+
+fn default_model() -> ModelInfo {
+    ModelInfo {
+        id: "fastgpt-default".to_string(),
+        description: "FastGPT 绑定的默认应用模型".to_string(),
+    }
+}
+
 #[async_trait]
 impl ProviderExtension for FastGptExtension {
     fn id(&self) -> &str {
@@ -32,16 +51,38 @@ impl ProviderExtension for FastGptExtension {
 
     async fn list_models(
         &self,
-        _http: &Client,
-        _auth: &mut dyn Authenticator,
+        http: &Client,
+        auth: &mut dyn Authenticator,
     ) -> anyhow::Result<Vec<ModelInfo>> {
-        // FastGPT 主要基于 AppId(通过 API Key 绑定) 驱动对话，
-        // 通常不需要像通用模型供应商那样选择模型。
-        // 这里提供一个示意性的默认模型，或者可以直接返回空。
-        Ok(vec![ModelInfo {
-            id: "fastgpt-default".to_string(),
-            description: "FastGPT 绑定的默认应用模型".to_string(),
-        }])
+        // FastGPT 大多数部署兼容 OpenAI 的 /models 端点。
+        // 若部署未开放该端点，则回退到默认模型以维持可用性。
+        let req = http.get("https://api.fastgpt.in/api/v1/models");
+        let req = auth.inject(req)?;
+        let resp = req.send().await?;
+
+        if !resp.status().is_success() {
+            return Ok(vec![default_model()]);
+        }
+
+        let payload: OpenAiModelsResponse = match resp.json().await {
+            Ok(data) => data,
+            Err(_) => return Ok(vec![default_model()]),
+        };
+
+        let models: Vec<ModelInfo> = payload
+            .data
+            .into_iter()
+            .map(|m| ModelInfo {
+                description: format!("FastGPT model: {}", m.id),
+                id: m.id,
+            })
+            .collect();
+
+        if models.is_empty() {
+            Ok(vec![default_model()])
+        } else {
+            Ok(models)
+        }
     }
 
     async fn get_balance(
@@ -51,6 +92,11 @@ impl ProviderExtension for FastGptExtension {
     ) -> anyhow::Result<Option<BalanceStatus>> {
         // FastGPT 暂未标准化统一的余额查询接口
         Ok(None)
+    }
+
+    fn concurrency_config(&self) -> ConcurrencyConfig {
+        // FastGPT 常用于私有部署，默认值保守一些，避免给实例造成突刺压力。
+        ConcurrencyConfig::new(8)
     }
 }
 
