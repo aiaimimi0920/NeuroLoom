@@ -27,6 +27,7 @@ const DEFAULT_BASE_URL: &str = "https://spark-api-open.xf-yun.com/v1";
 /// | `pro-128k` | Chat, Streaming | 128K | 长上下文 |
 /// | `generalv3` | Chat, Streaming | 8K | Spark Pro |
 /// | `lite` | Chat, Streaming | 4K | 免费轻量 |
+/// | `spark-x` | Chat, Tools, Streaming | 128K | Spark X 系列 |
 ///
 /// ## 并发策略
 ///
@@ -102,6 +103,10 @@ fn spark_models() -> Vec<ModelInfo> {
         ModelInfo {
             id: "lite".to_string(),
             description: "Spark Lite — 免费轻量模型，4K 上下文".to_string(),
+        },
+        ModelInfo {
+            id: "spark-x".to_string(),
+            description: "Spark X — 高阶推理模型，128K 上下文".to_string(),
         },
     ]
 }

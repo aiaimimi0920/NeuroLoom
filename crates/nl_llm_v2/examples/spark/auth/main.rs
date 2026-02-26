@@ -10,19 +10,19 @@ use nl_llm_v2::{LlmClient, PrimitiveRequest};
 async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
 
-    let api_key = std::env::var("SPARK_API_KEY")
+    let api_key = std::env::var("SPARK_API_PASSWORD")
         .ok()
         .or_else(|| args.get(1).cloned())
         .unwrap_or_else(|| "dummy_credential".to_string());
 
     let client = LlmClient::from_preset("spark")
         .expect("Preset should exist")
-        .with_api_key(api_key)
+        .with_spark_auth(api_key)
         .build();
 
     let prompt = args.get(2).cloned().unwrap_or_else(|| "Hello!".to_string());
 
-    let mut req = PrimitiveRequest::single_user_message(&prompt).with_model("unknown");
+    let req = PrimitiveRequest::single_user_message(&prompt).with_model("unknown");
 
     println!("用户: {}\n", prompt);
     println!("AI:");
