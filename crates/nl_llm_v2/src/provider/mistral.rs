@@ -1,8 +1,13 @@
 use serde_json::Value;
+use async_trait::async_trait;
+use reqwest::Client;
 
+use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
 use crate::model::resolver::{ModelResolver, Capability};
 use crate::pipeline::traits::PipelineContext;
 use crate::protocol::traits::ProtocolHook;
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 
 /// Mistral 模型解析器
 #[derive(Debug, Clone, Default)]
@@ -104,5 +109,65 @@ impl ProtocolHook for MistralHook {
                 }
             }
         }
+    }
+}
+
+/// Mistral 平台扩展
+///
+/// Mistral 的 `/v1/models` 端点在不同账号权限下返回集合可能不同，
+/// 这里提供一组官方常见模型作为稳定兜底，保证 examples/mistral/models
+/// 在离线验证时也有可预期输出。
+pub struct MistralExtension;
+
+impl MistralExtension {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for MistralExtension {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn mistral_models() -> Vec<ModelInfo> {
+    vec![
+        ModelInfo {
+            id: "mistral-large-latest".to_string(),
+            description: "Mistral Large — 旗舰模型，128K context".to_string(),
+        },
+        ModelInfo {
+            id: "mistral-medium-latest".to_string(),
+            description: "Mistral Medium — 平衡性能与成本，128K context".to_string(),
+        },
+        ModelInfo {
+            id: "mistral-small-latest".to_string(),
+            description: "Mistral Small — 低延迟轻量模型，32K context".to_string(),
+        },
+        ModelInfo {
+            id: "open-mistral-7b".to_string(),
+            description: "Open Mistral 7B — 开源基础对话模型，32K context".to_string(),
+        },
+    ]
+}
+
+#[async_trait]
+impl ProviderExtension for MistralExtension {
+    fn id(&self) -> &str {
+        "mistral"
+    }
+
+    async fn list_models(
+        &self,
+        _http: &Client,
+        _auth: &mut dyn Authenticator,
+    ) -> anyhow::Result<Vec<ModelInfo>> {
+        Ok(mistral_models())
+    }
+
+    fn concurrency_config(&self) -> ConcurrencyConfig {
+        // Mistral 商业账号吞吐限制会因套餐波动，采用保守默认值。
+        ConcurrencyConfig::new(20)
     }
 }
