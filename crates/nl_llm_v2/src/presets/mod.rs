@@ -52,5 +52,6 @@ pub mod kat_coder;
 pub mod spark;
 pub mod dify;
 pub mod jina;
+pub mod mistral;
 
 pub use registry::{PresetRegistry, REGISTRY};

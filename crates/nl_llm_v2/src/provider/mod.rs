@@ -45,6 +45,7 @@ pub mod spark;
 pub mod hunyuan;
 pub mod dify;
 pub mod jina;
+pub mod mistral;
 
 // 显式导出类型，避免 extension() 函数名冲突
 pub use balance::*;

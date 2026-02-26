@@ -754,3 +754,15 @@ path = "examples/jina/stream/main.rs"
 name = "jina_models"
 path = "examples/jina/models/main.rs"
 
+[[example]]
+name = "mistral_chat"
+path = "examples/mistral/chat/main.rs"
+
+[[example]]
+name = "mistral_stream"
+path = "examples/mistral/stream/main.rs"
+
+[[example]]
+name = "mistral_models"
+path = "examples/mistral/models/main.rs"
+
