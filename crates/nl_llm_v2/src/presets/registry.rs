@@ -79,6 +79,7 @@ impl PresetRegistry {
         self.builders.insert("moka", super::moka::builder);
         self.builders.insert("coze", super::coze::default_builder);
         self.builders.insert("xai", super::xai::builder);
+        self.builders.insert("kling", super::kling::builder);
     }
 
     pub fn get_builder(&self, preset_name: &str) -> Option<ClientBuilder> {

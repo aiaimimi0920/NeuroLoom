@@ -251,6 +251,30 @@ impl LlmClient {
         }
     }
 
+    /// 提交异步视频生成任务（如可灵 Kling、Luma 等）
+    pub async fn submit_video_task(&self, req: &PrimitiveRequest) -> anyhow::Result<String> {
+        if let Some(ext) = &self.extension {
+            let mut auth = self.authenticator.lock().await;
+            ext.submit_video_task(&self.http, &mut **auth, req).await
+        } else {
+            Err(anyhow::anyhow!(
+                "Extension API (submit_video_task) not supported for this provider"
+            ))
+        }
+    }
+
+    /// 查询异步视频生成任务状态
+    pub async fn fetch_video_task(&self, task_id: &str) -> anyhow::Result<crate::provider::extension::VideoTaskStatus> {
+        if let Some(ext) = &self.extension {
+            let mut auth = self.authenticator.lock().await;
+            ext.fetch_video_task(&self.http, &mut **auth, task_id).await
+        } else {
+            Err(anyhow::anyhow!(
+                "Extension API (fetch_video_task) not supported for this provider"
+            ))
+        }
+    }
+
     /// 获取并发控制器引用
     pub fn concurrency_controller(&self) -> Option<&ConcurrencyController> {
         self.concurrency.as_deref()

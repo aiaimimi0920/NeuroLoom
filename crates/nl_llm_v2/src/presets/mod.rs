@@ -59,4 +59,5 @@ pub mod aiproxy;
 pub mod moka;
 pub mod coze;
 pub mod xai;
+pub mod kling;
 pub use registry::{PresetRegistry, REGISTRY};

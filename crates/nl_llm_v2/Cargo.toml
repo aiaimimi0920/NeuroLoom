@@ -1,4 +1,4 @@
-[package]
+﻿[package]
 name = "nl_llm_v2"
 version.workspace = true
 edition.workspace = true
@@ -837,3 +837,8 @@ path = "examples/coze/stream/main.rs"
 [[example]]
 name = "coze_models"
 path = "examples/coze/models/main.rs"
+
+[[example]]
+name = "kling_video"
+path = "examples/kling/video/main.rs"
+
