@@ -255,7 +255,20 @@ impl LlmClient {
     pub async fn submit_video_task(&self, req: &PrimitiveRequest) -> anyhow::Result<String> {
         if let Some(ext) = &self.extension {
             let mut auth = self.authenticator.lock().await;
-            ext.submit_video_task(&self.http, &mut **auth, req).await
+
+            // 与 complete/stream 保持一致：使用 default_model 兜底并执行模型别名解析
+            let model_raw = if req.model.is_empty() {
+                &self.default_model
+            } else {
+                &req.model
+            };
+            let resolved_model = self.model_resolver.resolve(model_raw);
+
+            let mut resolved_req = req.clone();
+            resolved_req.model = resolved_model;
+
+            ext.submit_video_task(&self.http, &mut **auth, &resolved_req)
+                .await
         } else {
             Err(anyhow::anyhow!(
                 "Extension API (submit_video_task) not supported for this provider"
@@ -264,7 +277,10 @@ impl LlmClient {
     }
 
     /// 查询异步视频生成任务状态
-    pub async fn fetch_video_task(&self, task_id: &str) -> anyhow::Result<crate::provider::extension::VideoTaskStatus> {
+    pub async fn fetch_video_task(
+        &self,
+        task_id: &str,
+    ) -> anyhow::Result<crate::provider::extension::VideoTaskStatus> {
         if let Some(ext) = &self.extension {
             let mut auth = self.authenticator.lock().await;
             ext.fetch_video_task(&self.http, &mut **auth, task_id).await
@@ -380,7 +396,11 @@ impl ClientBuilder {
     }
 
     /// iFlow 专用认证（支持缓存以避免风控封禁）
-    pub fn with_iflow_cookie(self, cookie: impl Into<String>, cache_path: impl AsRef<std::path::Path>) -> Self {
+    pub fn with_iflow_cookie(
+        self,
+        cookie: impl Into<String>,
+        cache_path: impl AsRef<std::path::Path>,
+    ) -> Self {
         self.auth(IFlowAuth::new(cookie).with_cache(cache_path))
     }
 

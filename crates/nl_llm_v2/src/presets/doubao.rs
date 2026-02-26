@@ -1,8 +1,8 @@
-use std::sync::Arc;
 use crate::client::ClientBuilder;
-use crate::site::base::doubao::DoubaoSite;
 use crate::model::doubao::DoubaoModelResolver;
 use crate::provider::doubao::DoubaoExtension;
+use crate::site::base::doubao::DoubaoSite;
+use std::sync::Arc;
 
 /// Doubao Video 预设
 ///
@@ -12,5 +12,5 @@ pub fn builder() -> ClientBuilder {
         .site(DoubaoSite::new())
         .model_resolver(DoubaoModelResolver::new())
         .with_extension(Arc::new(DoubaoExtension::new()))
-        .default_model("doubao_video")
+        .default_model("doubao-video")
 }
