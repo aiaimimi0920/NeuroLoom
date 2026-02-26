@@ -60,4 +60,6 @@ pub mod moka;
 pub mod coze;
 pub mod xai;
 pub mod kling;
+pub mod jimeng;
+pub mod vidu;
 pub use registry::{PresetRegistry, REGISTRY};

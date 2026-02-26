@@ -78,8 +78,9 @@ impl PresetRegistry {
         self.builders.insert("aiproxy", super::aiproxy::builder);
         self.builders.insert("moka", super::moka::builder);
         self.builders.insert("coze", super::coze::default_builder);
-        self.builders.insert("xai", super::xai::builder);
         self.builders.insert("kling", super::kling::builder);
+        self.builders.insert("jimeng", super::jimeng::builder);
+        self.builders.insert("vidu", super::vidu::builder);
     }
 
     pub fn get_builder(&self, preset_name: &str) -> Option<ClientBuilder> {

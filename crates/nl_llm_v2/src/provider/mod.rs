@@ -52,6 +52,8 @@ pub mod aiproxy;
 pub mod moka;
 pub mod coze;
 pub mod kling;
+pub mod jimeng;
+pub mod vidu;
 
 // 显式导出类型，避免 extension() 函数名冲突
 pub use balance::*;
@@ -98,6 +100,8 @@ pub use zhipu::ZhipuExtension;
 pub use fastgpt::FastGptExtension;
 pub use coze::CozeExtension;
 pub use kling::KlingExtension;
+pub use jimeng::JimengExtension;
+pub use vidu::ViduExtension;
 
 #[derive(Debug, Clone)]
 pub struct LlmResponse {

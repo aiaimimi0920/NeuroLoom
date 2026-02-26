@@ -4,4 +4,5 @@ pub mod types;
 
 pub use providers::ApiKeyAuth;
 pub use providers::SparkAuth;
+pub use providers::ViduAuth;
 pub use traits::Authenticator;

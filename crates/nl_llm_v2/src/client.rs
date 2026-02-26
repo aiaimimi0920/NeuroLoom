@@ -254,8 +254,20 @@ impl LlmClient {
     /// 提交异步视频生成任务（如可灵 Kling、Luma 等）
     pub async fn submit_video_task(&self, req: &PrimitiveRequest) -> anyhow::Result<String> {
         if let Some(ext) = &self.extension {
+            // 与 complete()/stream() 保持一致：视频任务同样需要做模型别名解析。
+            // 例如 Jimeng: "jimeng-v3.0" -> "jimeng_t2v_v30" (req_key)
+            let model_raw = if req.model.is_empty() {
+                &self.default_model
+            } else {
+                &req.model
+            };
+            let resolved_model = self.model_resolver.resolve(model_raw);
+
+            let mut resolved_req = req.clone();
+            resolved_req.model = resolved_model;
+
             let mut auth = self.authenticator.lock().await;
-            ext.submit_video_task(&self.http, &mut **auth, req).await
+            ext.submit_video_task(&self.http, &mut **auth, &resolved_req).await
         } else {
             Err(anyhow::anyhow!(
                 "Extension API (submit_video_task) not supported for this provider"

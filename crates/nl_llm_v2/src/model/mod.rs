@@ -43,6 +43,8 @@ pub mod kat_coder;
 pub mod spark;
 pub mod xai;
 pub mod kling;
+pub mod jimeng;
+pub mod vidu;
 
 pub use resolver::{ModelResolver, Capability, Modality};
 pub use router::{RoutingMode, RouteConstraint, RouteCandidate, Router, SecurityClearance};
@@ -88,3 +90,5 @@ pub use kat_coder::KatCoderModelResolver;
 pub use spark::SparkModelResolver;
 pub use xai::XaiModelResolver;
 pub use kling::KlingModelResolver;
+pub use jimeng::JimengModelResolver;
+pub use vidu::ViduModelResolver;

@@ -12,6 +12,8 @@ pub mod qwen;
 pub mod service_account;
 pub mod spark;
 pub mod kling;
+pub mod jimeng;
+pub mod vidu;
 
 pub use anthropic::AnthropicApiKeyAuth;
 pub use anthropic_oauth::AnthropicOAuth;
@@ -26,3 +28,5 @@ pub use qwen::QwenOAuth;
 pub use service_account::ServiceAccountAuth;
 pub use spark::SparkAuth;
 pub use kling::KlingAuth;
+pub use jimeng::JimengAuth;
+pub use vidu::ViduAuth;
