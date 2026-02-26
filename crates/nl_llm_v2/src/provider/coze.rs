@@ -1,11 +1,10 @@
-use std::sync::Arc;
-use reqwest::Client;
 use async_trait::async_trait;
+use reqwest::Client;
 
 use crate::auth::traits::Authenticator;
-use crate::provider::extension::{ProviderExtension, ModelInfo};
-use crate::provider::balance::BalanceStatus;
 use crate::concurrency::ConcurrencyConfig;
+use crate::provider::balance::BalanceStatus;
+use crate::provider::extension::{ModelInfo, ProviderExtension};
 
 /// Coze API 扩展实现
 pub struct CozeExtension {}
@@ -34,12 +33,10 @@ impl ProviderExtension for CozeExtension {
         _auth: &mut dyn Authenticator,
     ) -> anyhow::Result<Vec<ModelInfo>> {
         // Coze uses bot_id, yielding a dummy model for structure satisfaction
-        Ok(vec![
-            ModelInfo {
-                id: "coze-bot-id".to_string(),
-                description: "Enter your deployed Bot ID as the model".to_string(),
-            },
-        ])
+        Ok(vec![ModelInfo {
+            id: "coze-bot-id".to_string(),
+            description: "Enter your deployed Bot ID as the model".to_string(),
+        }])
     }
 
     async fn get_balance(

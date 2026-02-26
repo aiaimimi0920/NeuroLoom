@@ -1,11 +1,11 @@
+use reqwest::Response;
 use serde_json::{json, Value};
 use tokio_stream::StreamExt;
-use reqwest::Response;
 
 use crate::primitive::PrimitiveRequest;
-use crate::provider::{LlmResponse, BoxLlmStream, LlmChunk};
+use crate::protocol::error::{ErrorKind, FallbackHint, StandardError};
 use crate::protocol::traits::ProtocolFormat;
-use crate::protocol::error::{StandardError, ErrorKind, FallbackHint};
+use crate::provider::{BoxLlmStream, LlmChunk, LlmResponse};
 
 pub struct CozeProtocol {}
 
@@ -25,7 +25,7 @@ impl ProtocolFormat for CozeProtocol {
         "coze"
     }
 
-    fn pack(&self, req: &PrimitiveRequest, _is_stream: bool) -> Value {
+    fn pack(&self, req: &PrimitiveRequest, is_stream: bool) -> Value {
         // Coze API requires bot_id instead of model in the standard OpenAI sense, so we expect the user to pass bot_id as the model name.
         let bot_id = req.model.clone();
 
@@ -35,13 +35,17 @@ impl ProtocolFormat for CozeProtocol {
             let role = match msg.role {
                 crate::primitive::message::Role::User => "user",
                 crate::primitive::message::Role::Assistant => "assistant",
-                crate::primitive::message::Role::System | crate::primitive::message::Role::Tool => "user", // Coze V3 additional_messages mostly supports user, converting everything to user/assistant semantics for simplicity
+                crate::primitive::message::Role::System | crate::primitive::message::Role::Tool => {
+                    "user"
+                } // Coze V3 additional_messages mostly supports user, converting everything to user/assistant semantics for simplicity
             };
 
             let mut content_str = String::new();
             for part in &msg.content {
                 match part {
-                    crate::primitive::message::PrimitiveContent::Text { text } => content_str.push_str(text),
+                    crate::primitive::message::PrimitiveContent::Text { text } => {
+                        content_str.push_str(text)
+                    }
                     _ => content_str.push_str("[Unsupported Content] "),
                 }
             }
@@ -55,33 +59,59 @@ impl ProtocolFormat for CozeProtocol {
 
         // Add system message if present
         if let Some(sys) = &req.system {
-            additional_messages.insert(0, json!({
-                "role": "user",
-                "content": format!("System Directive: {}", sys),
-                "content_type": "text"
-            }));
+            additional_messages.insert(
+                0,
+                json!({
+                    "role": "user",
+                    "content": format!("System Directive: {}", sys),
+                    "content_type": "text"
+                }),
+            );
         }
 
         json!({
             "bot_id": bot_id,
             "user_id": Self::infer_user(req),
             "additional_messages": additional_messages,
-            "stream": true // Always enforce true to bypass complex polling for non-stream blocks
+            "stream": is_stream
         })
     }
 
     fn unpack_response(&self, raw: &str) -> anyhow::Result<LlmResponse> {
-        // Since we injected `stream: true` unconditionally, `raw` here is technically an aggregated string from our stream interception, 
-        // OR an error JSON payload if it failed immediately before streaming.
-        
         let mut final_content = String::new();
         let model_name = "coze".to_string();
 
         if raw.starts_with('{') {
-            // It might be a direct error JSON payload if the initial POST failed (e.g. 400 Bad Request, 401 Unauthorized)
+            // Non-stream response is JSON. Stream fallback errors are also JSON under HTTP 200.
             if let Ok(value) = serde_json::from_str::<Value>(raw) {
                 if value.get("code").is_some() || value.get("error").is_some() {
-                    let err_msg = value.get("msg").and_then(|m| m.as_str())
+                    if value.get("code").and_then(|c| c.as_i64()) == Some(0) {
+                        // Success payload: parse answer message from data.messages
+                        if let Some(messages) = value
+                            .get("data")
+                            .and_then(|d| d.get("messages"))
+                            .and_then(|m| m.as_array())
+                        {
+                            for m in messages {
+                                if m.get("type").and_then(|t| t.as_str()) == Some("answer") {
+                                    if let Some(content) = m.get("content").and_then(|c| c.as_str())
+                                    {
+                                        final_content.push_str(content);
+                                    }
+                                }
+                            }
+
+                            return Ok(LlmResponse {
+                                content: final_content,
+                                model: model_name,
+                                usage: None,
+                            });
+                        }
+                    }
+
+                    let err_msg = value
+                        .get("msg")
+                        .and_then(|m| m.as_str())
                         .or_else(|| value.get("error").and_then(|e| e.as_str()))
                         .unwrap_or(raw);
                     return Err(anyhow::anyhow!("Coze API Error: {}", err_msg));
@@ -89,9 +119,7 @@ impl ProtocolFormat for CozeProtocol {
             }
         }
 
-        // Since the pipeline might deliver the raw SSE frames due to how UnpackStage works currently, 
-        // we might need to parse SSE here if SendStage didn't abstract it. 
-        // If SendStage buffered the SSE and returns it directly to `unpack_response`, it's just raw SSE texts.
+        // Fallback: parse SSE payload if upstream passed merged stream content.
         for line in raw.lines() {
             let line = line.trim();
             if line.starts_with("data:") {
@@ -104,22 +132,32 @@ impl ProtocolFormat for CozeProtocol {
                         if event == "conversation.message.delta" {
                             if let Some(msg_data) = v.get("message") {
                                 if msg_data.get("type").and_then(|t| t.as_str()) == Some("answer") {
-                                    if let Some(content) = msg_data.get("content").and_then(|c| c.as_str()) {
+                                    if let Some(content) =
+                                        msg_data.get("content").and_then(|c| c.as_str())
+                                    {
                                         final_content.push_str(content);
                                     }
                                 }
                             }
                         } else if event == "error" {
-                             let code = v.get("error_info").and_then(|e| e.get("error_code")).and_then(|c| c.as_i64()).unwrap_or(0);
-                             let msg = v.get("error_info").and_then(|e| e.get("error_message")).and_then(|m| m.as_str()).unwrap_or("Unknown error");
-                             return Err(anyhow::anyhow!("Coze stream error [{}]: {}", code, msg));
+                            let code = v
+                                .get("error_info")
+                                .and_then(|e| e.get("error_code"))
+                                .and_then(|c| c.as_i64())
+                                .unwrap_or(0);
+                            let msg = v
+                                .get("error_info")
+                                .and_then(|e| e.get("error_message"))
+                                .and_then(|m| m.as_str())
+                                .unwrap_or("Unknown error");
+                            return Err(anyhow::anyhow!("Coze stream error [{}]: {}", code, msg));
                         }
                     }
                     // For "conversation.chat.completed", it contains usage which we could theoretically parse
                 }
             }
         }
-        
+
         Ok(LlmResponse {
             content: final_content,
             model: model_name,
@@ -185,8 +223,9 @@ impl ProtocolFormat for CozeProtocol {
 
                         if current_event == "conversation.message.delta" {
                             if let Ok(v) = serde_json::from_str::<Value>(data) {
-                                if v.get("type").and_then(|t| t.as_str()) == Some("answer") {
-                                    if let Some(content) = v.get("content").and_then(|c| c.as_str()) {
+                                let message = v.get("message").unwrap_or(&v);
+                                if message.get("type").and_then(|t| t.as_str()) == Some("answer") {
+                                    if let Some(content) = message.get("content").and_then(|c| c.as_str()) {
                                         if !content.is_empty() {
                                             yield Ok(LlmChunk {
                                                 content: content.to_string(),
@@ -272,13 +311,51 @@ impl ProtocolFormat for CozeProtocol {
             code: extracted_code,
             retryable: matches!(
                 kind,
-                ErrorKind::RateLimit | ErrorKind::ServerError | ErrorKind::Network | ErrorKind::Timeout
+                ErrorKind::RateLimit
+                    | ErrorKind::ServerError
+                    | ErrorKind::Network
+                    | ErrorKind::Timeout
             ),
             fallback_hint: match kind {
-                 ErrorKind::RateLimit | ErrorKind::ServerError | ErrorKind::Network | ErrorKind::Timeout => Some(FallbackHint::Retry),
-                 ErrorKind::ModelUnavailable | ErrorKind::ContextLengthExceeded => Some(FallbackHint::DowngradeModel),
-                 _ => None,
+                ErrorKind::RateLimit
+                | ErrorKind::ServerError
+                | ErrorKind::Network
+                | ErrorKind::Timeout => Some(FallbackHint::Retry),
+                ErrorKind::ModelUnavailable | ErrorKind::ContextLengthExceeded => {
+                    Some(FallbackHint::DowngradeModel)
+                }
+                _ => None,
             },
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::primitive::PrimitiveRequest;
+
+    #[test]
+    fn pack_respects_stream_flag() {
+        let protocol = CozeProtocol {};
+        let req = PrimitiveRequest::single_user_message("hello").with_model("bot-1");
+
+        let packed_non_stream = protocol.pack(&req, false);
+        assert_eq!(packed_non_stream["stream"], Value::Bool(false));
+
+        let packed_stream = protocol.pack(&req, true);
+        assert_eq!(packed_stream["stream"], Value::Bool(true));
+    }
+
+    #[test]
+    fn unpack_response_supports_non_stream_success_payload() {
+        let protocol = CozeProtocol {};
+        let raw = r#"{"code":0,"msg":"success","data":{"messages":[{"type":"answer","content":"hello "},{"type":"answer","content":"world"}]}}"#;
+
+        let resp = protocol
+            .unpack_response(raw)
+            .expect("should parse success payload");
+        assert_eq!(resp.content, "hello world");
+        assert_eq!(resp.model, "coze");
     }
 }
