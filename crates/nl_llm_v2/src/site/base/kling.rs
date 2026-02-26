@@ -16,7 +16,7 @@ pub struct KlingSite {
 impl KlingSite {
     pub fn new() -> Self {
         Self {
-            base_url: "https://api.klingai.com".to_string(),
+            base_url: "https://api-beijing.klingai.com".to_string(),
             timeout: Duration::from_secs(60),
             extra_headers: HashMap::new(),
         }

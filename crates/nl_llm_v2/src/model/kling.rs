@@ -26,6 +26,8 @@ impl ModelResolver for KlingModelResolver {
             "v1" | "kling-v1" => "kling-v1".to_string(),
             "v1.6" | "v1-6" | "kling-v1-6" => "kling-v1-6".to_string(),
             "v2" | "kling-v2" | "kling-v2-master" => "kling-v2-master".to_string(),
+            "o1" | "video-o1" | "kling-video-o1" => "kling-video-o1".to_string(),
+            "v3" | "omni" | "v3-omni" | "kling-v3-omni" => "kling-v3-omni".to_string(),
             
             _ => {
                 // 如果用户输入了未知模型，直接传给 Kling

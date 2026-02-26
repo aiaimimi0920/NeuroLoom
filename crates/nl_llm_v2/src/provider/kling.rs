@@ -80,6 +80,14 @@ impl ProviderExtension for KlingExtension {
                 id: "kling-v2-master".to_string(),
                 description: "Kling v2 Master".to_string(),
             },
+            ModelInfo {
+                id: "kling-video-o1".to_string(),
+                description: "Kling Video O1".to_string(),
+            },
+            ModelInfo {
+                id: "kling-v3-omni".to_string(),
+                description: "Kling V3 Omni".to_string(),
+            },
         ])
     }
 
@@ -116,9 +124,9 @@ impl ProviderExtension for KlingExtension {
 
         let is_image2video = image_url.is_some();
         let endpoint = if is_image2video {
-            "https://api.klingai.com/v1/videos/image2video"
+            "https://api-beijing.klingai.com/v1/videos/image2video"
         } else {
-            "https://api.klingai.com/v1/videos/text2video"
+            "https://api-beijing.klingai.com/v1/videos/text2video"
         };
 
         let request_body = KlingVideoRequest {
@@ -159,8 +167,8 @@ impl ProviderExtension for KlingExtension {
         // 如果我们不知道它是文生还是图生，尝试依次探测，或者假定文生视频通常也能拿到图生结果。
         // （Kling 区分了 /v1/videos/text2video/{task_id} 和 /v1/videos/image2video/{task_id}）
         
-        let endpoint1 = format!("https://api.klingai.com/v1/videos/text2video/{}", task_id);
-        let endpoint2 = format!("https://api.klingai.com/v1/videos/image2video/{}", task_id);
+        let endpoint1 = format!("https://api-beijing.klingai.com/v1/videos/text2video/{}", task_id);
+        let endpoint2 = format!("https://api-beijing.klingai.com/v1/videos/image2video/{}", task_id);
 
         let mut req_builder = http.get(&endpoint1);
         req_builder = auth.inject(req_builder)?;
