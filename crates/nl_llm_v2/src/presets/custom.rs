@@ -1,7 +1,6 @@
 use crate::client::ClientBuilder;
 use crate::protocol::base::openai::OpenAiProtocol;
-use crate::provider::custom::CustomModelResolver;
-use crate::provider::openai::OpenAiExtension;
+use crate::provider::custom::{CustomExtension, CustomModelResolver};
 use crate::site::base::openai::OpenAiSite;
 
 use std::sync::Arc;
@@ -21,5 +20,5 @@ pub fn builder() -> ClientBuilder {
         .protocol(OpenAiProtocol {})
         // 动态传递、兼容任何命名的模型解析器
         .model_resolver(CustomModelResolver::new())
-        .with_extension(Arc::new(OpenAiExtension::new()))
+        .with_extension(Arc::new(CustomExtension::new(base_url)))
 }
