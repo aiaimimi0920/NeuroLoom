@@ -1,0 +1,10 @@
+version: '3.8'
+services:
+  oai_register:
+    build: .
+    container_name: oai_register_bot
+    volumes:
+      # 将结果目录映射出来，这样运行完毕后可以在外部直接查看 data/results.txt
+      - ./data:/app/data
+    shm_size: '2gb' # 给 Chrome 提供足够的共享内存防止崩溃
+    restart: "no"

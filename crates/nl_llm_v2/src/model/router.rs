@@ -22,7 +22,7 @@ pub enum SecurityClearance {
     L3LocalPrivate = 3,
 }
 
-/// 路由强制约束条件
+#[derive(Debug, Clone)]
 pub struct RouteConstraint {
     /// 需要调用的模型功能模态
     pub modality: Modality,

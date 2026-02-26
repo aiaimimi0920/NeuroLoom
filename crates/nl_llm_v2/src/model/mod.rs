@@ -1,5 +1,6 @@
 pub mod resolver;
 pub mod router;
+pub mod default_router;
 pub mod default;
 pub mod openai;
 pub mod anthropic;
