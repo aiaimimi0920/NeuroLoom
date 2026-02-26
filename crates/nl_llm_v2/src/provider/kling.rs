@@ -8,6 +8,8 @@ use crate::primitive::{PrimitiveRequest, PrimitiveContent};
 
 pub struct KlingExtension;
 
+const TASK_ID_DELIMITER: &str = "::kling_base::";
+
 impl KlingExtension {
     pub fn new() -> Self {
         Self
@@ -158,7 +160,7 @@ impl ProviderExtension for KlingExtension {
             return Err(anyhow::anyhow!("Kling returned error code {}: {}", parsed.code, parsed.message));
         }
 
-        Ok(parsed.data.task_id)
+        Ok(compose_task_handle(&base_url, &parsed.data.task_id))
     }
 
     async fn fetch_video_task(
@@ -167,12 +169,14 @@ impl ProviderExtension for KlingExtension {
         auth: &mut dyn Authenticator,
         task_id: &str,
     ) -> anyhow::Result<VideoTaskStatus> {
+        let (base_url, raw_task_id) = parse_task_handle(task_id);
+
         // 由于获取状态时，文生和图生的查询路由不同，但 task_id 本身不包含类型
         // 如果我们不知道它是文生还是图生，尝试依次探测，或者假定文生视频通常也能拿到图生结果。
         // （Kling 区分了 /v1/videos/text2video/{task_id} 和 /v1/videos/image2video/{task_id}）
-        
-        let endpoint1 = format!("https://api-beijing.klingai.com/v1/videos/text2video/{}", task_id);
-        let endpoint2 = format!("https://api-beijing.klingai.com/v1/videos/image2video/{}", task_id);
+
+        let endpoint1 = format!("{}/v1/videos/text2video/{}", base_url, raw_task_id);
+        let endpoint2 = format!("{}/v1/videos/image2video/{}", base_url, raw_task_id);
 
         let mut req_builder = http.get(&endpoint1);
         req_builder = auth.inject(req_builder)?;
@@ -227,6 +231,24 @@ impl ProviderExtension for KlingExtension {
     }
 }
 
+fn compose_task_handle(base_url: &str, task_id: &str) -> String {
+    format!("{}{}{}", base_url.trim_end_matches('/'), TASK_ID_DELIMITER, task_id)
+}
+
+fn parse_task_handle(task_handle: &str) -> (String, String) {
+    if let Some((base_url, task_id)) = task_handle.split_once(TASK_ID_DELIMITER) {
+        return (
+            base_url.trim_end_matches('/').to_string(),
+            task_id.to_string(),
+        );
+    }
+
+    (
+        "https://api-beijing.klingai.com".to_string(),
+        task_handle.to_string(),
+    )
+}
+
 fn kling_base_url(req: &PrimitiveRequest) -> String {
     req.extra
         .get("kling_base_url")
@@ -234,4 +256,26 @@ fn kling_base_url(req: &PrimitiveRequest) -> String {
         .unwrap_or("https://api-beijing.klingai.com")
         .trim_end_matches('/')
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{compose_task_handle, parse_task_handle};
+
+    #[test]
+    fn task_handle_roundtrip_should_keep_base_url_and_id() {
+        let task_handle = compose_task_handle("https://example.kling.io/", "task_123");
+        let (base_url, task_id) = parse_task_handle(&task_handle);
+
+        assert_eq!(base_url, "https://example.kling.io");
+        assert_eq!(task_id, "task_123");
+    }
+
+    #[test]
+    fn plain_task_id_should_fallback_to_default_base_url() {
+        let (base_url, task_id) = parse_task_handle("task_legacy_1");
+
+        assert_eq!(base_url, "https://api-beijing.klingai.com");
+        assert_eq!(task_id, "task_legacy_1");
+    }
 }
