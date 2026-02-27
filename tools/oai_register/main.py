@@ -533,16 +533,6 @@ def new_driver(proxy: str | None = None):
     options.add_argument('--disable-sync')
     options.add_argument('--disable-component-update')
     
-    # Aggressively blackhole known telemetry and video domains to prevent proxy drain
-    host_rules = (
-        "MAP optimizationguide-pa.googleapis.com 127.0.0.1, "
-        "MAP update.googleapis.com 127.0.0.1, "
-        "MAP browser-intake-datadoghq.com 127.0.0.1, "
-        "MAP *.gvt1.com 127.0.0.1, "
-        "MAP *.cloudflarestream.com 127.0.0.1"
-    )
-    options.add_argument(f'--host-resolver-rules={host_rules}')
-    
     # Anti-detect features for standard selenium
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -749,19 +739,15 @@ def register(driver, proxy=None) -> tuple[str, str]:
             time.sleep(0.5)
             name_input.click()
             time.sleep(0.5)
-            
-            # Use JS to robustly set value, bypassing React input loss
-            driver.execute_script('''
-                var input = arguments[0];
-                var val = arguments[1];
-                var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-                if(nativeInputValueSetter) { nativeInputValueSetter.call(input, val); }
-                input.value = val;
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-            ''', name_input, full_name_str)
-            
-            time.sleep(0.5)
-            name_input.send_keys(Keys.TAB)
+            active = driver.switch_to.active_element
+            active.send_keys(Keys.CONTROL + "a")
+            active.send_keys(Keys.BACKSPACE)
+            for _ in range(10): active.send_keys(Keys.DELETE)
+            time.sleep(0.2)
+            for char in full_name_str:
+                active.send_keys(char)
+                time.sleep(0.02)
+            active.send_keys(Keys.TAB)
             time.sleep(1.0) # Wait for potential side-effects
             
             # 2. Birthday
@@ -773,32 +759,18 @@ def register(driver, proxy=None) -> tuple[str, str]:
                 time.sleep(0.5)
                 bday_input.click()
                 time.sleep(0.5)
-                
-                bday_input.send_keys(Keys.CONTROL + "a")
-                bday_input.send_keys(Keys.BACKSPACE)
-                for _ in range(5): bday_input.send_keys(Keys.DELETE)
+                active = driver.switch_to.active_element
+                active.send_keys(Keys.HOME)
+                active.send_keys(Keys.CONTROL + "a")
+                active.send_keys(Keys.BACKSPACE)
+                for _ in range(15): active.send_keys(Keys.DELETE)
                 time.sleep(0.3)
-                
-                # Type slower for masked date
+                # MM/DD/YYYY masked input logic
                 for char in "01151995":
-                    bday_input.send_keys(char)
-                    time.sleep(0.12)
+                    active.send_keys(char)
+                    time.sleep(0.05)
                 time.sleep(0.5)
-                
-                # Check if it was filled correctly. If not, use JS setter.
-                current_val = bday_input.get_attribute('value')
-                if not current_val or len(current_val) < 8 or "202" in current_val:
-                    print("Birthday input did not format correctly, using JS React setter.")
-                    driver.execute_script('''
-                        var input = arguments[0];
-                        var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-                        if(nativeInputValueSetter) { nativeInputValueSetter.call(input, "01/15/1995"); }
-                        input.value = "01/15/1995";
-                        input.dispatchEvent(new Event('input', { bubbles: true }));
-                    ''', bday_input)
-                    time.sleep(0.5)
-                
-                bday_input.send_keys(Keys.TAB)
+                active.send_keys(Keys.TAB)
                 time.sleep(0.5)
                 
         elif visible_inputs and len(visible_inputs) == 1:
@@ -820,52 +792,17 @@ def register(driver, proxy=None) -> tuple[str, str]:
     birthdate = "1995-01-15" if explicit_form_detected else "2000-01-01"
     if explicit_form_detected:
         try:
-            # Aggressive error-checking loop for React validation failures
-            for attempt in range(3):
-                time.sleep(1.5)
-                page_src = driver.page_source
-                error_detected = False
-                
-                # Check for "Name" validation error
-                if "Please enter name" in page_src or "doesn't look right" in page_src:
-                    print(f"[Retry {attempt+1}] Name validation error detected, attempting re-fill...")
-                    driver.execute_script("document.querySelectorAll('input:not([type=\"hidden\"])')[0].focus();")
-                    active = driver.switch_to.active_element
-                    active.send_keys(Keys.CONTROL + "a")
-                    active.send_keys(Keys.BACKSPACE)
-                    for char in "John Smith": 
-                        active.send_keys(char)
-                        time.sleep(0.05)
-                    active.send_keys(Keys.TAB)
-                    error_detected = True
-                    
-                # Check for "Birthday" validation error
-                if "We can't create an account with that info" in page_src or "Please enter a valid date" in page_src:
-                    print(f"[Retry {attempt+1}] Birthday validation error detected, attempting manual slow re-fill...")
-                    inputs = driver.execute_script("return document.querySelectorAll('input:not([type=\"hidden\"])');")
-                    if len(inputs) >= 2:
-                        driver.execute_script("arguments[0].focus();", inputs[1])
-                        active = driver.switch_to.active_element
-                        active.send_keys(Keys.HOME)
-                        active.send_keys(Keys.CONTROL + "a")
-                        active.send_keys(Keys.BACKSPACE)
-                        # Completely clear the mask
-                        for _ in range(15): 
-                            active.send_keys(Keys.BACKSPACE)
-                            active.send_keys(Keys.DELETE)
-                        time.sleep(0.5)
-                        # Super slow physical typing
-                        for char in "01151995":
-                            active.send_keys(char)
-                            time.sleep(0.2)
-                        active.send_keys(Keys.TAB)
-                        error_detected = True
-                
-                if not error_detected:
-                    break # Form is clean, proceed to click Continue
-                    
-        except Exception as e:
-            print(f"Error during validation retry loop: {e}")
+            time.sleep(1.5)
+            if "doesn't look right" in driver.page_source:
+                print("Error detected, attempting re-fill...")
+                driver.execute_script("document.querySelectorAll('input:not([type=\"hidden\"])')[0].focus();")
+                active = driver.switch_to.active_element
+                active.send_keys(Keys.CONTROL + "a")
+                active.send_keys(Keys.BACKSPACE)
+                for char in "John Smith": active.send_keys(char)
+                active.send_keys(Keys.TAB)
+        except Exception:
+            pass
     else:
         birthdate = enter_birthday(driver)
     

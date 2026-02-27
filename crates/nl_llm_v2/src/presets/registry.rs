@@ -115,6 +115,7 @@ impl PresetRegistry {
         self.builders.insert("baichuan", super::baichuan::builder);
         self.builders.insert("cerebras", super::cerebras::builder);
         self.builders.insert("lmstudio", super::lmstudio::builder);
+        self.builders.insert("infini", super::infini::builder);
         self.builders.insert("huggingface", super::huggingface::builder);
         self.builders.insert("stepfun", super::stepfun::builder);
         self.builders.insert("github_models", super::github_models::builder);

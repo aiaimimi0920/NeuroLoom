@@ -942,3 +942,10 @@ path = "examples/lmstudio/stream/main.rs"
 [[example]]
 name = "hyperbolic_chat"
 path = "examples/hyperbolic/chat/main.rs"
+[[example]]
+name = "infini_chat"
+path = "examples/infini/chat/main.rs"
+
+[[example]]
+name = "infini_stream"
+path = "examples/infini/stream/main.rs"

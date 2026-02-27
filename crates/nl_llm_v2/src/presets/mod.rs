@@ -81,3 +81,4 @@ pub use registry::{PresetRegistry, REGISTRY};
 pub mod baichuan;
 pub mod cerebras;
 pub mod lmstudio;
+pub mod infini;
