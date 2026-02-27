@@ -23,10 +23,18 @@ impl Default for PoeModelResolver {
 
 impl ModelResolver for PoeModelResolver {
     fn resolve(&self, model: &str) -> String {
-        if model.is_empty() {
-            "gpt-4o-mini".to_string()
-        } else {
-            model.to_string()
+        let normalized = model.trim();
+        if normalized.is_empty() {
+            return "gpt-4o-mini".to_string();
+        }
+
+        // 兼容常见的大小写/别名写法，减少用户输入差异导致的 404。
+        let lower = normalized.to_ascii_lowercase();
+        match lower.as_str() {
+            "gpt-4o" => "gpt-4o".to_string(),
+            "gpt-4o-mini" => "gpt-4o-mini".to_string(),
+            "claude-3.5-sonnet" => "claude-3-5-sonnet".to_string(),
+            _ => normalized.to_string(),
         }
     }
 
@@ -77,15 +85,15 @@ impl PoeExtension {
         format!("{}/models", self.base_url)
     }
 
-    fn fallback_models() -> Vec<ModelInfo> {
+fn fallback_models() -> Vec<ModelInfo> {
         vec![
             ModelInfo {
                 id: "gpt-4o-mini".to_string(),
-                description: "Fallback model".to_string(),
+                description: "Poe fallback model".to_string(),
             },
             ModelInfo {
                 id: "claude-3-5-sonnet".to_string(),
-                description: "Fallback model".to_string(),
+                description: "Poe fallback model".to_string(),
             },
         ]
     }
