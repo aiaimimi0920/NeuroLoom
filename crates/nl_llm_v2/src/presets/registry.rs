@@ -59,6 +59,7 @@ impl PresetRegistry {
         self.builders
             .insert("doubaoseed", super::doubaoseed::builder);
         self.builders.insert("bailing", super::bailing::builder);
+        self.builders.insert("burncloud", super::burncloud::builder);
         self.builders.insert("mimo", super::mimo::builder);
         self.builders
             .insert("modelscope", super::modelscope::builder);

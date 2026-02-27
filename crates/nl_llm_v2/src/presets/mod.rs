@@ -25,6 +25,7 @@ pub mod antigravity;
 pub mod aws_claude;
 pub mod azure_openai;
 pub mod bailing;
+pub mod burncloud;
 pub mod claude;
 pub mod claude_oauth;
 pub mod cloudflare;
