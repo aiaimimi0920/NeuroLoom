@@ -1,6 +1,9 @@
 use crate::client::ClientBuilder;
+use crate::model::OpenAiModelResolver;
 use crate::protocol::base::openai::OpenAiProtocol;
+use crate::provider::openai::OpenAiExtension;
 use crate::site::base::openai::OpenAiSite;
+use std::sync::Arc;
 
 /// Fireworks API 预设
 ///
@@ -33,5 +36,9 @@ pub fn builder() -> ClientBuilder {
     ClientBuilder::new()
         .site(OpenAiSite::new().with_base_url(FIREWORKS_BASE_URL))
         .protocol(OpenAiProtocol)
+        // Fireworks 完整兼容 OpenAI Chat/Tool schema，直接复用 OpenAI 解析能力。
+        .model_resolver(OpenAiModelResolver::new())
+        // 复用 OpenAI 通用扩展接口（如 list_models），保持预设能力一致性。
+        .with_extension(Arc::new(OpenAiExtension::new()))
         .default_model("accounts/fireworks/models/llama-v3p3-70b-instruct")
 }
