@@ -32,11 +32,10 @@ impl ModelResolver for BurnCloudModelResolver {
     }
 
     fn has_capability(&self, _model: &str, capability: Capability) -> bool {
-        // 由于是透明代理，假设下游支持模型具备所有的对话/视觉/工具/流式生成能力
-        capability.contains(Capability::CHAT) 
-            || capability.contains(Capability::STREAMING) 
-            || capability.contains(Capability::VISION) 
-            || capability.contains(Capability::TOOLS)
+        // BurnCloud 是代理服务，能力由后端真实模型决定；此处放行常见通用能力。
+        let supported =
+            Capability::CHAT | Capability::STREAMING | Capability::VISION | Capability::TOOLS;
+        supported.contains(capability)
     }
 
     fn max_context(&self, model: &str) -> usize {
@@ -60,10 +59,7 @@ impl ModelResolver for BurnCloudModelResolver {
         (max, 0)
     }
 
-    fn intelligence_and_modality(
-        &self,
-        _model: &str,
-    ) -> Option<(f32, Modality)> {
+    fn intelligence_and_modality(&self, _model: &str) -> Option<(f32, Modality)> {
         // 代理无法单方面评估单一模型的智力，采取默认设置
         Some((3.5, Modality::Text))
     }
@@ -91,11 +87,19 @@ pub struct BurnCloudExtension {
 impl BurnCloudExtension {
     pub fn new(base_url: impl Into<String>) -> Self {
         Self {
-            base_url: base_url.into(),
+            base_url: base_url.into().trim_end_matches('/').to_string(),
         }
     }
 
-    fn fallback_models(&self) -> Vec<ModelInfo> {
+    fn models_url(&self) -> String {
+        if self.base_url.ends_with("/v1") {
+            format!("{}/models", self.base_url)
+        } else {
+            format!("{}/v1/models", self.base_url)
+        }
+    }
+
+    fn fallback_models() -> Vec<ModelInfo> {
         vec![
             ModelInfo {
                 id: "gpt-4o".to_string(),
@@ -108,7 +112,7 @@ impl BurnCloudExtension {
             ModelInfo {
                 id: "gemini-1.5-pro".to_string(),
                 description: "Fallback model (Gemini 1.5 Pro)".to_string(),
-            }
+            },
         ]
     }
 }
@@ -124,8 +128,7 @@ impl ProviderExtension for BurnCloudExtension {
         http: &Client,
         auth: &mut dyn Authenticator,
     ) -> anyhow::Result<Vec<ModelInfo>> {
-        let url = format!("{}/models", self.base_url);
-        let req = http.get(&url);
+        let req = http.get(self.models_url());
         let req = auth.inject(req)?;
 
         match req.send().await {
@@ -133,7 +136,7 @@ impl ProviderExtension for BurnCloudExtension {
                 let bytes = resp.bytes().await?;
                 if let Ok(payload) = serde_json::from_slice::<BurnCloudModelsResponse>(&bytes) {
                     if payload.data.is_empty() {
-                        Ok(self.fallback_models())
+                        Ok(Self::fallback_models())
                     } else {
                         Ok(payload
                             .data
@@ -145,7 +148,7 @@ impl ProviderExtension for BurnCloudExtension {
                             .collect())
                     }
                 } else {
-                    Ok(self.fallback_models())
+                    Ok(Self::fallback_models())
                 }
             }
             Ok(resp) => {
@@ -153,13 +156,15 @@ impl ProviderExtension for BurnCloudExtension {
                 let body = resp.text().await.unwrap_or_default();
                 eprintln!(
                     "[{}] /models 检索失败: HTTP {} - {}。应用备用模型。",
-                    self.id(), status, body
+                    self.id(),
+                    status,
+                    body
                 );
-                Ok(self.fallback_models())
+                Ok(Self::fallback_models())
             }
             Err(e) => {
                 eprintln!("[{}] 网络错误: {}。应用备用模型。", self.id(), e);
-                Ok(self.fallback_models())
+                Ok(Self::fallback_models())
             }
         }
     }
@@ -167,5 +172,22 @@ impl ProviderExtension for BurnCloudExtension {
     fn concurrency_config(&self) -> ConcurrencyConfig {
         // 本地服务或代理枢纽的并发能力通常取决于具体的池大小
         ConcurrencyConfig::new(20)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BurnCloudExtension;
+
+    #[test]
+    fn models_url_handles_v1_suffix() {
+        let ext = BurnCloudExtension::new("https://api.burn.hair/v1/");
+        assert_eq!(ext.models_url(), "https://api.burn.hair/v1/models");
+    }
+
+    #[test]
+    fn models_url_patches_plain_base() {
+        let ext = BurnCloudExtension::new("https://api.burn.hair");
+        assert_eq!(ext.models_url(), "https://api.burn.hair/v1/models");
     }
 }
