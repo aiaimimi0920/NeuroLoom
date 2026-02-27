@@ -1,3 +1,4 @@
+pub mod together;
 pub mod groq;
 pub mod doubao;
 pub mod jimeng;

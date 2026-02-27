@@ -110,6 +110,7 @@ impl PresetRegistry {
         self.builders.insert("vidu", super::vidu::builder);
         self.builders.insert("replicate", super::replicate::builder);
         self.builders.insert("groq", super::groq::builder);
+        self.builders.insert("together", super::together::builder);
     }
 
     pub fn get_builder(&self, preset_name: &str) -> Option<ClientBuilder> {

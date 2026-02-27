@@ -884,3 +884,7 @@ path = "examples/xfyun_maas/models/main.rs"
 name = "xfyun_maas_auth"
 path = "examples/xfyun_maas/auth/main.rs"
 
+
+[[example]]
+name = "together_chat"
+path = "examples/together/chat/main.rs"
