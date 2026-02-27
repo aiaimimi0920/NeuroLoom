@@ -974,5 +974,9 @@ path = "examples/a302/chat/main.rs"
 name = "a302_stream"
 path = "examples/a302/stream/main.rs"
 
+[[example]]
+name = "a302_models"
+path = "examples/a302/models/main.rs"
+
 [dev-dependencies]
 env_logger = "0.11.9"
