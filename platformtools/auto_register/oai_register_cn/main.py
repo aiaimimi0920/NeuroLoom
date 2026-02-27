@@ -569,7 +569,44 @@ def new_driver(proxy: str | None = None):
     options.add_argument('--disable-background-networking')
     options.add_argument('--disable-sync')
     options.add_argument('--disable-component-update')
-    
+    options.add_argument('--disable-domain-reliability')
+    options.add_argument('--disable-client-side-phishing-detection')
+    options.add_argument('--disable-default-apps')
+    options.add_argument('--no-default-browser-check')
+    options.add_argument('--disable-features=TranslateUI')
+
+    # Hard block a few extremely noisy Chrome background endpoints by loopback.
+    # This prevents wasting proxy traffic on requests like:
+    #   optimizationguide-pa.googleapis.com
+    #
+    # NOTE: This is based on a known-good historical rule set from legacy `tools/oai_register/main.py`.
+    # Controlled via env:
+    #   BLOCK_GOOGLE_OPT_GUIDE=2  (default: 2)
+    #   BLOCK_NOISY_HOSTS=2       (default: 2)
+    host_rule_entries: list[str] = []
+
+    block_opt = int(os.environ.get("BLOCK_GOOGLE_OPT_GUIDE", "2"))
+    if block_opt == 2:
+        host_rule_entries.extend([
+            "MAP optimizationguide-pa.googleapis.com 127.0.0.1",
+            "MAP optimizationguide-pa.googleapis.com:443 127.0.0.1",
+            "MAP optimizationguide-pa.googleapis.com:80 127.0.0.1",
+        ])
+
+    # Extra background endpoints historically known to burn proxy bandwidth.
+    # Keep this list conservative; enable/disable via env.
+    block_noisy = int(os.environ.get("BLOCK_NOISY_HOSTS", "2"))
+    if block_noisy == 2:
+        host_rule_entries.extend([
+            "MAP update.googleapis.com 127.0.0.1",
+            "MAP browser-intake-datadoghq.com 127.0.0.1",
+            "MAP *.gvt1.com 127.0.0.1",
+            "MAP *.cloudflarestream.com 127.0.0.1",
+        ])
+
+    if host_rule_entries:
+        options.add_argument(f"--host-resolver-rules={', '.join(host_rule_entries)}")
+
     # Anti-detect features for standard selenium
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_experimental_option("excludeSwitches", ["enable-automation"])

@@ -16,6 +16,8 @@ services:
       - BLOCK_IMAGES=2 # 设为 2 会禁用图片 (极度推荐开启以省流量)
       - BLOCK_CSS=2    # 设为 2 会禁用 CSS (可能会改变网页结构，导致找不到元素)
       - BLOCK_FONTS=2  # 设为 2 会禁用自定义字体加载
+      - BLOCK_GOOGLE_OPT_GUIDE=2 # 强制回环 optimizationguide-pa.googleapis.com 到 127.0.0.1，节省代理流量
+      - BLOCK_NOISY_HOSTS=2 # 回环更多高噪音域名（update.googleapis.com / *.gvt1.com / *.cloudflarestream.com / browser-intake-datadoghq.com）
       # 并发与防封参数设置
       - CONCURRENCY=5   # 同时运行的浏览器/注册线程数 (提升注册速度)
       - SLEEP_MIN=5      # 每个线程在完成一轮跑号后的最小休息时间(秒)
