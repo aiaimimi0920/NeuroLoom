@@ -1,5 +1,6 @@
 use crate::auth::traits::Authenticator;
 use crate::concurrency::ConcurrencyConfig;
+use crate::model::cephalon::cephalon_model_specs;
 use crate::provider::extension::{ModelInfo, ProviderExtension};
 use async_trait::async_trait;
 use reqwest::Client;
@@ -64,56 +65,13 @@ impl Default for CephalonExtension {
 }
 
 fn cephalon_models() -> Vec<ModelInfo> {
-    vec![
-        // OpenAI 系列
-        ModelInfo {
-            id: "gpt-4o".to_string(),
-            description: "GPT-4o — Flagship multimodal model".to_string(),
-        },
-        ModelInfo {
-            id: "gpt-4o-mini".to_string(),
-            description: "GPT-4o Mini — Fast and affordable".to_string(),
-        },
-        ModelInfo {
-            id: "gpt-4-turbo".to_string(),
-            description: "GPT-4 Turbo — Previous generation, 128K context".to_string(),
-        },
-        ModelInfo {
-            id: "gpt-3.5-turbo".to_string(),
-            description: "GPT-3.5 Turbo — Fast and economical".to_string(),
-        },
-        // Claude 系列
-        ModelInfo {
-            id: "claude-3-opus-20240229".to_string(),
-            description: "Claude 3 Opus — Most capable Claude model".to_string(),
-        },
-        ModelInfo {
-            id: "claude-3-sonnet-20240229".to_string(),
-            description: "Claude 3 Sonnet — Balanced performance".to_string(),
-        },
-        ModelInfo {
-            id: "claude-3-haiku-20240307".to_string(),
-            description: "Claude 3 Haiku — Fast and efficient".to_string(),
-        },
-        // DeepSeek 系列
-        ModelInfo {
-            id: "deepseek-chat".to_string(),
-            description: "DeepSeek Chat — 通用对话模型".to_string(),
-        },
-        ModelInfo {
-            id: "deepseek-reasoner".to_string(),
-            description: "DeepSeek Reasoner — 深度推理模型".to_string(),
-        },
-        // 其他模型
-        ModelInfo {
-            id: "gemini-1.5-pro".to_string(),
-            description: "Gemini 1.5 Pro — Google's multimodal model".to_string(),
-        },
-        ModelInfo {
-            id: "gemini-1.5-flash".to_string(),
-            description: "Gemini 1.5 Flash — Fast multimodal model".to_string(),
-        },
-    ]
+    cephalon_model_specs()
+        .into_iter()
+        .map(|spec| ModelInfo {
+            id: spec.id.to_string(),
+            description: spec.description.to_string(),
+        })
+        .collect()
 }
 
 #[async_trait]
