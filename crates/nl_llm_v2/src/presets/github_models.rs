@@ -1,4 +1,5 @@
 use crate::client::ClientBuilder;
+use crate::model::github_models::GitHubModelsModelResolver;
 use crate::protocol::base::openai::OpenAiProtocol;
 use crate::site::base::openai::OpenAiSite;
 
@@ -10,9 +11,9 @@ use crate::site::base::openai::OpenAiSite;
 /// # 平台特性
 ///
 /// - **端点**: `https://models.inference.ai.azure.com`
-/// - **认证**: `Authorization: Bearer <GITHUB_TOKEN>` (需包含 models:read 权限)
+/// - **认证**: `Authorization: Bearer <GITHUB_TOKEN>`
 /// - **协议**: OpenAI 兼容
-/// - **特色**: 集成于 GitHub 生态，支持 GPT-4o、Llama、Phi 等多款主流模型
+/// - **模型 ID**: 推荐 `provider/model` 形式（如 `openai/gpt-4o-mini`）
 ///
 /// # 基本用法
 ///
@@ -25,7 +26,7 @@ use crate::site::base::openai::OpenAiSite;
 ///     .build();
 ///
 /// let req = PrimitiveRequest::single_user_message("Hello")
-///     .with_model("gpt-4o-mini");
+///     .with_model("openai/gpt-4o-mini");
 /// ```
 const GITHUB_MODELS_BASE_URL: &str = "https://models.inference.ai.azure.com";
 
@@ -33,5 +34,6 @@ pub fn builder() -> ClientBuilder {
     ClientBuilder::new()
         .site(OpenAiSite::new().with_base_url(GITHUB_MODELS_BASE_URL))
         .protocol(OpenAiProtocol)
-        .default_model("gpt-4o-mini")
+        .model_resolver(GitHubModelsModelResolver::new())
+        .default_model("openai/gpt-4o-mini")
 }

@@ -1,5 +1,5 @@
-use tokio::io::{stdout, AsyncWriteExt};
 use std::env;
+use tokio::io::{stdout, AsyncWriteExt};
 
 use nl_llm_v2::client::LlmClient;
 use nl_llm_v2::primitive::PrimitiveRequest;
@@ -8,7 +8,9 @@ use nl_llm_v2::primitive::PrimitiveRequest;
 async fn main() -> anyhow::Result<()> {
     stdout().flush().await?;
 
-    let api_key = env::var("GITHUB_MODELS_API_KEY").unwrap_or_else(|_| "your_api_key_here".to_string());
+    let api_key = env::var("GITHUB_TOKEN")
+        .or_else(|_| env::var("GITHUB_MODELS_API_KEY"))
+        .unwrap_or_else(|_| "your_api_key_here".to_string());
 
     let client = LlmClient::from_preset("github_models")
         .expect("GitHub Models preset not found")
@@ -16,10 +18,10 @@ async fn main() -> anyhow::Result<()> {
         .build();
 
     println!("🚀 [GitHub Models] 开始测试 GitHub Models 推理 API...");
-    println!("📥 正在发送请求至 GitHub Models (gpt-4o-mini)...");
+    println!("📥 正在发送请求至 GitHub Models (openai/gpt-4o-mini)...");
 
     let request = PrimitiveRequest::single_user_message("用中文简单介绍一下你自己，不超过50个字")
-        .with_model("gpt-4o-mini");
+        .with_model("openai/gpt-4o-mini");
 
     match client.complete(&request).await {
         Ok(response) => {
