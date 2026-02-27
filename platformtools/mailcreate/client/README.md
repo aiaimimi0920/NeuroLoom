@@ -22,7 +22,7 @@
 > 你目前在 Cloudflare 配置的是 Catch-All for `aiaimimi.com` → Worker `cloudflare_temp_email`，因此 `*@aiaimimi.com` 会被投递到 Worker。
 > 若改用 `*@mx.aiaimimi.com`，需要额外在 Email Routing → Settings 添加子域并配置对应规则（且 Catch-all 通常无法对“单独子域”生效）。
 
-服务端入口与鉴权逻辑：[`worker.ts`](../../_cf_temp_email/cloudflare_temp_email/worker/src/worker.ts:38)
+服务端入口与鉴权逻辑：[`worker.ts`](../server/cloudflare_temp_email/worker/src/worker.ts:38)
 
 ## Python 调用示例
 文件：[`mailcreate_client.py`](mailcreate_client.py:1)
@@ -69,6 +69,6 @@ print("code=", code)
   - Header：`x-custom-auth` + `Authorization: Bearer <jwt>`
 
 ## Email Routing 配置（由控制台完成）
-目标：让 `*@aiaimimi.com` 的入站邮件触发 Worker 的 email handler：[`email()`](../../_cf_temp_email/cloudflare_temp_email/worker/src/email/index.ts:16)
+目标：让 `*@aiaimimi.com` 的入站邮件触发 Worker 的 email handler：[`email()`](../server/cloudflare_temp_email/worker/src/email/index.ts:16)
 
 建议：Email → Email Routing → Routes → Catch-all → Action=Send to a Worker → 选择 Worker。

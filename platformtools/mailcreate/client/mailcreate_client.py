@@ -15,7 +15,7 @@ Auth model:
 - /api/* endpoints additionally require Authorization: Bearer <address_jwt> for most reads.
 
 Ref:
-- Worker middleware and auth: [`worker.ts`](_cf_temp_email/cloudflare_temp_email/worker/src/worker.ts:38)
+- Worker middleware and auth: [`worker.ts`](platformtools/mailcreate/server/cloudflare_temp_email/worker/src/worker.ts:38)
 """
 
 from __future__ import annotations
