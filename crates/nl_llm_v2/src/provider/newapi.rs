@@ -32,11 +32,10 @@ impl ModelResolver for NewApiModelResolver {
     }
 
     fn has_capability(&self, _model: &str, capability: Capability) -> bool {
-        // NewAPI 是代理服务，理论上支持其背后模型的所有能力，默认全部放行
-        capability.contains(Capability::CHAT) 
-            || capability.contains(Capability::STREAMING) 
-            || capability.contains(Capability::VISION) 
-            || capability.contains(Capability::TOOLS)
+        // NewAPI 是代理服务，能力由后端真实模型决定；这里放行常用通用能力。
+        let supported =
+            Capability::CHAT | Capability::STREAMING | Capability::VISION | Capability::TOOLS;
+        supported.contains(capability)
     }
 
     fn max_context(&self, _model: &str) -> usize {
@@ -82,7 +81,11 @@ impl NewApiExtension {
     }
 
     fn models_url(&self) -> String {
-        format!("{}/models", self.base_url)
+        if self.base_url.ends_with("/v1") {
+            format!("{}/models", self.base_url)
+        } else {
+            format!("{}/v1/models", self.base_url)
+        }
     }
 
     fn fallback_models() -> Vec<ModelInfo> {
@@ -152,5 +155,22 @@ impl ProviderExtension for NewApiExtension {
     fn concurrency_config(&self) -> ConcurrencyConfig {
         // 自治度较高，适当增加并发以兼容多模型中转平台
         ConcurrencyConfig::new(50)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NewApiExtension;
+
+    #[test]
+    fn models_url_handles_v1_base() {
+        let ext = NewApiExtension::new("http://127.0.0.1:3000/v1");
+        assert_eq!(ext.models_url(), "http://127.0.0.1:3000/v1/models");
+    }
+
+    #[test]
+    fn models_url_patches_plain_base() {
+        let ext = NewApiExtension::new("http://127.0.0.1:3000");
+        assert_eq!(ext.models_url(), "http://127.0.0.1:3000/v1/models");
     }
 }
