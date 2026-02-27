@@ -112,10 +112,6 @@ tools/oai_register/logs_output*.txt
 .roo/
 crates/nl_llm_v2/examples/kling/test.py
 crates/nl_llm_v2/fix_resolvers.py
-crates/nl_llm_v2/examples/lmstudio/
-crates/nl_llm_v2/src/presets/lmstudio.rs
-crates/nl_llm_v2/examples/hyperbolic/
-crates/nl_llm_v2/src/presets/hyperbolic.rs
 tools/test_coze.py
 tools/oai_register/check_kookeey.py
 tools/oai_register/main_recovered.py
