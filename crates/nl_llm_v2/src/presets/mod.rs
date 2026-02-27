@@ -19,6 +19,7 @@ pub mod vidu;
 pub mod aicodemirror;
 pub mod aigocode;
 pub mod aihubmix;
+pub mod aionly;
 pub mod aiproxy;
 pub mod amp;
 pub mod antigravity;
