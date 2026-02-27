@@ -56,6 +56,7 @@ pub mod siliconflow;
 pub mod spark;
 pub mod vertex;
 
+pub mod ollama;
 pub mod xfyun_maas;
 pub mod zai;
 pub mod zhipu;
@@ -105,6 +106,7 @@ pub use siliconflow::SiliconFlowExtension;
 pub use vertex::VertexExtension;
 pub use vidu::ViduExtension;
 
+pub use ollama::OllamaExtension;
 pub use xfyun_maas::XfyunMaasExtension;
 pub use zai::ZaiExtension;
 pub use zhipu::ZhipuExtension;

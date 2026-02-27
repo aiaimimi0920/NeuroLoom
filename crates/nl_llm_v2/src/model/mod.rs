@@ -49,6 +49,7 @@ pub mod vertex;
 pub mod vidu;
 pub mod xai;
 
+pub mod ollama;
 pub mod xfyun_maas;
 pub mod zai;
 pub mod zhipu;
@@ -98,6 +99,7 @@ pub use vertex::VertexModelResolver;
 pub use vidu::ViduModelResolver;
 pub use xai::XaiModelResolver;
 
+pub use ollama::OllamaModelResolver;
 pub use xfyun_maas::XfyunMaasModelResolver;
 pub use zai::ZaiModelResolver;
 pub use zhipu::ZhipuModelResolver;

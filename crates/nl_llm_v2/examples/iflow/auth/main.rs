@@ -22,7 +22,7 @@ async fn main() -> Result<()> {
 
     let prompt = args.get(2).cloned().unwrap_or_else(|| "Hello!".to_string());
 
-    let mut req = PrimitiveRequest::single_user_message(&prompt).with_model("qwen3-max");
+    let mut req = PrimitiveRequest::single_user_message(&prompt).with_model("glm-5");
 
     println!("用户: {}\n", prompt);
     println!("AI:");

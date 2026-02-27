@@ -884,6 +884,18 @@ path = "examples/xfyun_maas/models/main.rs"
 name = "xfyun_maas_auth"
 path = "examples/xfyun_maas/auth/main.rs"
 
+[[example]]
+name="ollama_chat"
+path="examples/ollama/chat/main.rs"
+
+[[example]]
+name="ollama_stream"
+path="examples/ollama/stream/main.rs"
+
+[[example]]
+name="ollama_models"
+path="examples/ollama/models/main.rs"
+
 
 [[example]]
 name = "together_chat"

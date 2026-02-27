@@ -1,0 +1,5 @@
+﻿use crate::model::{Capability, DefaultModelResolver, ModelResolver};
+pub struct OllamaModelResolver { inner: DefaultModelResolver }
+impl OllamaModelResolver { pub fn new() -> Self { let mut inner = DefaultModelResolver::new(); let c = Capability::CHAT | Capability::TOOLS | Capability::STREAMING; inner.extend_capabilities(vec![("llama3", c)]); inner.extend_context_lengths(vec![("llama3", 8192)]); Self { inner } } }
+impl Default for OllamaModelResolver { fn default() -> Self { Self::new() } }
+impl ModelResolver for OllamaModelResolver { fn resolve(&self, m: &str)->String{self.inner.resolve(m)} fn has_capability(&self, m: &str, c: Capability)->bool{self.inner.has_capability(m, c) || c == Capability::CHAT || c == Capability::STREAMING} fn max_context(&self, m: &str)->usize{let cx = self.inner.max_context(m); if cx > 4096 {cx} else {8192}} fn context_window_hint(&self, m: &str)->(usize, usize){self.inner.context_window_hint(m)} fn intelligence_and_modality(&self, _m: &str)->Option<(f32, crate::model::resolver::Modality)>{None} }

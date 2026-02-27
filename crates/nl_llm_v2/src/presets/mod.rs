@@ -68,6 +68,7 @@ pub mod vertex;
 pub mod vertex_api;
 pub mod xai;
 
+pub mod ollama;
 pub mod xfyun_maas;
 pub mod zai;
 pub mod zhipu;
