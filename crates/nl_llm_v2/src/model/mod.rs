@@ -103,3 +103,4 @@ pub use ollama::OllamaModelResolver;
 pub use xfyun_maas::XfyunMaasModelResolver;
 pub use jimeng::JimengModelResolver;
 pub use vidu::ViduModelResolver;
+pub mod baichuan;

@@ -112,6 +112,7 @@ impl PresetRegistry {
         self.builders.insert("together", super::together::builder);
         self.builders.insert("fireworks", super::fireworks::builder);
         self.builders.insert("ollama", super::ollama::builder);
+        self.builders.insert("baichuan", super::baichuan::builder);
         self.builders.insert("huggingface", super::huggingface::builder);
     }
 

@@ -14,13 +14,21 @@ async fn main() -> anyhow::Result<()> {
         .build();
 
     // 2. 构造原语请求
-    let mut req = PrimitiveRequest::new();
-    req.add_user_message("一个赛博朋克风格的城市夜景，街边有霓虹灯招牌，下着小雨");
-    req.model = "kling-v1".to_string(); // 可以是 kling-v1, kling-v1-6, kling-v2-master
+    let mut req = PrimitiveRequest::new("kling-v1"); // 可以是 kling-v1, kling-v1-6, kling-v2-master
+    req.messages.push(nl_llm_v2::primitive::PrimitiveMessage {
+        role: nl_llm_v2::primitive::Role::User,
+        content: vec![nl_llm_v2::primitive::PrimitiveContent::Text {
+            text: "一个赛博朋克风格的城市夜景，街边有霓虹灯招牌，下着小雨".to_string(),
+        }],
+    });
 
     println!("============ 提交可灵视频生成任务 ============");
+<<<<<<< Updated upstream
     println!("提示词: {}", req.messages[0].content[0].as_text().unwrap());
 
+=======
+    
+>>>>>>> Stashed changes
     // 3. 提交任务
     let task_id = client.submit_video_task(&req).await?;
     println!(">> 任务提交成功！Task ID: {}", task_id);

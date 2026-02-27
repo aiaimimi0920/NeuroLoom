@@ -37,3 +37,5 @@ pub use ollama::OllamaAuth;
 pub use xfyun_maas::XfyunMaasAuth;
 pub use jimeng::JimengAuth;
 pub use vidu::ViduApiKeyAuth;
+pub mod baichuan;
+pub use baichuan::BaichuanAuth;

@@ -136,3 +136,4 @@ pub struct Usage {
 }
 
 pub type BoxLlmStream = BoxStream<'static, anyhow::Result<LlmChunk>>;
+pub mod baichuan;

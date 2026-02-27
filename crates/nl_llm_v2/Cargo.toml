@@ -909,3 +909,10 @@ path = "examples/fireworks/chat/main.rs"
 [[example]]
 name = "huggingface_chat"
 path = "examples/huggingface/chat/main.rs"
+[[example]]
+name = "baichuan_chat"
+path = "examples/baichuan/chat/main.rs"
+
+[[example]]
+name = "baichuan_stream"
+path = "examples/baichuan/stream/main.rs"

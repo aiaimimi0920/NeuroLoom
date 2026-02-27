@@ -396,6 +396,15 @@ impl ClientBuilder {
     }
 
     /// Ollama 服务专用认证 (支持静默空鉴权)
+    
+    /// 配置百川 (Baichuan) 认证
+    pub fn with_baichuan_auth(mut self, api_key: impl Into<String>) -> Self {
+        self.authenticator = Some(Box::new(
+            crate::auth::providers::baichuan::BaichuanAuth::new(api_key),
+        ));
+        self
+    }
+
     pub fn with_ollama_auth(self, api_key: impl Into<String>) -> Self {
         self.auth(OllamaAuth::new(api_key))
     }
