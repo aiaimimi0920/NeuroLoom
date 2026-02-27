@@ -1,6 +1,8 @@
 use crate::client::ClientBuilder;
 use crate::protocol::base::openai::OpenAiProtocol;
+use crate::provider::custom::{CustomExtension, CustomModelResolver};
 use crate::site::base::openai::OpenAiSite;
+use std::sync::Arc;
 
 /// Hugging Face API 预设
 ///
@@ -33,5 +35,9 @@ pub fn builder() -> ClientBuilder {
     ClientBuilder::new()
         .site(OpenAiSite::new().with_base_url(HUGGINGFACE_BASE_URL))
         .protocol(OpenAiProtocol)
+        // Hugging Face Router 支持 OpenAI 兼容的 `/models` 端点，
+        // 使用自定义扩展动态拉取模型列表，避免静态模型表快速过期。
+        .model_resolver(CustomModelResolver::new())
+        .with_extension(Arc::new(CustomExtension::new(HUGGINGFACE_BASE_URL)))
         .default_model("meta-llama/Llama-3.3-70B-Instruct")
 }
