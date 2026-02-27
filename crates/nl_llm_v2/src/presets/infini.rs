@@ -1,10 +1,11 @@
 use crate::client::ClientBuilder;
+use crate::model::InfiniModelResolver;
 use crate::protocol::base::openai::OpenAiProtocol;
 use crate::site::base::openai::OpenAiSite;
 
-/// 无问苍穹 (Infinigence AI / GenStudio) 预设
+/// 无问芯穹 (Infinigence AI / GenStudio) 预设
 ///
-/// 无问苍穹是一个国产 AI 推理云平台，提供多种大模型 API 服务。
+/// 无问芯穹是一个国产 AI 推理云平台，提供多种大模型 API 服务。
 /// 使用 OpenAI 兼容协议，支持 Bearer Token 认证。
 ///
 /// # 平台特性
@@ -32,5 +33,6 @@ pub fn builder() -> ClientBuilder {
     ClientBuilder::new()
         .site(OpenAiSite::new().with_base_url(INFINI_BASE_URL))
         .protocol(OpenAiProtocol {})
+        .model_resolver(InfiniModelResolver::new())
         .default_model("deepseek-v3")
 }
