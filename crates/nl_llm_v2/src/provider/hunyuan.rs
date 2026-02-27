@@ -27,6 +27,7 @@ impl HunyuanModelResolver {
         inner.extend_aliases(vec![
             ("hunyuan", "hunyuan-turbos-latest"),
             ("hunyuan-turbo", "hunyuan-turbos-latest"),
+            ("hunyuan-t1", "hunyuan-t1-latest"),
             ("hunyuan-pro", "hunyuan-pro"),
             ("hunyuan-standard", "hunyuan-standard"),
             ("hunyuan-vision", "hunyuan-vision"),
@@ -117,7 +118,12 @@ impl ProtocolHook for HunyuanHook {
     fn after_pack(&self, ctx: &mut PipelineContext, packed: &mut Value) {
         if let PipelineInput::Primitive(_) = &ctx.input {
             // Hunyuan 支持增强开关：默认开启，但尊重调用方显式传入值。
-            if packed.get("enable_enhancement").is_none() {
+            // OpenAI 风格协议使用 `enable_enhancement`，Tencent TI 使用 `EnableEnhancement`。
+            if packed.get("Model").is_some() {
+                if packed.get("EnableEnhancement").is_none() {
+                    packed["EnableEnhancement"] = json!(true);
+                }
+            } else if packed.get("enable_enhancement").is_none() {
                 packed["enable_enhancement"] = json!(true);
             }
         }
@@ -131,6 +137,12 @@ fn hunyuan_model_metadata() -> Vec<(&'static str, &'static str, usize, Capabilit
             "Tencent Hunyuan Turbo Stream Latest",
             128_000,
             Capability::CHAT | Capability::STREAMING | Capability::TOOLS,
+        ),
+        (
+            "hunyuan-t1-latest",
+            "Tencent Hunyuan T1 Latest",
+            128_000,
+            Capability::CHAT | Capability::STREAMING | Capability::TOOLS | Capability::THINKING,
         ),
         (
             "hunyuan-pro",
@@ -205,9 +217,24 @@ mod tests {
     }
 
     #[test]
+    fn hook_uses_pascal_case_for_tencent_ti_protocol() {
+        let hook = HunyuanHook;
+        let req = PrimitiveRequest::single_user_message("hello").with_model("hunyuan-t1");
+        let mut ctx = test_ctx(req);
+        let mut packed = json!({"Model": "hunyuan-t1-latest"});
+
+        hook.after_pack(&mut ctx, &mut packed);
+
+        assert_eq!(packed["EnableEnhancement"], json!(true));
+        assert!(packed.get("enable_enhancement").is_none());
+    }
+
+    #[test]
     fn resolver_supports_known_alias_and_capability() {
         let resolver = HunyuanModelResolver::new();
         assert_eq!(resolver.resolve("hunyuan-turbo"), "hunyuan-turbos-latest");
+        assert_eq!(resolver.resolve("hunyuan-t1"), "hunyuan-t1-latest");
+        assert!(resolver.has_capability("hunyuan-t1-latest", Capability::THINKING));
         assert!(resolver.has_capability("hunyuan-vision", Capability::VISION));
     }
 }
