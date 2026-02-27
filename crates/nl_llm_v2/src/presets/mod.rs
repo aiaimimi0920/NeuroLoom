@@ -1,3 +1,4 @@
+pub mod github_models;
 pub mod stepfun;
 pub mod huggingface;
 pub mod fireworks;

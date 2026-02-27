@@ -116,6 +116,7 @@ impl PresetRegistry {
         self.builders.insert("cerebras", super::cerebras::builder);
         self.builders.insert("huggingface", super::huggingface::builder);
         self.builders.insert("stepfun", super::stepfun::builder);
+        self.builders.insert("github_models", super::github_models::builder);
     }
 
     pub fn get_builder(&self, preset_name: &str) -> Option<ClientBuilder> {

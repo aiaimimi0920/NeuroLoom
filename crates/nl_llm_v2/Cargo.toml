@@ -927,3 +927,7 @@ path = "examples/cerebras/chat/main.rs"
 [[example]]
 name = "cerebras_stream"
 path = "examples/cerebras/stream/main.rs"
+
+[[example]]
+name = "github_models_chat"
+path = "examples/github_models/chat/main.rs"
