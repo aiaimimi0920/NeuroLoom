@@ -42,6 +42,21 @@ pub struct ModelInfo {
     pub description: String,
 }
 
+/// Embedding 向量项
+#[derive(Debug, Clone)]
+pub struct EmbeddingData {
+    pub index: usize,
+    pub embedding: Vec<f32>,
+}
+
+/// Rerank 结果项
+#[derive(Debug, Clone)]
+pub struct RerankResult {
+    pub index: usize,
+    pub relevance_score: f32,
+    pub document: Option<String>,
+}
+
 /// 扩展 API 接口：各大平台特有的周边能力
 ///
 /// 各平台可能提供不同的扩展能力，如：
@@ -159,6 +174,30 @@ pub trait ProviderExtension: Send + Sync {
         _auth: &mut dyn Authenticator,
     ) -> anyhow::Result<Option<BalanceStatus>> {
         Ok(None) // 默认不支持
+    }
+
+    /// 文本向量化（Embedding）
+    async fn embed(
+        &self,
+        _http: &reqwest::Client,
+        _auth: &mut dyn Authenticator,
+        _model: &str,
+        _input: &[String],
+    ) -> anyhow::Result<Vec<EmbeddingData>> {
+        Err(anyhow::anyhow!("embed not supported for this provider"))
+    }
+
+    /// 文本重排（Rerank）
+    async fn rerank(
+        &self,
+        _http: &reqwest::Client,
+        _auth: &mut dyn Authenticator,
+        _model: &str,
+        _query: &str,
+        _documents: &[String],
+        _top_k: Option<usize>,
+    ) -> anyhow::Result<Vec<RerankResult>> {
+        Err(anyhow::anyhow!("rerank not supported for this provider"))
     }
 
     /// 提交异步视频生成任务（如可灵 Kling、Luma 等）
