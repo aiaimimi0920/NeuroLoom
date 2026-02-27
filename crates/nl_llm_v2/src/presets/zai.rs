@@ -1,5 +1,5 @@
 use crate::client::ClientBuilder;
-use crate::model::ZaiModelResolver;
+use crate::model::zai::ZaiModelResolver;
 use crate::protocol::base::openai::OpenAiProtocol;
 use crate::provider::zai::ZaiExtension;
 use crate::site::base::openai::OpenAiSite;

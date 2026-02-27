@@ -1,5 +1,5 @@
 use crate::client::ClientBuilder;
-use crate::model::ZhipuModelResolver;
+use crate::model::zhipu::ZhipuModelResolver;
 use crate::protocol::base::openai::OpenAiProtocol;
 use crate::provider::zhipu::ZhipuExtension;
 use crate::site::base::openai::OpenAiSite;

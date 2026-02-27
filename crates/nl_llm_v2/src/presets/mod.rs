@@ -1,3 +1,4 @@
+pub mod huggingface;
 pub mod fireworks;
 pub mod together;
 pub mod groq;
@@ -67,9 +68,10 @@ pub mod spark;
 pub mod vertex;
 pub mod vertex_api;
 pub mod xai;
-
 pub mod ollama;
 pub mod xfyun_maas;
 pub mod zai;
 pub mod zhipu;
+
+
 pub use registry::{PresetRegistry, REGISTRY};

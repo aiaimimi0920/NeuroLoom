@@ -46,13 +46,14 @@ pub mod sora;
 pub mod spark;
 pub mod submodel;
 pub mod vertex;
-pub mod vidu;
 pub mod xai;
 
 pub mod ollama;
 pub mod xfyun_maas;
 pub mod zai;
 pub mod zhipu;
+pub mod vidu;
+
 
 pub use aicodemirror::AiCodeMirrorModelResolver;
 pub use aigocode::AiGoCodeModelResolver;
@@ -96,10 +97,9 @@ pub use router::{RouteCandidate, RouteConstraint, Router, RoutingMode, SecurityC
 pub use siliconflow::SiliconFlowModelResolver;
 pub use spark::SparkModelResolver;
 pub use vertex::VertexModelResolver;
-pub use vidu::ViduModelResolver;
 pub use xai::XaiModelResolver;
 
 pub use ollama::OllamaModelResolver;
 pub use xfyun_maas::XfyunMaasModelResolver;
-pub use zai::ZaiModelResolver;
-pub use zhipu::ZhipuModelResolver;
+pub use jimeng::JimengModelResolver;
+pub use vidu::ViduModelResolver;

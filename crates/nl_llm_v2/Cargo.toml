@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "nl_llm_v2"
 version.workspace = true
 edition.workspace = true
@@ -32,6 +32,7 @@ rand = "0.8"
 base64 = "0.22"
 dirs = "5"
 open = "5"
+ring = "0.17.14"
 
 [[example]]
 name = "openai_chat"
@@ -841,6 +842,7 @@ path = "examples/coze/models/main.rs"
 [[example]]
 name = "kling_video"
 path = "examples/kling/video/main.rs"
+required-features = ["reqwest", "tokio"]
 
 
 [[example]]
@@ -903,3 +905,7 @@ path = "examples/together/chat/main.rs"
 [[example]]
 name = "fireworks_chat"
 path = "examples/fireworks/chat/main.rs"
+
+[[example]]
+name = "huggingface_chat"
+path = "examples/huggingface/chat/main.rs"

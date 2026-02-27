@@ -56,10 +56,12 @@ pub mod siliconflow;
 pub mod spark;
 pub mod vertex;
 
+
 pub mod ollama;
 pub mod xfyun_maas;
 pub mod zai;
 pub mod zhipu;
+
 
 // 显式导出类型，避免 extension() 函数名冲突
 pub use balance::*;
@@ -104,12 +106,15 @@ pub use qwen::QwenExtension;
 pub use rightcode::RightCodeExtension;
 pub use siliconflow::SiliconFlowExtension;
 pub use vertex::VertexExtension;
-pub use vidu::ViduExtension;
+
 
 pub use ollama::OllamaExtension;
 pub use xfyun_maas::XfyunMaasExtension;
 pub use zai::ZaiExtension;
 pub use zhipu::ZhipuExtension;
+pub use jimeng::JimengExtension;
+pub use vidu::ViduExtension;
+
 
 #[derive(Debug, Clone)]
 pub struct LlmResponse {

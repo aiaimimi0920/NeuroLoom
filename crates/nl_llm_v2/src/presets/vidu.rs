@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::client::ClientBuilder;
-use crate::model::vidu::ViduModelResolver;
+use crate::model::ViduModelResolver;
 use crate::provider::vidu::ViduExtension;
 use crate::site::base::vidu::ViduSite;
 
