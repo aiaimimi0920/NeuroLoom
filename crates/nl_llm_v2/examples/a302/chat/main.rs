@@ -13,10 +13,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_api_key(&api_key)
         .build();
 
-    let request = PrimitiveRequest::new("302.ai，你好！请问你是谁？");
+    let request = PrimitiveRequest::single_user_message("302.ai，你好！请问你是谁？");
     println!("发送请求...");
-    let response = client.generate(&request).await?;
-    println!("响应内容:\n\n{}", response.content());
+    let response = client.complete(&request).await?;
+    println!("响应内容:\n\n{}", response.content);
 
     Ok(())
 }

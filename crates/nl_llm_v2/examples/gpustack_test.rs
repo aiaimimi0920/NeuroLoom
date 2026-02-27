@@ -1,11 +1,9 @@
-use dotenv::dotenv;
 use futures::StreamExt;
 use nl_llm_v2::client::LlmClient;
 use nl_llm_v2::primitive::PrimitiveRequest;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    dotenv().ok();
     
     // 从环境变量中读取端点和密钥
     let base_url = std::env::var("GPUSTACK_BASE_URL").unwrap_or_else(|_| "http://127.0.0.1:8080/v1".to_string());
@@ -15,12 +13,12 @@ async fn main() -> anyhow::Result<()> {
     let client = LlmClient::build_gpustack(&base_url, &api_key);
 
     // 对于 GPUStack，此处的 "llama3" 将透明传递到服务端
-    let mut req = PrimitiveRequest::chat("llama3");
-    req.add_system("你是一个专业的编程助手，请用中文简短回答。");
-    req.add_user("请用一句话解释什么是 Rust 的所有权机制？");
+    let mut req = PrimitiveRequest::single_user_message("请用一句话解释什么是 Rust 的所有权机制？")
+        .with_model("llama3");
+    req.system = Some("你是一个专业的编程助手，请用中文简短回答。".to_string());
 
     println!("=================== 开始流式请求 ===================");
-    let mut stream = client.generate_stream(req).await?;
+    let mut stream = client.stream(&req).await?;
 
     while let Some(chunk) = stream.next().await {
         match chunk {

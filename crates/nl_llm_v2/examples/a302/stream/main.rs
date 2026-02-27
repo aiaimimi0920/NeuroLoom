@@ -1,4 +1,4 @@
-use futures_util::StreamExt;
+use futures::StreamExt;
 use nl_llm_v2::{primitive::PrimitiveRequest, LlmClient};
 
 #[tokio::main]
@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         PrimitiveRequest::new("请给我讲一个关于人工智能和未来的科幻小故事，大概300字左右。");
     println!("发送请求...");
 
-    let mut stream = client.generate_stream(&request).await?;
+    let mut stream = client.stream(&request).await?;
 
     println!("流式响应内容:");
     while let Some(chunk_res) = stream.next().await {

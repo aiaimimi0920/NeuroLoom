@@ -41,7 +41,7 @@ async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
 
     let api_key = std::env::var("OCOOLAI_API_KEY")
-        .or_else(|_| args.get(1).cloned())
+        .or_else(|_| args.get(1).cloned().ok_or_else(|| anyhow::anyhow!("Missing API key parameter")))
         .expect("需要提供 API Key");
 
     let prompt = args.get(2).cloned().unwrap_or_else(|| {
@@ -72,7 +72,7 @@ async fn main() -> Result<()> {
     println!("AI: ");
 
     // 发送流式请求
-    let mut stream = client.stream(req).await?;
+    let mut stream = client.stream(&req).await?;
 
     while let Some(chunk_result) = stream.next().await {
         match chunk_result {

@@ -14,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("正在获取 302.ai 支持的模型列表...");
 
-    match client.models().await {
+    match client.list_models().await {
         Ok(models) => {
             println!("成功获取到 {} 个模型:", models.len());
             for model in models {

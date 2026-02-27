@@ -92,6 +92,9 @@ _cf_temp_email/
 # 本地脚本
 *.local.bat
 
+# 本地密钥配置文件
+**/local_keys.bat
+
 # Python virtual environments
 crates/nl_llm_v2/volc_env/
 **/.venv/

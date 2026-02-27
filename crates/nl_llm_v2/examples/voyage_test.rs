@@ -1,9 +1,7 @@
-use dotenv::dotenv;
 use nl_llm_v2::client::LlmClient;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    dotenv().ok();
 
     // 从环境变量中读取密钥
     let api_key = std::env::var("NL_API_KEY").expect("请设置 NL_API_KEY 环境变量");

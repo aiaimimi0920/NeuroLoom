@@ -45,7 +45,7 @@ async fn main() -> Result<()> {
 
     // 获取 API Key
     let api_key = std::env::var("OCOOLAI_API_KEY")
-        .or_else(|_| args.get(1).cloned())
+        .or_else(|_| args.get(1).cloned().ok_or_else(|| anyhow::anyhow!("Missing API key parameter")))
         .expect("需要提供 API Key (设置 OCOOLAI_API_KEY 环境变量或作为第一个参数传入)");
 
     // 获取 prompt
@@ -77,7 +77,7 @@ async fn main() -> Result<()> {
     println!("AI: ");
 
     // 发送请求
-    let resp = client.complete(req).await?;
+    let resp = client.complete(&req).await?;
 
     println!("{}", resp.content);
 
