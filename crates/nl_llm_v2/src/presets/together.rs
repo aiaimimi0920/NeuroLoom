@@ -1,6 +1,8 @@
 use crate::client::ClientBuilder;
+use crate::provider::custom::{CustomExtension, CustomModelResolver};
 use crate::protocol::base::openai::OpenAiProtocol;
 use crate::site::base::openai::OpenAiSite;
+use std::sync::Arc;
 
 /// Together API 预设
 ///
@@ -33,5 +35,7 @@ pub fn builder() -> ClientBuilder {
     ClientBuilder::new()
         .site(OpenAiSite::new().with_base_url(TOGETHER_BASE_URL))
         .protocol(OpenAiProtocol)
+        .model_resolver(CustomModelResolver::new())
+        .with_extension(Arc::new(CustomExtension::new(TOGETHER_BASE_URL)))
         .default_model("meta-llama/Llama-3.3-70B-Instruct-Turbo")
 }
