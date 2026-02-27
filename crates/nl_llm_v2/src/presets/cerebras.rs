@@ -1,6 +1,9 @@
 use crate::client::ClientBuilder;
+use crate::model::CerebrasModelResolver;
 use crate::protocol::base::openai::OpenAiProtocol;
+use crate::provider::custom::CustomExtension;
 use crate::site::base::openai::OpenAiSite;
+use std::sync::Arc;
 
 /// CereBras AI 预设
 ///
@@ -39,5 +42,7 @@ pub fn builder() -> ClientBuilder {
     ClientBuilder::new()
         .site(OpenAiSite::new().with_base_url(CEREBRAS_BASE_URL))
         .protocol(OpenAiProtocol {})
+        .model_resolver(CerebrasModelResolver::new())
+        .with_extension(Arc::new(CustomExtension::new(CEREBRAS_BASE_URL)))
         .default_model("llama3.1-8b")
 }
