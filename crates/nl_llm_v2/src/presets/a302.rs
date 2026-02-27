@@ -22,5 +22,5 @@ pub fn builder() -> ClientBuilder {
         .protocol(OpenAiProtocol {})
         .model_resolver(OpenAiModelResolver::new())
         .with_extension(Arc::new(OpenAiExtension::new()))
-        .default_model("gpt-3.5-turbo")
+        .default_model("gpt-4o")
 }
