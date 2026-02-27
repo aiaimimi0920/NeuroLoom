@@ -81,6 +81,9 @@ pub mod zhipu;
 pub mod newapi;
 pub mod gpustack;
 pub mod voyage;
+pub mod qiniu;
+pub mod poe;
+pub mod ocoolai;
 
 
 pub use registry::{PresetRegistry, REGISTRY};
