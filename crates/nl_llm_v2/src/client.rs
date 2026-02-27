@@ -3,7 +3,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::auth::providers::{
-    AnthropicApiKeyAuth, ApiKeyAuth, IFlowAuth, ServiceAccountAuth, SparkAuth, XfyunMaasAuth, OllamaAuth,
+    AnthropicApiKeyAuth, ApiKeyAuth, IFlowAuth, OllamaAuth, ServiceAccountAuth, SparkAuth,
+    XfyunMaasAuth,
 };
 use crate::auth::Authenticator;
 use crate::concurrency::{ConcurrencyConfig, ConcurrencyController, FailureType};
@@ -16,7 +17,7 @@ use crate::pipeline::{Pipeline, PipelineContext};
 use crate::primitive::PrimitiveRequest;
 use crate::protocol::traits::{ProtocolFormat, ProtocolHook};
 use crate::provider::balance::BalanceStatus;
-use crate::provider::extension::{ModelInfo, ProviderExtension};
+use crate::provider::extension::{EmbeddingData, ModelInfo, ProviderExtension, RerankResult};
 use crate::provider::{BoxLlmStream, LlmResponse};
 use crate::site::context::{Action, UrlContext};
 use crate::site::Site;
@@ -227,6 +228,37 @@ impl LlmClient {
         self.authenticator.clone()
     }
 
+    /// 文本向量化（如果平台支持）
+    pub async fn embed(&self, model: &str, input: &[String]) -> anyhow::Result<Vec<EmbeddingData>> {
+        if let Some(ext) = &self.extension {
+            let mut auth = self.authenticator.lock().await;
+            ext.embed(&self.http, &mut **auth, model, input).await
+        } else {
+            Err(anyhow::anyhow!(
+                "Extension API (embed) not supported for this provider"
+            ))
+        }
+    }
+
+    /// 文本重排（如果平台支持）
+    pub async fn rerank(
+        &self,
+        model: &str,
+        query: &str,
+        documents: &[String],
+        top_k: Option<usize>,
+    ) -> anyhow::Result<Vec<RerankResult>> {
+        if let Some(ext) = &self.extension {
+            let mut auth = self.authenticator.lock().await;
+            ext.rerank(&self.http, &mut **auth, model, query, documents, top_k)
+                .await
+        } else {
+            Err(anyhow::anyhow!(
+                "Extension API (rerank) not supported for this provider"
+            ))
+        }
+    }
+
     /// 获取可用模型列表（如果平台支持该扩展）
     pub async fn list_models(&self) -> anyhow::Result<Vec<ModelInfo>> {
         if let Some(ext) = &self.extension {
@@ -267,7 +299,8 @@ impl LlmClient {
             resolved_req.model = resolved_model;
 
             let mut auth = self.authenticator.lock().await;
-            ext.submit_video_task(&self.http, &mut **auth, &resolved_req).await
+            ext.submit_video_task(&self.http, &mut **auth, &resolved_req)
+                .await
         } else {
             Err(anyhow::anyhow!(
                 "Extension API (submit_video_task) not supported for this provider"
@@ -396,7 +429,7 @@ impl ClientBuilder {
     }
 
     /// Ollama 服务专用认证 (支持静默空鉴权)
-    
+
     /// 配置百川 (Baichuan) 认证
     pub fn with_baichuan_auth(mut self, api_key: impl Into<String>) -> Self {
         self.authenticator = Some(Box::new(
@@ -408,7 +441,6 @@ impl ClientBuilder {
     pub fn with_ollama_auth(self, api_key: impl Into<String>) -> Self {
         self.auth(OllamaAuth::new(api_key))
     }
-
 
     pub fn with_cookie(self, cookie: impl Into<String>) -> Self {
         self.auth(IFlowAuth::new(cookie))
