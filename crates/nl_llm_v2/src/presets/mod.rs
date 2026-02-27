@@ -85,6 +85,8 @@ pub mod qiniu;
 pub mod poe;
 pub mod burncloud;
 pub mod ocoolai;
+pub mod cephalon;
+pub mod tokenflux;
 
 
 pub use registry::{PresetRegistry, REGISTRY};

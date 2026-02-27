@@ -139,6 +139,8 @@ impl PresetRegistry {
         self.builders.insert("qiniu", super::qiniu::builder);
         self.builders.insert("burncloud", super::burncloud::builder);
         self.builders.insert("ocoolai", super::ocoolai::builder);
+        self.builders.insert("tokenflux", super::tokenflux::builder);
+        self.builders.insert("cephalon", super::cephalon::builder);
     }
 
     pub fn get_builder(&self, preset_name: &str) -> Option<ClientBuilder> {

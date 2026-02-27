@@ -112,5 +112,7 @@ pub use vidu::ViduModelResolver;
 pub use xfyun_maas::XfyunMaasModelResolver;
 pub mod baichuan;
 pub mod ocoolai;
+pub mod cephalon;
 
 pub use ocoolai::OcoolAiModelResolver;
+pub use cephalon::CephalonModelResolver;
