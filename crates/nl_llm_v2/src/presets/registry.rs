@@ -132,6 +132,7 @@ impl PresetRegistry {
             .insert("vercel_ai_gateway", super::vercel_ai_gateway::builder);
         self.builders.insert("302.ai", super::a302::builder);
         self.builders.insert("a302", super::a302::builder);
+        self.builders.insert("newapi", super::newapi::builder);
     }
 
     pub fn get_builder(&self, preset_name: &str) -> Option<ClientBuilder> {

@@ -78,6 +78,7 @@ pub mod ollama;
 pub mod xfyun_maas;
 pub mod zai;
 pub mod zhipu;
+pub mod newapi;
 
 
 pub use registry::{PresetRegistry, REGISTRY};

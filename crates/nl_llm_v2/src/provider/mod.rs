@@ -61,6 +61,7 @@ pub mod ollama;
 pub mod xfyun_maas;
 pub mod zai;
 pub mod zhipu;
+pub mod newapi;
 
 // 显式导出类型，避免 extension() 函数名冲突
 pub use balance::*;
@@ -114,6 +115,7 @@ pub use vidu::ViduExtension;
 pub use xfyun_maas::XfyunMaasExtension;
 pub use zai::ZaiExtension;
 pub use zhipu::ZhipuExtension;
+pub use newapi::NewApiExtension;
 
 #[derive(Debug, Clone)]
 pub struct LlmResponse {
