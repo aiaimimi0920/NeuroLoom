@@ -1,3 +1,4 @@
+pub mod fireworks;
 pub mod together;
 pub mod groq;
 pub mod doubao;

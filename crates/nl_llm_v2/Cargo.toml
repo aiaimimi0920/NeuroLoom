@@ -888,3 +888,6 @@ path = "examples/xfyun_maas/auth/main.rs"
 [[example]]
 name = "together_chat"
 path = "examples/together/chat/main.rs"
+[[example]]
+name = "fireworks_chat"
+path = "examples/fireworks/chat/main.rs"

@@ -111,6 +111,7 @@ impl PresetRegistry {
         self.builders.insert("replicate", super::replicate::builder);
         self.builders.insert("groq", super::groq::builder);
         self.builders.insert("together", super::together::builder);
+        self.builders.insert("fireworks", super::fireworks::builder);
     }
 
     pub fn get_builder(&self, preset_name: &str) -> Option<ClientBuilder> {
