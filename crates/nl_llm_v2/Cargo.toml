@@ -800,6 +800,15 @@ name = "aiproxy_stream"
 path = "examples/aiproxy/stream/main.rs"
 
 [[example]]
+name = "tencent_ti_chat"
+path = "examples/tencent_ti/chat/main.rs"
+
+[[example]]
+name = "tencent_ti_stream"
+path = "examples/tencent_ti/stream/main.rs"
+
+
+[[example]]
 name = "xai_chat"
 path = "examples/xai/chat/main.rs"
 
@@ -953,3 +962,14 @@ path = "examples/infini/stream/main.rs"
 [[example]]
 name = "ppio_chat"
 path = "examples/ppio/chat/main.rs"
+[[example]]
+name = "vercel_ai_gateway_chat"
+path = "examples/vercel_ai_gateway/chat/main.rs"
+
+[[example]]
+name = "a302_chat"
+path = "examples/a302/chat/main.rs"
+
+[[example]]
+name = "a302_stream"
+path = "examples/a302/stream/main.rs"

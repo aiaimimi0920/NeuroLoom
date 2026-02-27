@@ -82,6 +82,7 @@ impl PresetRegistry {
         self.builders
             .insert("aws_claude_ak", super::aws_claude::builder_ak);
         self.builders.insert("cohere", super::cohere::builder);
+        self.builders.insert("tencent_ti", super::tencent_ti::builder);
         self.builders.insert("hunyuan", super::hunyuan::builder);
         self.builders
             .insert("cloudflare", super::cloudflare::builder);
@@ -126,6 +127,8 @@ impl PresetRegistry {
         self.builders
             .insert("hyperbolic", super::hyperbolic::builder);
         self.builders.insert("ppio", super::ppio::builder);
+        self.builders.insert("vercel_ai_gateway", super::vercel_ai_gateway::builder);
+        self.builders.insert("302.ai", super::a302::builder);
     }
 
     pub fn get_builder(&self, preset_name: &str) -> Option<ClientBuilder> {

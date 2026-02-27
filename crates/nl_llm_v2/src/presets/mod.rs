@@ -1,3 +1,4 @@
+pub mod vercel_ai_gateway;
 pub mod ppio;
 pub mod hyperbolic;
 pub mod github_models;
@@ -40,6 +41,7 @@ pub mod doubaoseed;
 pub mod fastgpt;
 pub mod gemini;
 pub mod gemini_cli;
+pub mod tencent_ti;
 pub mod hunyuan;
 pub mod iflow;
 pub mod jina;
@@ -79,6 +81,7 @@ pub mod zhipu;
 
 
 pub use registry::{PresetRegistry, REGISTRY};
+pub mod a302;
 pub mod baichuan;
 pub mod cerebras;
 pub mod lmstudio;
