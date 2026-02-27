@@ -39,6 +39,11 @@ logs/
 *_sa.json
 *service_account*.json
 
+# platformtools auto_register secrets (do NOT commit)
+platformtools/auto_register/oai_register_cn/data/gptmail_keys.txt
+platformtools/auto_register/oai_register_cn/data/api_keys.txt
+platformtools/auto_register/oai_register_cn/data/mailcreate_config.json
+
 # 构建产物
 /dist/
 /build/
@@ -89,7 +94,29 @@ crates/nl_llm_v2/volc_env/
 **/.venv/
 **/venv/
 
+# Python cache
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
 # Local generated/secret data (do NOT commit)
+# Keep directory structure but ignore generated/secret runtime files.
+platformtools/auto_register/oai_register_cn/data/*
+platformtools/auto_register/oai_register_cn/data/cli_codex/
+platformtools/auto_register/oai_register_cn/data/results.jsonl
+platformtools/auto_register/oai_register_cn/data/proxies.txt
+
+# Allow committed templates/examples
+!platformtools/auto_register/oai_register_cn/data/*.example.*
+!platformtools/auto_register/oai_register_cn/data/proxies.example.txt
+!platformtools/auto_register/oai_register_cn/data/gptmail_keys.example.txt
+!platformtools/auto_register/oai_register_cn/data/mailcreate_config.example.json
+
+platformtools/auto_register/oai_register_cn/__pycache__/
+platformtools/auto_register/oai_register_cn/logs/
+platformtools/auto_register/oai_register_cn/*.log
+
+# (legacy path)
 tools/oai_register/data/
 tools/oai_register/__pycache__/
 tools/oai_register/logs/
@@ -106,6 +133,9 @@ push_error*.txt
 crates/nl_llm_v2/*_key.txt
 
 # oai_register generated logs (do NOT commit)
+platformtools/auto_register/oai_register_cn/logs_output*.txt
+
+# (legacy path)
 tools/oai_register/logs_output*.txt
 
 # Workspace local / untracked (do NOT commit)
@@ -113,6 +143,15 @@ tools/oai_register/logs_output*.txt
 crates/nl_llm_v2/examples/kling/test.py
 crates/nl_llm_v2/fix_resolvers.py
 tools/test_coze.py
+platformtools/auto_register/oai_register_cn/check_kookeey.py
+platformtools/auto_register/oai_register_cn/main_recovered.py
+platformtools/auto_register/oai_register_cn/main_recovered_utf8.py
+platformtools/auto_register/oai_register_cn/startup.bat
+platformtools/auto_register/oai_register_cn/test_api.py
+platformtools/auto_register/oai_register_cn/test_gateway.py
+platformtools/auto_register/oai_register_cn/test_kookeey.py
+
+# (legacy path)
 tools/oai_register/check_kookeey.py
 tools/oai_register/main_recovered.py
 tools/oai_register/main_recovered_utf8.py

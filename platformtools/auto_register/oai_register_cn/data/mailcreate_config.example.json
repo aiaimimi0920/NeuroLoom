@@ -1,0 +1,5 @@
+{
+  "MAILCREATE_BASE_URL": "https://mail.aiaimimi.com",
+  "MAILCREATE_CUSTOM_AUTH": "<put-your-x-custom-auth-here>",
+  "MAILCREATE_DOMAIN": "aiaimimi.com"
+}
