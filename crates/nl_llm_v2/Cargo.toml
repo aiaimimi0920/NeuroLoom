@@ -931,3 +931,14 @@ path = "examples/cerebras/stream/main.rs"
 [[example]]
 name = "github_models_chat"
 path = "examples/github_models/chat/main.rs"
+[[example]]
+name = "lmstudio_chat"
+path = "examples/lmstudio/chat/main.rs"
+
+[[example]]
+name = "lmstudio_stream"
+path = "examples/lmstudio/stream/main.rs"
+
+[[example]]
+name = "hyperbolic_chat"
+path = "examples/hyperbolic/chat/main.rs"

@@ -1,3 +1,4 @@
+pub mod hyperbolic;
 pub mod github_models;
 pub mod stepfun;
 pub mod huggingface;
@@ -79,3 +80,4 @@ pub mod zhipu;
 pub use registry::{PresetRegistry, REGISTRY};
 pub mod baichuan;
 pub mod cerebras;
+pub mod lmstudio;
