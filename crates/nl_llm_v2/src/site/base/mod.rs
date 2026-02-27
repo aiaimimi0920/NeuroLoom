@@ -10,6 +10,7 @@ pub mod dify;
 pub mod doubao;
 pub mod fastgpt;
 pub mod gemini;
+pub mod tencent_ti;
 pub mod hunyuan;
 pub mod iflow;
 pub mod jimeng;

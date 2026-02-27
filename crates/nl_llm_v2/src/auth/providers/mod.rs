@@ -39,3 +39,5 @@ pub use jimeng::JimengAuth;
 pub use vidu::ViduApiKeyAuth;
 pub mod baichuan;
 pub use baichuan::BaichuanAuth;
+pub mod tencent_ti;
+pub use tencent_ti::TencentTiAuth;
