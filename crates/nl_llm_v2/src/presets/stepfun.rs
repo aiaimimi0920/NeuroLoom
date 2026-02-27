@@ -1,6 +1,8 @@
 use crate::client::ClientBuilder;
 use crate::protocol::base::openai::OpenAiProtocol;
+use crate::provider::custom::{CustomExtension, CustomModelResolver};
 use crate::site::base::openai::OpenAiSite;
+use std::sync::Arc;
 
 /// 阶跃星辰 StepFun API 预设
 ///
@@ -33,5 +35,8 @@ pub fn builder() -> ClientBuilder {
     ClientBuilder::new()
         .site(OpenAiSite::new().with_base_url(STEPFUN_BASE_URL))
         .protocol(OpenAiProtocol)
+        // StepFun 模型名更新较快，使用动态模型解析与 /models 拉取，避免预置列表过时。
+        .model_resolver(CustomModelResolver::new())
+        .with_extension(Arc::new(CustomExtension::new(STEPFUN_BASE_URL)))
         .default_model("step-2-16k")
 }
