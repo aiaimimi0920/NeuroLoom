@@ -137,7 +137,6 @@ impl PresetRegistry {
         self.builders.insert("voyage", super::voyage::builder);
         self.builders.insert("poe", super::poe::builder);
         self.builders.insert("qiniu", super::qiniu::builder);
-        self.builders.insert("burncloud", super::burncloud::builder);
         self.builders.insert("ocoolai", super::ocoolai::builder);
         self.builders.insert("tokenflux", super::tokenflux::builder);
         self.builders.insert("cephalon", super::cephalon::builder);
