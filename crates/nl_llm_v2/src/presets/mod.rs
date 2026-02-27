@@ -77,3 +77,4 @@ pub mod zhipu;
 
 pub use registry::{PresetRegistry, REGISTRY};
 pub mod baichuan;
+pub mod cerebras;
