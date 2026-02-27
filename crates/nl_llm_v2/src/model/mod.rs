@@ -7,6 +7,7 @@ pub mod antigravity;
 pub mod aws_claude;
 pub mod azure_openai;
 pub mod bailing;
+pub mod cerebras;
 pub mod cloudflare;
 pub mod codex;
 pub mod cohere;
@@ -49,11 +50,10 @@ pub mod vertex;
 pub mod xai;
 
 pub mod ollama;
+pub mod vidu;
 pub mod xfyun_maas;
 pub mod zai;
 pub mod zhipu;
-pub mod vidu;
-
 
 pub use aicodemirror::AiCodeMirrorModelResolver;
 pub use aigocode::AiGoCodeModelResolver;
@@ -64,6 +64,7 @@ pub use antigravity::AntigravityModelResolver;
 pub use aws_claude::AwsClaudeModelResolver;
 pub use azure_openai::AzureOpenAiModelResolver;
 pub use bailing::BaiLingModelResolver;
+pub use cerebras::CerebrasModelResolver;
 pub use cloudflare::CloudflareModelResolver;
 pub use codex::CodexModelResolver;
 pub use cohere::CohereModelResolver;
@@ -99,8 +100,8 @@ pub use spark::SparkModelResolver;
 pub use vertex::VertexModelResolver;
 pub use xai::XaiModelResolver;
 
-pub use ollama::OllamaModelResolver;
-pub use xfyun_maas::XfyunMaasModelResolver;
 pub use jimeng::JimengModelResolver;
+pub use ollama::OllamaModelResolver;
 pub use vidu::ViduModelResolver;
+pub use xfyun_maas::XfyunMaasModelResolver;
 pub mod baichuan;
