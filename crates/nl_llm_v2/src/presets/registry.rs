@@ -143,6 +143,7 @@ impl PresetRegistry {
         self.builders.insert("tokenflux", super::tokenflux::builder);
         self.builders.insert("cephalon", super::cephalon::builder);
         self.builders.insert("ph8", super::ph8::builder);
+        self.builders.insert("sophnet", super::sophnet::builder);
     }
 
     pub fn get_builder(&self, preset_name: &str) -> Option<ClientBuilder> {

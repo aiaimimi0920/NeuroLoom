@@ -71,6 +71,7 @@ pub mod poe;
 pub mod ocoolai;
 pub mod cephalon;
 pub mod ph8;
+pub mod sophnet;
 
 // 显式导出类型，避免 extension() 函数名冲突
 pub use balance::*;
@@ -134,6 +135,7 @@ pub use poe::PoeExtension;
 pub use ocoolai::OcoolAiExtension;
 pub use cephalon::CephalonExtension;
 pub use ph8::Ph8Extension;
+pub use sophnet::SophnetExtension;
 
 #[derive(Debug, Clone)]
 pub struct LlmResponse {

@@ -96,3 +96,4 @@ pub mod cerebras;
 pub mod lmstudio;
 pub mod infini;
 pub mod ph8;
+pub mod sophnet;
