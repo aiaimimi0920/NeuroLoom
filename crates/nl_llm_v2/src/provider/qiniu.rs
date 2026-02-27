@@ -7,6 +7,8 @@ use crate::concurrency::ConcurrencyConfig;
 use crate::model::{Capability, ModelResolver};
 use crate::provider::extension::{ModelInfo, ProviderExtension};
 
+const QINIU_BASE_URL: &str = "https://ai.qiniuapi.com/v1";
+
 /// 七牛云 AI 推理模型解析器
 ///
 /// 七牛云大模型服务是一个基于兼容 OpenAI 的 API 层，
@@ -32,17 +34,16 @@ impl ModelResolver for QiniuModelResolver {
     }
 
     fn has_capability(&self, _model: &str, capability: Capability) -> bool {
-        // 作为代理服务，允许透传基础的全栈能力
-        capability.contains(Capability::CHAT) 
-            || capability.contains(Capability::STREAMING) 
-            || capability.contains(Capability::VISION) 
-            || capability.contains(Capability::TOOLS)
+        // 作为聚合代理服务，默认透传基础能力（不含 THINKING/CODE_EXECUTION）
+        let supported =
+            Capability::CHAT | Capability::STREAMING | Capability::VISION | Capability::TOOLS;
+        supported.contains(capability)
     }
 
     fn max_context(&self, model: &str) -> usize {
         // 大多以开源模型或千问为主，基于当前趋势给予通用宽松界限
-        if model.contains("qwen") {
-            32_000
+        if model.to_ascii_lowercase().contains("qwen") {
+            128_000
         } else {
             8192
         }
@@ -74,11 +75,20 @@ struct QiniuModelItem {
 }
 
 /// 七牛云 AI 推理扩展：动态查询并返回支持的模型
-pub struct QiniuExtension;
+pub struct QiniuExtension {
+    base_url: String,
+}
 
 impl QiniuExtension {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            base_url: QINIU_BASE_URL.to_string(),
+        }
+    }
+
+    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.base_url = base_url.into().trim_end_matches('/').to_string();
+        self
     }
 
     fn fallback_models() -> Vec<ModelInfo> {
@@ -94,7 +104,7 @@ impl QiniuExtension {
             ModelInfo {
                 id: "qwen-turbo".to_string(),
                 description: "Fallback model (Qwen Turbo series)".to_string(),
-            }
+            },
         ]
     }
 }
@@ -116,7 +126,7 @@ impl ProviderExtension for QiniuExtension {
         http: &Client,
         auth: &mut dyn Authenticator,
     ) -> anyhow::Result<Vec<ModelInfo>> {
-        let req = http.get("https://ai.qiniuapi.com/v1/models");
+        let req = http.get(format!("{}/models", self.base_url));
         let req = auth.inject(req)?;
 
         match req.send().await {

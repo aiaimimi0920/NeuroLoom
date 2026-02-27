@@ -980,3 +980,20 @@ path = "examples/a302/models/main.rs"
 
 [dev-dependencies]
 env_logger = "0.11.9"
+
+
+[[example]]
+name = "qiniu_auth"
+path = "examples/qiniu/auth/main.rs"
+
+[[example]]
+name = "qiniu_chat"
+path = "examples/qiniu/chat/main.rs"
+
+[[example]]
+name = "qiniu_stream"
+path = "examples/qiniu/stream/main.rs"
+
+[[example]]
+name = "qiniu_models"
+path = "examples/qiniu/models/main.rs"
