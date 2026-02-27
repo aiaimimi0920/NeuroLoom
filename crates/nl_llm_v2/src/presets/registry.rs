@@ -134,6 +134,7 @@ impl PresetRegistry {
         self.builders.insert("a302", super::a302::builder);
         self.builders.insert("newapi", super::newapi::builder);
         self.builders.insert("gpustack", super::gpustack::builder);
+        self.builders.insert("voyage", super::voyage::builder);
     }
 
     pub fn get_builder(&self, preset_name: &str) -> Option<ClientBuilder> {

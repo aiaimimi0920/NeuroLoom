@@ -63,6 +63,7 @@ pub mod zai;
 pub mod zhipu;
 pub mod newapi;
 pub mod gpustack;
+pub mod voyage;
 
 // 显式导出类型，避免 extension() 函数名冲突
 pub use balance::*;
@@ -118,6 +119,7 @@ pub use zai::ZaiExtension;
 pub use zhipu::ZhipuExtension;
 pub use newapi::NewApiExtension;
 pub use gpustack::GpuStackExtension;
+pub use voyage::VoyageExtension;
 
 #[derive(Debug, Clone)]
 pub struct LlmResponse {

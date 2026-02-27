@@ -80,6 +80,7 @@ pub mod zai;
 pub mod zhipu;
 pub mod newapi;
 pub mod gpustack;
+pub mod voyage;
 
 
 pub use registry::{PresetRegistry, REGISTRY};
