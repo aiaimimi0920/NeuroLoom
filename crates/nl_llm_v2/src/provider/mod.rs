@@ -56,12 +56,10 @@ pub mod siliconflow;
 pub mod spark;
 pub mod vertex;
 
-
 pub mod ollama;
 pub mod xfyun_maas;
 pub mod zai;
 pub mod zhipu;
-
 
 // 显式导出类型，避免 extension() 函数名冲突
 pub use balance::*;
@@ -75,6 +73,7 @@ pub use anthropic::AnthropicExtension;
 pub use antigravity::AntigravityExtension;
 pub use aws_claude::AwsClaudeExtension;
 pub use azure_openai::AzureOpenAiExtension;
+pub use baichuan::BaichuanExtension;
 pub use bailing::BaiLingExtension;
 pub use cloudflare::CloudflareExtension;
 pub use codex::CodexExtension;
@@ -107,14 +106,12 @@ pub use rightcode::RightCodeExtension;
 pub use siliconflow::SiliconFlowExtension;
 pub use vertex::VertexExtension;
 
-
+pub use jimeng::JimengExtension;
 pub use ollama::OllamaExtension;
+pub use vidu::ViduExtension;
 pub use xfyun_maas::XfyunMaasExtension;
 pub use zai::ZaiExtension;
 pub use zhipu::ZhipuExtension;
-pub use jimeng::JimengExtension;
-pub use vidu::ViduExtension;
-
 
 #[derive(Debug, Clone)]
 pub struct LlmResponse {

@@ -1,6 +1,7 @@
 use crate::client::ClientBuilder;
 use crate::model::baichuan::BaichuanModelResolver;
 use crate::protocol::base::openai::OpenAiProtocol;
+use crate::provider::baichuan::BaichuanExtension;
 use crate::site::SimpleSite;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -17,6 +18,7 @@ pub fn builder() -> ClientBuilder {
         })
         .protocol(OpenAiProtocol {})
         .model_resolver(BaichuanModelResolver::new())
+        .with_extension(std::sync::Arc::new(BaichuanExtension::new()))
         // 默认模型设为百川低成本极速版
         .default_model("Baichuan4-Air")
 }
