@@ -1,6 +1,9 @@
 use crate::client::ClientBuilder;
+use crate::model::GroqModelResolver;
 use crate::protocol::base::openai::OpenAiProtocol;
+use crate::provider::openai::OpenAiExtension;
 use crate::site::base::openai::OpenAiSite;
+use std::sync::Arc;
 
 /// Groq API 预设
 ///
@@ -32,6 +35,8 @@ const GROQ_BASE_URL: &str = "https://api.groq.com/openai/v1";
 pub fn builder() -> ClientBuilder {
     ClientBuilder::new()
         .site(OpenAiSite::new().with_base_url(GROQ_BASE_URL))
-        .protocol(OpenAiProtocol)
+        .protocol(OpenAiProtocol {})
+        .model_resolver(GroqModelResolver::new())
+        .with_extension(Arc::new(OpenAiExtension::new()))
         .default_model("llama-3.3-70b-versatile")
 }
