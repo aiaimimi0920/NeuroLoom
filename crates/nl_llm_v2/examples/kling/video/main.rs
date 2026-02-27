@@ -23,12 +23,8 @@ async fn main() -> anyhow::Result<()> {
     });
 
     println!("============ 提交可灵视频生成任务 ============");
-<<<<<<< Updated upstream
     println!("提示词: {}", req.messages[0].content[0].as_text().unwrap());
 
-=======
-    
->>>>>>> Stashed changes
     // 3. 提交任务
     let task_id = client.submit_video_task(&req).await?;
     println!(">> 任务提交成功！Task ID: {}", task_id);
