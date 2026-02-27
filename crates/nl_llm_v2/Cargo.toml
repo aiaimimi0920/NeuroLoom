@@ -949,3 +949,7 @@ path = "examples/infini/chat/main.rs"
 [[example]]
 name = "infini_stream"
 path = "examples/infini/stream/main.rs"
+
+[[example]]
+name = "ppio_chat"
+path = "examples/ppio/chat/main.rs"

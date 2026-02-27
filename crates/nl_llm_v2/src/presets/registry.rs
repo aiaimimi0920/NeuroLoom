@@ -120,6 +120,7 @@ impl PresetRegistry {
         self.builders.insert("stepfun", super::stepfun::builder);
         self.builders.insert("github_models", super::github_models::builder);
         self.builders.insert("hyperbolic", super::hyperbolic::builder);
+        self.builders.insert("ppio", super::ppio::builder);
     }
 
     pub fn get_builder(&self, preset_name: &str) -> Option<ClientBuilder> {
