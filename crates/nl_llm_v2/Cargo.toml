@@ -841,6 +841,14 @@ name = "coze_chat"
 path = "examples/coze/chat/main.rs"
 
 [[example]]
+name = "doubao_chat"
+path = "examples/doubao/chat/main.rs"
+
+[[example]]
+name = "aionly_chat"
+path = "examples/aionly/chat/main.rs"
+
+[[example]]
 name = "coze_stream"
 path = "examples/coze/stream/main.rs"
 
