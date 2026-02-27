@@ -87,7 +87,6 @@ pub mod poe;
 pub mod ocoolai;
 pub mod cephalon;
 pub mod tokenflux;
-pub mod aionly;
 
 pub use registry::{PresetRegistry, REGISTRY};
 pub mod a302;

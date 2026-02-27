@@ -69,7 +69,6 @@ pub mod qiniu;
 pub mod poe;
 pub mod ocoolai;
 pub mod cephalon;
-pub mod aionly;
 
 // 显式导出类型，避免 extension() 函数名冲突
 pub use balance::*;
@@ -131,7 +130,6 @@ pub use qiniu::QiniuExtension;
 pub use poe::PoeExtension;
 pub use ocoolai::OcoolAiExtension;
 pub use cephalon::CephalonExtension;
-pub use aionly::AiOnlyExtension;
 
 #[derive(Debug, Clone)]
 pub struct LlmResponse {
