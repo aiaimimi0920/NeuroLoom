@@ -116,10 +116,16 @@ impl PresetRegistry {
         self.builders.insert("cerebras", super::cerebras::builder);
         self.builders.insert("lmstudio", super::lmstudio::builder);
         self.builders.insert("infini", super::infini::builder);
-        self.builders.insert("huggingface", super::huggingface::builder);
+        self.builders
+            .insert("wuwenxinqiong", super::infini::builder);
+        self.builders.insert("xinqiong", super::infini::builder);
+        self.builders
+            .insert("huggingface", super::huggingface::builder);
         self.builders.insert("stepfun", super::stepfun::builder);
-        self.builders.insert("github_models", super::github_models::builder);
-        self.builders.insert("hyperbolic", super::hyperbolic::builder);
+        self.builders
+            .insert("github_models", super::github_models::builder);
+        self.builders
+            .insert("hyperbolic", super::hyperbolic::builder);
     }
 
     pub fn get_builder(&self, preset_name: &str) -> Option<ClientBuilder> {
