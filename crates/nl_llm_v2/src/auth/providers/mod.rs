@@ -1,5 +1,6 @@
 pub mod api_key;
 pub mod jimeng;
+pub mod multi_key;
 // pub mod cookie;
 pub mod anthropic;
 pub mod anthropic_oauth;
@@ -15,9 +16,8 @@ pub mod service_account;
 pub mod spark;
 
 pub mod ollama;
-pub mod xfyun_maas;
 pub mod vidu;
-
+pub mod xfyun_maas;
 
 pub use anthropic::AnthropicApiKeyAuth;
 pub use anthropic_oauth::AnthropicOAuth;
@@ -29,14 +29,15 @@ pub use gemini_cli::GeminiCliOAuth;
 pub use iflow::IFlowAuth;
 pub use kimi::KimiOAuth;
 pub use kling::KlingAuth;
+pub use multi_key::{MultiKeyAuth, MultiKeyMode};
 pub use qwen::QwenOAuth;
 pub use service_account::ServiceAccountAuth;
 pub use spark::SparkAuth;
 
-pub use ollama::OllamaAuth;
-pub use xfyun_maas::XfyunMaasAuth;
 pub use jimeng::JimengAuth;
+pub use ollama::OllamaAuth;
 pub use vidu::ViduApiKeyAuth;
+pub use xfyun_maas::XfyunMaasAuth;
 pub mod baichuan;
 pub use baichuan::BaichuanAuth;
 pub mod tencent_ti;
