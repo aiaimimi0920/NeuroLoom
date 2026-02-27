@@ -94,3 +94,4 @@ pub mod baichuan;
 pub mod cerebras;
 pub mod lmstudio;
 pub mod infini;
+pub mod ph8;
