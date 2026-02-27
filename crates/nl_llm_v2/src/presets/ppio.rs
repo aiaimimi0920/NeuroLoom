@@ -1,4 +1,5 @@
 use crate::client::ClientBuilder;
+use crate::model::PpioModelResolver;
 use crate::protocol::base::openai::OpenAiProtocol;
 use crate::site::base::openai::OpenAiSite;
 
@@ -33,5 +34,6 @@ pub fn builder() -> ClientBuilder {
     ClientBuilder::new()
         .site(OpenAiSite::new().with_base_url(PPIO_BASE_URL))
         .protocol(OpenAiProtocol)
+        .model_resolver(PpioModelResolver::new())
         .default_model("deepseek/deepseek-v3/community")
 }
