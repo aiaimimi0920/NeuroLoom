@@ -916,3 +916,7 @@ path = "examples/baichuan/chat/main.rs"
 [[example]]
 name = "baichuan_stream"
 path = "examples/baichuan/stream/main.rs"
+
+[[example]]
+name = "stepfun_chat"
+path = "examples/stepfun/chat/main.rs"

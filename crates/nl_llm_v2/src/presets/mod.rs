@@ -1,3 +1,4 @@
+pub mod stepfun;
 pub mod huggingface;
 pub mod fireworks;
 pub mod together;

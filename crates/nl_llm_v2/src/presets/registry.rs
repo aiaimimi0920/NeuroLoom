@@ -114,6 +114,7 @@ impl PresetRegistry {
         self.builders.insert("ollama", super::ollama::builder);
         self.builders.insert("baichuan", super::baichuan::builder);
         self.builders.insert("huggingface", super::huggingface::builder);
+        self.builders.insert("stepfun", super::stepfun::builder);
     }
 
     pub fn get_builder(&self, preset_name: &str) -> Option<ClientBuilder> {
