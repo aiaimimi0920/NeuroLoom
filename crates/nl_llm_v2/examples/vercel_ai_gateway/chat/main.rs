@@ -1,5 +1,5 @@
-use tokio::io::{stdout, AsyncWriteExt};
 use std::env;
+use tokio::io::{stdout, AsyncWriteExt};
 
 use nl_llm_v2::client::LlmClient;
 use nl_llm_v2::primitive::PrimitiveRequest;
@@ -8,7 +8,8 @@ use nl_llm_v2::primitive::PrimitiveRequest;
 async fn main() -> anyhow::Result<()> {
     stdout().flush().await?;
 
-    let api_key = env::var("VERCEL_AI_GATEWAY_API_KEY").unwrap_or_else(|_| "your_api_key_here".to_string());
+    let api_key =
+        env::var("VERCEL_AI_GATEWAY_API_KEY").unwrap_or_else(|_| "your_api_key_here".to_string());
 
     let client = LlmClient::from_preset("vercel_ai_gateway")
         .expect("Vercel AI Gateway preset not found")
@@ -19,7 +20,7 @@ async fn main() -> anyhow::Result<()> {
     println!("📥 正在发送请求至 Vercel AI Gateway...");
 
     let request = PrimitiveRequest::single_user_message("用中文简单介绍一下你自己，不超过50个字")
-        .with_model("gpt-4o-mini"); // 这里请求的具体模型会被 Vercel AI 网关路由
+        .with_model("openai/gpt-4o-mini"); // 推荐 provider/model 命名
 
     match client.complete(&request).await {
         Ok(response) => {
