@@ -27,10 +27,10 @@ async fn main() -> anyhow::Result<()> {
         .auth(auth)
         .build();
 
-    let request = PrimitiveRequest::single_user_message("请介绍一下腾讯混元大模型的特点，并用幽默的风格讲一个程序员的笑话。")
-        .with_model("hunyuan-lite");
+    let request = PrimitiveRequest::single_user_message("请介绍一下腾讯混元 T1 模型的特点，并用幽默的风格讲一个程序员的笑话。")
+        .with_model("hunyuan-t1-latest");
 
-    println!("Sending chat request to Tencent TI (hunyuan-lite)...");
+    println!("Sending chat request to Tencent TI (hunyuan-t1-latest)...");
     match client.complete(&request).await {
         Ok(response) => {
             println!("\nChat Response:");
