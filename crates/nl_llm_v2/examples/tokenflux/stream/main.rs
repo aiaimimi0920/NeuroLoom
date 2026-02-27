@@ -3,10 +3,10 @@
 //! 运行方式: cargo run --example tokenflux_stream
 //! 或直接运行: test.bat
 
-use nl_llm_v2::{LlmClient, PrimitiveRequest};
 use anyhow::Result;
+use nl_llm_v2::{LlmClient, PrimitiveRequest};
+use std::io::{stdout, Write};
 use tokio_stream::StreamExt;
-use std::io::{Write, stdout};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -15,15 +15,17 @@ async fn main() -> Result<()> {
     let api_key = std::env::var("TOKENFLUX_API_KEY")
         .unwrap_or_else(|_| args.get(1).cloned().expect("需要提供 API Key"));
 
-    let client = LlmClient::from_preset("tokenflux").expect("Preset not found")
+    let client = LlmClient::from_preset("tokenflux")
+        .expect("Preset not found")
         .with_api_key(api_key)
         .build();
 
-    let prompt = args.get(2).cloned()
+    let prompt = args
+        .get(2)
+        .cloned()
         .unwrap_or_else(|| "写一首50字左右关于春天的短诗。".to_string());
 
-    let mut req = PrimitiveRequest::single_user_message(&prompt)
-        .with_model("gpt-3.5-turbo");
+    let mut req = PrimitiveRequest::single_user_message(&prompt).with_model("gpt-3.5-turbo");
     req.stream = true;
 
     println!("用户: {}\n", prompt);

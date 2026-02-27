@@ -66,7 +66,6 @@ pub mod gpustack;
 pub mod voyage;
 pub mod qiniu;
 pub mod poe;
-pub mod burncloud;
 pub mod ocoolai;
 pub mod cephalon;
 
@@ -127,7 +126,6 @@ pub use gpustack::GpuStackExtension;
 pub use voyage::VoyageExtension;
 pub use qiniu::QiniuExtension;
 pub use poe::PoeExtension;
-pub use burncloud::BurnCloudExtension;
 pub use ocoolai::OcoolAiExtension;
 pub use cephalon::CephalonExtension;
 

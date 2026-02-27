@@ -1005,12 +1005,20 @@ name = "qiniu_models"
 path = "examples/qiniu/models/main.rs"
 
 [[example]]
+name = "tokenflux_auth"
+path = "examples/tokenflux/auth/main.rs"
+
+[[example]]
 name = "tokenflux_chat"
 path = "examples/tokenflux/chat/main.rs"
 
 [[example]]
 name = "tokenflux_stream"
 path = "examples/tokenflux/stream/main.rs"
+
+[[example]]
+name = "tokenflux_models"
+path = "examples/tokenflux/models/main.rs"
 
 [dev-dependencies]
 env_logger = "0.11.9"
