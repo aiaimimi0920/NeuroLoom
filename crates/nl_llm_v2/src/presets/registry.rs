@@ -101,6 +101,7 @@ impl PresetRegistry {
         self.builders
             .insert("fastgpt", super::fastgpt::default_builder);
         self.builders.insert("aiproxy", super::aiproxy::builder);
+        self.builders.insert("aionly", super::aionly::builder);
         self.builders.insert("moka", super::moka::builder);
         self.builders.insert("coze", super::coze::default_builder);
         self.builders.insert("kling", super::kling::builder);

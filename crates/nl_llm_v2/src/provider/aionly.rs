@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use reqwest::Client;
+use serde::Deserialize;
 
 use crate::auth::traits::Authenticator;
 use crate::concurrency::ConcurrencyConfig;
@@ -50,11 +51,30 @@ impl ModelResolver for AiOnlyModelResolver {
     }
 }
 
-pub struct AiOnlyExtension;
+#[derive(Debug, Deserialize)]
+struct AiOnlyModelsResponse {
+    #[serde(default)]
+    data: Vec<AiOnlyModelItem>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AiOnlyModelItem {
+    id: String,
+}
+
+pub struct AiOnlyExtension {
+    base_url: String,
+}
 
 impl AiOnlyExtension {
-    pub fn new(_base_url: impl Into<String>) -> Self {
-        Self {}
+    pub fn new(base_url: impl Into<String>) -> Self {
+        Self {
+            base_url: base_url.into().trim_end_matches('/').to_string(),
+        }
+    }
+
+    fn models_url(&self) -> String {
+        format!("{}/models", self.base_url)
     }
 
     fn fallback_models() -> Vec<ModelInfo> {
@@ -83,10 +103,46 @@ impl ProviderExtension for AiOnlyExtension {
 
     async fn list_models(
         &self,
-        _http: &Client,
-        _auth: &mut dyn Authenticator,
+        http: &Client,
+        auth: &mut dyn Authenticator,
     ) -> anyhow::Result<Vec<ModelInfo>> {
-        Ok(Self::fallback_models())
+        let req = http.get(self.models_url());
+        let req = auth.inject(req)?;
+
+        match req.send().await {
+            Ok(resp) if resp.status().is_success() => {
+                let payload: AiOnlyModelsResponse = resp
+                    .json()
+                    .await
+                    .map_err(|e| anyhow::anyhow!("aionly /models 响应解析失败: {}", e))?;
+
+                if payload.data.is_empty() {
+                    Ok(Self::fallback_models())
+                } else {
+                    Ok(payload
+                        .data
+                        .into_iter()
+                        .map(|m| ModelInfo {
+                            id: m.id,
+                            description: String::new(),
+                        })
+                        .collect())
+                }
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                eprintln!(
+                    "[aionly] /models 请求失败 ({}): {}，使用静态兜底列表",
+                    status, body
+                );
+                Ok(Self::fallback_models())
+            }
+            Err(e) => {
+                eprintln!("[aionly] /models 网络错误: {}，使用静态兜底列表", e);
+                Ok(Self::fallback_models())
+            }
+        }
     }
 
     fn concurrency_config(&self) -> ConcurrencyConfig {

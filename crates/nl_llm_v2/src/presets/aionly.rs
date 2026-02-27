@@ -25,7 +25,9 @@ pub fn builder() -> ClientBuilder {
 }
 
 fn read_multi_key_auth_from_env() -> Option<MultiKeyAuth> {
-    let raw = std::env::var("AIONLY_API_KEYS").ok().or_else(|| std::env::var("AIONLY_API_KEY").ok())?;
+    let raw = std::env::var("AIONLY_API_KEYS")
+        .ok()
+        .or_else(|| std::env::var("AIONLY_API_KEY").ok())?;
     let keys: Vec<String> = raw
         .split(',')
         .map(|k| k.trim().to_string())
