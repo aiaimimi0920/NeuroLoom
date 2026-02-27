@@ -111,3 +111,6 @@ pub use ollama::OllamaModelResolver;
 pub use vidu::ViduModelResolver;
 pub use xfyun_maas::XfyunMaasModelResolver;
 pub mod baichuan;
+pub mod ocoolai;
+
+pub use ocoolai::OcoolAiModelResolver;

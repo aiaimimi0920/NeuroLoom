@@ -978,8 +978,14 @@ path = "examples/a302/stream/main.rs"
 name = "a302_models"
 path = "examples/a302/models/main.rs"
 
-[dev-dependencies]
-env_logger = "0.11.9"
+[[example]]
+name = "ocoolai_chat"
+path = "examples/ocoolai/chat/main.rs"
+
+[[example]]
+name = "ocoolai_stream"
+path = "examples/ocoolai/stream/main.rs"
+
 
 
 [[example]]
@@ -997,3 +1003,14 @@ path = "examples/qiniu/stream/main.rs"
 [[example]]
 name = "qiniu_models"
 path = "examples/qiniu/models/main.rs"
+
+[[example]]
+name = "tokenflux_chat"
+path = "examples/tokenflux/chat/main.rs"
+
+[[example]]
+name = "tokenflux_stream"
+path = "examples/tokenflux/stream/main.rs"
+
+[dev-dependencies]
+env_logger = "0.11.9"

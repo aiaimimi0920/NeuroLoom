@@ -61,4 +61,9 @@ impl PrimitiveRequest {
         self.model = model.into();
         self
     }
+
+    pub fn with_stream(mut self, stream: bool) -> Self {
+        self.stream = stream;
+        self
+    }
 }

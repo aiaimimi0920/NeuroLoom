@@ -66,6 +66,7 @@ pub mod gpustack;
 pub mod voyage;
 pub mod qiniu;
 pub mod poe;
+pub mod burncloud;
 pub mod ocoolai;
 
 // 显式导出类型，避免 extension() 函数名冲突
@@ -125,6 +126,7 @@ pub use gpustack::GpuStackExtension;
 pub use voyage::VoyageExtension;
 pub use qiniu::QiniuExtension;
 pub use poe::PoeExtension;
+pub use burncloud::BurnCloudExtension;
 pub use ocoolai::OcoolAiExtension;
 
 #[derive(Debug, Clone)]

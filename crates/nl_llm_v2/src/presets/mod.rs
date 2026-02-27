@@ -83,6 +83,7 @@ pub mod gpustack;
 pub mod voyage;
 pub mod qiniu;
 pub mod poe;
+pub mod burncloud;
 pub mod ocoolai;
 
 
