@@ -62,6 +62,7 @@ pub mod xfyun_maas;
 pub mod zai;
 pub mod zhipu;
 pub mod newapi;
+pub mod gpustack;
 
 // 显式导出类型，避免 extension() 函数名冲突
 pub use balance::*;
@@ -116,6 +117,7 @@ pub use xfyun_maas::XfyunMaasExtension;
 pub use zai::ZaiExtension;
 pub use zhipu::ZhipuExtension;
 pub use newapi::NewApiExtension;
+pub use gpustack::GpuStackExtension;
 
 #[derive(Debug, Clone)]
 pub struct LlmResponse {

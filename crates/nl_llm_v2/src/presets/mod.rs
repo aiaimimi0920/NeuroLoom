@@ -79,6 +79,7 @@ pub mod xfyun_maas;
 pub mod zai;
 pub mod zhipu;
 pub mod newapi;
+pub mod gpustack;
 
 
 pub use registry::{PresetRegistry, REGISTRY};
