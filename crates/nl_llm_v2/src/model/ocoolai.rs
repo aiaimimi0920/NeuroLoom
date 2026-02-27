@@ -1,5 +1,64 @@
 use crate::model::{Capability, DefaultModelResolver, ModelResolver};
 
+/// ocoolAI 主流模型目录。
+///
+/// 该目录同时服务于：
+/// - `OcoolAiModelResolver` 的能力/上下文注册
+/// - `provider::ocoolai` 的 `list_models` 返回
+///
+/// 通过单一数据源避免 resolver 与 provider 两份静态表漂移。
+pub(crate) fn mainstream_models() -> &'static [(&'static str, &'static str)] {
+    &[
+        ("gpt-4o", "GPT-4o — Flagship multimodal model, 128K context"),
+        (
+            "gpt-4o-mini",
+            "GPT-4o Mini — Fast and affordable, 128K context",
+        ),
+        (
+            "gpt-4-turbo",
+            "GPT-4 Turbo — Previous generation, 128K context",
+        ),
+        (
+            "gpt-3.5-turbo",
+            "GPT-3.5 Turbo — Fast and economical, 16K context",
+        ),
+        (
+            "claude-3-5-sonnet-20241022",
+            "Claude 3.5 Sonnet — Latest Claude model, 200K context",
+        ),
+        (
+            "claude-3-opus-20240229",
+            "Claude 3 Opus — Most capable Claude model, 200K context",
+        ),
+        (
+            "claude-3-haiku-20240307",
+            "Claude 3 Haiku — Fast and efficient, 200K context",
+        ),
+        (
+            "gemini-1.5-pro",
+            "Gemini 1.5 Pro — Advanced reasoning, 1M context",
+        ),
+        (
+            "gemini-1.5-flash",
+            "Gemini 1.5 Flash — Fast and efficient, 1M context",
+        ),
+        (
+            "deepseek-chat",
+            "DeepSeek V3 — General purpose chat, 64K context",
+        ),
+        (
+            "deepseek-reasoner",
+            "DeepSeek R1 — Deep reasoning model, 64K context",
+        ),
+        (
+            "llama-3.1-405b",
+            "Llama 3.1 405B — Largest Llama model, 128K context",
+        ),
+        ("qwen-max", "Qwen Max — Advanced reasoning, 32K context"),
+        ("glm-4", "GLM-4 — Zhipu AI flagship model, 128K context"),
+    ]
+}
+
 /// ocoolAI 模型解析器
 ///
 /// ocoolAI 平台支持 200+ 模型，这里定义主流模型的别名、能力和上下文长度。
@@ -70,7 +129,8 @@ impl OcoolAiModelResolver {
 
         // 标准能力集
         let tool_caps = Capability::CHAT | Capability::STREAMING | Capability::TOOLS;
-        let vision_caps = Capability::CHAT | Capability::STREAMING | Capability::VISION | Capability::TOOLS;
+        let vision_caps =
+            Capability::CHAT | Capability::STREAMING | Capability::VISION | Capability::TOOLS;
         let thinking_caps = Capability::CHAT | Capability::STREAMING | Capability::THINKING;
 
         // === 能力配置 ===
@@ -228,5 +288,13 @@ mod tests {
         assert_eq!(resolver.max_context("claude"), 200_000);
         assert_eq!(resolver.max_context("gemini"), 1_000_000);
         assert_eq!(resolver.max_context("ds"), 64_000);
+    }
+
+    #[test]
+    fn mainstream_catalog_contains_default_model() {
+        let has_default = mainstream_models()
+            .iter()
+            .any(|(id, _)| *id == "gpt-4o-mini");
+        assert!(has_default);
     }
 }
