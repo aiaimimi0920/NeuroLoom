@@ -145,6 +145,8 @@ impl PresetRegistry {
         self.builders.insert("ph8", super::ph8::builder);
         self.builders.insert("sophnet", super::sophnet::builder);
         self.builders.insert("alayanew", super::alayanew::builder);
+        self.builders.insert("alaya_new", super::alayanew::builder);
+        self.builders.insert("alaya", super::alayanew::builder);
     }
 
     pub fn get_builder(&self, preset_name: &str) -> Option<ClientBuilder> {

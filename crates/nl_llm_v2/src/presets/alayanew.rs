@@ -6,9 +6,11 @@ use crate::protocol::base::openai::OpenAiProtocol;
 use crate::provider::alayanew::{AlayanewExtension, AlayanewModelResolver};
 use crate::site::base::openai::OpenAiSite;
 
+const DEFAULT_ALAYANEW_BASE_URL: &str = "https://deepseek.alayanew.com/v1";
+
 pub fn builder() -> ClientBuilder {
-    let base_url =
-        std::env::var("ALAYANEW_BASE_URL").unwrap_or_else(|_| "https://deepseek.alayanew.com/v1".to_string());
+    let base_url = read_env_first(&["ALAYANEW_BASE_URL", "ALAYA_NEW_BASE_URL"])
+        .unwrap_or_else(|| DEFAULT_ALAYANEW_BASE_URL.to_string());
 
     let mut builder = ClientBuilder::new()
         .site(OpenAiSite::new().with_base_url(&base_url))
@@ -19,7 +21,7 @@ pub fn builder() -> ClientBuilder {
 
     if let Some(multi_key_auth) = read_multi_key_auth_from_env() {
         builder = builder.auth(multi_key_auth);
-    } else if let Ok(api_key) = std::env::var("ALAYANEW_API_KEY") {
+    } else if let Some(api_key) = read_env_first(&["ALAYANEW_API_KEY", "ALAYA_NEW_API_KEY"]) {
         builder = builder.auth(ApiKeyAuth::new(api_key));
     }
 
@@ -27,7 +29,12 @@ pub fn builder() -> ClientBuilder {
 }
 
 fn read_multi_key_auth_from_env() -> Option<MultiKeyAuth> {
-    let raw = std::env::var("ALAYANEW_API_KEYS").ok().or_else(|| std::env::var("ALAYANEW_API_KEY").ok())?;
+    let raw = read_env_first(&[
+        "ALAYANEW_API_KEYS",
+        "ALAYA_NEW_API_KEYS",
+        "ALAYANEW_API_KEY",
+        "ALAYA_NEW_API_KEY",
+    ])?;
     let keys: Vec<String> = raw
         .split(',')
         .map(|k| k.trim().to_string())
@@ -38,8 +45,8 @@ fn read_multi_key_auth_from_env() -> Option<MultiKeyAuth> {
         return None;
     }
 
-    let mode = match std::env::var("ALAYANEW_MULTI_KEY_MODE")
-        .unwrap_or_else(|_| "round_robin".to_string())
+    let mode = match read_env_first(&["ALAYANEW_MULTI_KEY_MODE", "ALAYA_NEW_MULTI_KEY_MODE"])
+        .unwrap_or_else(|| "round_robin".to_string())
         .to_lowercase()
         .as_str()
     {
@@ -48,6 +55,13 @@ fn read_multi_key_auth_from_env() -> Option<MultiKeyAuth> {
     };
 
     Some(MultiKeyAuth::new(keys).with_mode(mode))
+}
+
+fn read_env_first(keys: &[&str]) -> Option<String> {
+    keys.iter()
+        .find_map(|key| std::env::var(key).ok())
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
 }
 
 impl LlmClient {
