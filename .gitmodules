@@ -1,0 +1,19 @@
+[submodule "references/Antigravity-Manager"]
+	path = references/Antigravity-Manager
+	url = https://github.com/lbjlaq/Antigravity-Manager.git
+
+[submodule "references/cc-switch"]
+	path = references/cc-switch
+	url = https://github.com/farion1231/cc-switch.git
+
+[submodule "references/claude-code-router"]
+	path = references/claude-code-router
+	url = https://github.com/musistudio/claude-code-router.git
+
+[submodule "references/new-api"]
+	path = references/new-api
+	url = https://github.com/QuantumNous/new-api.git
+
+[submodule "references/cherry-studio"]
+	path = references/cherry-studio
+	url = https://github.com/CherryHQ/cherry-studio
