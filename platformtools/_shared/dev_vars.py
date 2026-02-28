@@ -15,6 +15,15 @@ Parsing rules
 - Supports simple KEY=VALUE lines
 - Ignores blank lines and comments (#...)
 - Trims surrounding single/double quotes
+
+Profiles
+--------
+Some providers may have multiple credential sets (e.g. DNSHE account #1/#2/#3).
+We support a simple suffix scheme:
+- DNSHE_API_KEY_1=...
+- DNSHE_API_SECRET_1=...
+- DNSHE_API_BASE_1=...
+(and so on for _2, _3)
 """
 
 import os
@@ -84,3 +93,20 @@ def load_platformtools_dev_vars(*, start_dir: str) -> Dict[str, str]:
 
 def get_var(file_vars: Dict[str, str], name: str, default: str = "") -> str:
     return ((file_vars.get(name) or os.environ.get(name) or default) or "").strip()
+
+
+def get_var_profiled(file_vars: Dict[str, str], name: str, *, profile: str = "", default: str = "") -> str:
+    """Read a variable with optional profile suffix.
+
+    If profile is provided (e.g. "1"), we try NAME_<profile> first, then NAME.
+
+    Examples:
+    - get_var_profiled(vars, "DNSHE_API_KEY", profile="2") reads DNSHE_API_KEY_2 then DNSHE_API_KEY.
+    """
+
+    p = str(profile or "").strip()
+    if p:
+        v = get_var(file_vars, f"{name}_{p}")
+        if v:
+            return v
+    return get_var(file_vars, name, default)

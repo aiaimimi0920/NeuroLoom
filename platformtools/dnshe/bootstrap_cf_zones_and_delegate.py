@@ -320,6 +320,11 @@ def main(argv: List[str]) -> int:
         help="Only create/find Cloudflare zones and print assigned nameservers; do NOT touch DNSHE.",
     )
     ap.add_argument("--purge-apex", action="store_true", help="Delete existing apex records before setting NS (recommended)")
+    ap.add_argument(
+        "--dnshe-profile",
+        default="",
+        help="DNSHE credential profile suffix, e.g. 1/2/3 (reads DNSHE_*_<profile> from platformtools/.dev.vars)",
+    )
     args = ap.parse_args(argv)
 
     domains = normalize_domains(args.domains)
@@ -331,12 +336,17 @@ def main(argv: List[str]) -> int:
     # - platformtools/.dev.vars (recommended, global), then
     # - platformtools/dnshe/.dev.vars (local override), then
     # - process environment.
-    from platformtools._shared.dev_vars import get_var, load_platformtools_dev_vars
+    from platformtools._shared.dev_vars import get_var, get_var_profiled, load_platformtools_dev_vars
 
     file_vars = load_platformtools_dev_vars(start_dir=os.path.dirname(__file__))
 
+    # Cloudflare does not need profile.
     def _get(name: str, default: str = "") -> str:
         return get_var(file_vars, name, default)
+
+    # DNSHE can be profiled by suffix (DNSHE_*_1 / DNSHE_*_2 / DNSHE_*_3)
+    def _get_dnshe(name: str, default: str = "", profile: str = "") -> str:
+        return get_var_profiled(file_vars, name, profile=profile, default=default)
 
     cf_token = _get("CF_API_TOKEN")
     cf_account_id = _get("CF_ACCOUNT_ID")
@@ -358,13 +368,13 @@ def main(argv: List[str]) -> int:
     subs: List[Dict[str, Any]] = []
 
     if not args.skip_dnshe:
-        dnshe_key = _get("DNSHE_API_KEY")
-        dnshe_secret = _get("DNSHE_API_SECRET")
+        dnshe_key = _get_dnshe("DNSHE_API_KEY", profile=str(args.dnshe_profile))
+        dnshe_secret = _get_dnshe("DNSHE_API_SECRET", profile=str(args.dnshe_profile))
         if not dnshe_key or not dnshe_secret:
             print("missing DNSHE_API_KEY or DNSHE_API_SECRET (from .dev.vars or env)", file=sys.stderr)
             return 2
 
-        dnshe_base = _get("DNSHE_API_BASE", DNSHE_DEFAULT_BASE) or DNSHE_DEFAULT_BASE
+        dnshe_base = _get_dnshe("DNSHE_API_BASE", DNSHE_DEFAULT_BASE, profile=str(args.dnshe_profile)) or DNSHE_DEFAULT_BASE
         dnshe = DnsheConfig(base=dnshe_base, api_key=dnshe_key, api_secret=dnshe_secret)
 
         # Cache DNSHE subdomain listing once
