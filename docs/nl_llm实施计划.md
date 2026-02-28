@@ -1,8 +1,8 @@
-# nl_llm v2.2 实施计划
+# nl_llm 实施计划（2.2）
 
 ## 概述
 
-本文档定义了 nl_llm v2.2 四维正交分解架构的详细实施计划。
+本文档定义了 nl_llm 四维正交分解架构（2.2 版）的详细实施计划。
 
 ---
 
@@ -1331,7 +1331,7 @@ for %%p in (openai deepseek moonshot zhipu iflow openrouter) do (
 
 ## 变更日志
 
-### v2.2 新增内��
+### 2.2 新增内容
 
 1. **ProtocolHook 生命周期扩展**：
    - 钩子方法签名改为接收 `&mut PipelineContext`
@@ -1353,7 +1353,7 @@ for %%p in (openai deepseek moonshot zhipu iflow openrouter) do (
    - 修改核心模块时必须测试受影响的预设平台
    - 提供模块与平台的映射关系表
 
-### v2.1 新增内容
+### 2.1 新增内容
 
 1. **错误规范化**：新增 `StandardError`、`ErrorKind`、`FallbackHint`，`ProtocolFormat` 添加 `unpack_error` 方法
 2. **URL 构建上下文**：新增 `UrlContext`、`Action`、`AuthType`，`Site::build_url` 接收上下文参数

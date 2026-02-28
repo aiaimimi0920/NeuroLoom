@@ -1,4 +1,0 @@
-    Checking nl_llm_v2 v0.1.0 (C:\Users\Public\nas_home\AI\GameEditor\NeuroLoom\crates\nl_llm_v2)
-crates\nl_llm_v2\src\presets\custom.rs:2:5: error[E0432]: unresolved import `crate::protocol::base::openai::OpenAIProtocol`: no `OpenAIProtocol` in `protocol::base::openai`
-crates\nl_llm_v2\src\presets\custom.rs:22:25: error[E0277]: the trait bound `Box<CustomModelResolver>: ModelResolver` is not satisfied: the trait `ModelResolver` is not implemented for `Box<CustomModelResolver>`
-error: could not compile `nl_llm_v2` (lib) due to 2 previous errors

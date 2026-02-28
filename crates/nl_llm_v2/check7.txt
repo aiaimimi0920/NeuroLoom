@@ -1,9 +1,0 @@
-    Checking nl_llm_v2 v0.1.0 (C:\Users\Public\nas_home\AI\GameEditor\NeuroLoom\crates\nl_llm_v2)
-error[E0433]: failed to resolve: could not find `antigravity` in `providers`
-   --> crates\nl_llm_v2\src\client.rs:190:43
-    |
-190 |         self.auth(crate::auth::providers::antigravity::AntigravityOAuth::new().with_cache(cache_path))
-    |                                           ^^^^^^^^^^^ could not find `antigravity` in `providers`
-
-For more information about this error, try `rustc --explain E0433`.
-error: could not compile `nl_llm_v2` (lib) due to 1 previous error
