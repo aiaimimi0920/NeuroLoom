@@ -95,12 +95,13 @@ MAILCREATE_CUSTOM_AUTH = os.environ.get(
     str(_MAILCREATE_CFG.get("MAILCREATE_CUSTOM_AUTH") or ""),
 ).strip()
 
-# IMPORTANT: Email Routing catch-all is zone-level. Your current Cloudflare route is
-# Catch-All for `aiaimimi.com` → Worker `cloudflare_temp_email`.
-# So we default to `aiaimimi.com` to ensure inbound emails are actually delivered.
+# IMPORTANT: Email Routing catch-all is zone-level.
+# If you configure multiple domains on the MailCreate Worker (env `DOMAINS`),
+# you can omit MAILCREATE_DOMAIN to let the server pick a random domain.
+# (This reduces the risk of single-domain bans in downstream signup flows.)
 MAILCREATE_DOMAIN = os.environ.get(
     "MAILCREATE_DOMAIN",
-    str(_MAILCREATE_CFG.get("MAILCREATE_DOMAIN") or "aiaimimi.com"),
+    str(_MAILCREATE_CFG.get("MAILCREATE_DOMAIN") or ""),
 ).strip()
 
 # GPTMail provider config

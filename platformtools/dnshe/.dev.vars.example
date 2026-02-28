@@ -1,0 +1,32 @@
+# Copy this file to `.dev.vars` and fill in real values.
+# DO NOT COMMIT `.dev.vars`.
+#
+# This repository ignores `.dev.vars` via [`.gitignore`](.gitignore:33)
+#
+# PowerShell helper:
+#   Copy-Item platformtools\dnshe\.dev.vars.example platformtools\dnshe\.dev.vars
+#
+# Example dry-run:
+#   python platformtools\dnshe\bootstrap_cf_zones_and_delegate.py --domains artai.cc.cd --dry-run --skip-dnshe
+
+# -------------------------
+# Cloudflare
+# -------------------------
+# Required:
+CF_ACCOUNT_ID=
+
+# Choose ONE auth method:
+# (A) API Token (recommended): needs permissions like Zone:Edit (and Zone:Read) for the account.
+CF_API_TOKEN=
+
+# (B) Global API Key:
+CF_AUTH_EMAIL=
+CF_GLOBAL_API_KEY=
+
+# -------------------------
+# DNSHE
+# -------------------------
+DNSHE_API_KEY=
+DNSHE_API_SECRET=
+# Optional (defaults to api005):
+DNSHE_API_BASE=https://api005.dnshe.com/index.php?m=domain_hub
