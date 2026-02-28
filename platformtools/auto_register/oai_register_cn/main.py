@@ -58,6 +58,22 @@ driver_init_lock = threading.Lock()
 #
 import sys
 
+# Ensure repo root is importable so we can `import platformtools...` even when
+# this file is executed via a script path.
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+# Shared platformtools dev vars (user-managed, gitignored)
+try:
+    from platformtools._shared.dev_vars import load_platformtools_dev_vars
+except Exception:
+    load_platformtools_dev_vars = None  # type: ignore
+
+_PLATFORMTOOLS_DEV_VARS = (
+    load_platformtools_dev_vars(start_dir=os.path.dirname(__file__)) if load_platformtools_dev_vars else {}
+)
+
 _PLAT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 _MAILCREATE_CLIENT_DIR = os.path.join(_PLAT_DIR, "mailcreate", "client")
 if _MAILCREATE_CLIENT_DIR not in sys.path:
@@ -86,27 +102,38 @@ MAILCREATE_CONFIG_FILE = os.environ.get(
 ).strip()
 _MAILCREATE_CFG = _load_json_config(MAILCREATE_CONFIG_FILE)
 
-MAILCREATE_BASE_URL = os.environ.get(
-    "MAILCREATE_BASE_URL",
-    str(_MAILCREATE_CFG.get("MAILCREATE_BASE_URL") or "https://mail.aiaimimi.com"),
+MAILCREATE_BASE_URL = (
+    os.environ.get("MAILCREATE_BASE_URL")
+    or _PLATFORMTOOLS_DEV_VARS.get("MAILCREATE_BASE_URL")
+    or str(_MAILCREATE_CFG.get("MAILCREATE_BASE_URL") or "https://mail.aiaimimi.com")
 )
-MAILCREATE_CUSTOM_AUTH = os.environ.get(
-    "MAILCREATE_CUSTOM_AUTH",
-    str(_MAILCREATE_CFG.get("MAILCREATE_CUSTOM_AUTH") or ""),
+MAILCREATE_CUSTOM_AUTH = (
+    os.environ.get("MAILCREATE_CUSTOM_AUTH")
+    or _PLATFORMTOOLS_DEV_VARS.get("MAILCREATE_CUSTOM_AUTH")
+    or str(_MAILCREATE_CFG.get("MAILCREATE_CUSTOM_AUTH") or "")
 ).strip()
 
 # IMPORTANT: Email Routing catch-all is zone-level.
 # If you configure multiple domains on the MailCreate Worker (env `DOMAINS`),
 # you can omit MAILCREATE_DOMAIN to let the server pick a random domain.
 # (This reduces the risk of single-domain bans in downstream signup flows.)
-MAILCREATE_DOMAIN = os.environ.get(
-    "MAILCREATE_DOMAIN",
-    str(_MAILCREATE_CFG.get("MAILCREATE_DOMAIN") or ""),
+MAILCREATE_DOMAIN = (
+    os.environ.get("MAILCREATE_DOMAIN")
+    or _PLATFORMTOOLS_DEV_VARS.get("MAILCREATE_DOMAIN")
+    or str(_MAILCREATE_CFG.get("MAILCREATE_DOMAIN") or "")
 ).strip()
 
 # GPTMail provider config
-GPTMAIL_BASE_URL = os.environ.get("GPTMAIL_BASE_URL", "https://mail.chatgpt.org.uk").strip()
-GPTMAIL_API_KEY = os.environ.get("GPTMAIL_API_KEY", "").strip()
+GPTMAIL_BASE_URL = (
+    os.environ.get("GPTMAIL_BASE_URL")
+    or _PLATFORMTOOLS_DEV_VARS.get("GPTMAIL_BASE_URL")
+    or "https://mail.chatgpt.org.uk"
+).strip()
+GPTMAIL_API_KEY = (
+    os.environ.get("GPTMAIL_API_KEY")
+    or _PLATFORMTOOLS_DEV_VARS.get("GPTMAIL_API_KEY")
+    or ""
+).strip()
 # Multi-key support: if GPTMAIL_API_KEY is empty, load keys from this file.
 # Format: one key per line, supports '# [EXHAUSTED]' comments.
 GPTMAIL_KEYS_FILE = os.environ.get(

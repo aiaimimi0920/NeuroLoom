@@ -1,0 +1,10 @@
+This file is a sentinel to remind humans/agents that `platformtools/.dev.vars` is user-managed.
+
+Policy:
+- `platformtools/.dev.vars` is NOT tracked by git.
+- Tools under `platformtools/` may read secrets from `platformtools/.dev.vars`.
+- Do NOT delete `platformtools/.dev.vars` unless the user explicitly requests it.
+
+Optional hard lock (Windows):
+- Run [`lock_dev_vars.cmd`](platformtools/lock_dev_vars.cmd:1) to apply an ACL that denies delete.
+- Run [`unlock_dev_vars.cmd`](platformtools/unlock_dev_vars.cmd:1) to remove that deny rule.

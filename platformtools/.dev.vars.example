@@ -1,0 +1,31 @@
+# Copy this file to `platformtools/.dev.vars` and fill in real values.
+# DO NOT COMMIT `.dev.vars`.
+#
+# The repository ignores `.dev.vars` via [`.gitignore`](.gitignore:33)
+#
+# Note:
+# - Any tool under `platformtools/` can load variables from this file.
+# - You may also create a tool-local `.dev.vars` next to a script to override values.
+
+# -------------------------
+# Cloudflare
+# -------------------------
+CF_ACCOUNT_ID=
+CF_API_TOKEN=
+# Or use Global API Key:
+CF_AUTH_EMAIL=
+CF_GLOBAL_API_KEY=
+
+# -------------------------
+# DNSHE
+# -------------------------
+DNSHE_API_KEY=
+DNSHE_API_SECRET=
+DNSHE_API_BASE=https://api005.dnshe.com/index.php?m=domain_hub
+
+# -------------------------
+# MailCreate / Auto register
+# -------------------------
+MAILCREATE_BASE_URL=
+MAILCREATE_CUSTOM_AUTH=
+# MAILCREATE_DOMAIN=   # leave empty to let server pick random domain

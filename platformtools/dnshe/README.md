@@ -24,8 +24,12 @@
 脚本：[`bootstrap_cf_zones_and_delegate.py`](platformtools/dnshe/bootstrap_cf_zones_and_delegate.py:1)
 
 1) 准备本机 secrets 文件（会被 gitignore）：
-- 复制模板：[`platformtools/dnshe/.dev.vars.example`](platformtools/dnshe/.dev.vars.example:1)
-- 填写为：`platformtools/dnshe/.dev.vars`
+- 推荐：在 [`platformtools/.dev.vars.example`](platformtools/.dev.vars.example:1) 基础上创建 `platformtools/.dev.vars`
+- （可选覆盖）也支持创建 `platformtools/dnshe/.dev.vars` 作为 dnshe 工具的局部覆盖
+
+如果你希望“防止误删”这个 secrets 文件（Windows）：
+- 执行：[`lock_dev_vars.cmd`](platformtools/lock_dev_vars.cmd:1)
+- 需要解锁/编辑/替换时执行：[`unlock_dev_vars.cmd`](platformtools/unlock_dev_vars.cmd:1)
 
 2) 执行（推荐先 dry-run；并用 `--skip-dnshe` 只做 Cloudflare 侧动作 + 输出 NS 映射）：
 ```powershell

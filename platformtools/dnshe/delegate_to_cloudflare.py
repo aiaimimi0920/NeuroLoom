@@ -41,6 +41,12 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+# Ensure repo root is importable so we can `import platformtools...` even when
+# this file is executed as a script path.
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 
 DEFAULT_BASE = "https://api005.dnshe.com/index.php?m=domain_hub"
 
@@ -318,27 +324,16 @@ def main(argv: List[str]) -> int:
         print("need at least 2 Cloudflare nameservers", file=sys.stderr)
         return 2
 
-    def _load_dotenv(path: str) -> Dict[str, str]:
-        out: Dict[str, str] = {}
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                for raw in f:
-                    line = raw.strip()
-                    if not line or line.startswith("#"):
-                        continue
-                    if "=" not in line:
-                        continue
-                    k, v = line.split("=", 1)
-                    out[k.strip()] = v.strip()
-        except FileNotFoundError:
-            return {}
-        return out
+    # Load dev vars from:
+    # - platformtools/.dev.vars (recommended, global), then
+    # - platformtools/dnshe/.dev.vars (local override), then
+    # - process environment.
+    from platformtools._shared.dev_vars import get_var, load_platformtools_dev_vars
 
-    dev_vars_path = os.path.join(os.path.dirname(__file__), ".dev.vars")
-    file_vars = _load_dotenv(dev_vars_path)
+    file_vars = load_platformtools_dev_vars(start_dir=os.path.dirname(__file__))
 
     def _get(name: str, default: str = "") -> str:
-        return (file_vars.get(name) or os.environ.get(name) or default).strip()
+        return get_var(file_vars, name, default)
 
     base = _get("DNSHE_API_BASE", DEFAULT_BASE) or DEFAULT_BASE
     api_key = _get("DNSHE_API_KEY")
