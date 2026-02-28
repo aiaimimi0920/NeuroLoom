@@ -15,6 +15,9 @@
 *.swo
 *~
 
+# Roo/Cline local rules (workspace-only)
+.clinerules
+
 # 操作系统
 .DS_Store
 Thumbs.db
