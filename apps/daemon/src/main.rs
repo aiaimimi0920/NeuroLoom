@@ -26,9 +26,8 @@ async fn main() -> anyhow::Result<()> {
     let actor_mesh = nl_durable::ActorMesh::new();
     tracing::info!("Actor mesh initialized with {} actors", actor_mesh.count().await);
 
-    // 初始化令牌桶
-    let token_bucket = nl_llm::TokenBucket::default_bucket();
-    tracing::info!("Token bucket initialized with capacity {}", token_bucket.available_tokens());
+    // 初始化 LLM 网关能力
+    tracing::info!("LLM gateway module loaded");
 
     // 初始化 SOP 引擎
     let sop_engine = nl_cognitive::SopEngine::new();

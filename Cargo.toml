@@ -20,7 +20,7 @@ members = [
     "crates/nl_sandbox",   # 6. 物理执行网 (God Mode, 微型虚拟机验证)
     "crates/nl_vision",    # 7. 视觉流 (语义帧差分感知器, 防止显存爆炸)
     "crates/nl_hap",       # 8. 星际联邦协议 (HAP 跨网竞标与 WebSocket 通信)
-    "crates/nl_llm_new", "crates/nl_llm_v2",   # 9. 重构版 LLM Gateway
+    "crates/nl_llm_new",   # 9. 重构版 LLM Gateway
 ]
 
 [workspace.package]

@@ -1,4 +1,0 @@
-    Checking nl_llm_v2 v0.1.0 (C:\Users\Public\nas_home\AI\GameEditor\NeuroLoom\crates\nl_llm_v2)
-crates\nl_llm_v2\src\site\base\jina.rs:44:32: error[E0053]: method `extra_headers` has an incompatible type for trait: expected `HashMap<&str, &str>`, found `HeaderMap`
-crates\nl_llm_v2\src\site\base\jina.rs:48:16: error[E0050]: method `timeout` has 2 parameters but the declaration in trait `Site::timeout` has 1: expected 1 parameter, found 2
-error: could not compile `nl_llm_v2` (lib) due to 2 previous errors

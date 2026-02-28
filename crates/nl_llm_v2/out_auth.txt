@@ -1,8 +1,0 @@
-   Compiling nl_llm_v2 v0.1.0 (C:\Users\Public\nas_home\AI\GameEditor\NeuroLoom\crates\nl_llm_v2)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.22s
-     Running `C:/Users/vmjcv/AppData/Local/Temp/NeuroLoom_target\debug\examples\antigravity_auth.exe dummy_credential " 你好"`
-用户:  你好
-
-AI:
-Error: [RateLimit] You have exhausted your capacity on this model. Your quota will reset after 33s. (Code: RESOURCE_EXHAUSTED)
-error: process didn't exit successfully: `C:/Users/vmjcv/AppData/Local/Temp/NeuroLoom_target\debug\examples\antigravity_auth.exe dummy_credential " 你好"` (exit code: 1)

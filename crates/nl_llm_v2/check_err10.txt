@@ -1,7 +1,0 @@
-    Checking nl_llm_v2 v0.1.0 (C:\Users\Public\nas_home\AI\GameEditor\NeuroLoom\crates\nl_llm_v2)
-crates\nl_llm_v2\examples\jina\chat\main.rs:3:26: error[E0432]: unresolved import `nl_llm_v2::provider::traits`: could not find `traits` in `provider`
-crates\nl_llm_v2\examples\jina\chat\main.rs:7:5: error[E0433]: failed to resolve: use of unresolved module or unlinked crate `tracing_subscriber`: use of unresolved module or unlinked crate `tracing_subscriber`
-crates\nl_llm_v2\examples\jina\chat\main.rs:15:32: error[E0433]: failed to resolve: could not find `Auth` in `site`: could not find `Auth` in `site`
-crates\nl_llm_v2\examples\jina\chat\main.rs:12:18: error[E0277]: the `?` operator can only be applied to values that implement `Try`: the `?` operator cannot be applied to type `LlmClient`
-crates\nl_llm_v2\examples\jina\chat\main.rs:12:9: error[E0282]: type annotations needed
-error: could not compile `nl_llm_v2` (example "jina_chat") due to 5 previous errors

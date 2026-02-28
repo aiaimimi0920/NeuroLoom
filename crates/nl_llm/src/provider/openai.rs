@@ -1,53 +1,92 @@
-//! OpenAI Provider
+use crate::auth::traits::Authenticator;
+use crate::concurrency::ConcurrencyConfig;
+use crate::provider::extension::{ModelInfo, ProviderExtension};
+use async_trait::async_trait;
+use reqwest::Client;
+use std::sync::Arc;
 
-use crate::prompt_ast::PromptAst;
+/// OpenAI 静态模型列表扩展
+///
+/// OpenAI 的 /models 端点返回的数据不可靠（实际可用模型与返回列表不一致），
+/// 因此使用静态列表。模型数据来源：官方文档，截止 2026-02-25。
+pub struct OpenAiExtension;
 
-/// OpenAI 配置
-#[derive(Debug, Clone)]
-pub struct OpenAIConfig {
-    pub api_key: String,
-    pub model: String,
-    pub base_url: String,
+impl OpenAiExtension {
+    pub fn new() -> Self {
+        Self
+    }
 }
 
-impl Default for OpenAIConfig {
+impl Default for OpenAiExtension {
     fn default() -> Self {
-        Self {
-            api_key: String::new(),
-            model: "gpt-4".to_string(),
-            base_url: "https://api.openai.com/v1".to_string(),
-        }
+        Self::new()
     }
 }
 
-/// OpenAI Provider
-pub struct OpenAIProvider {
-    config: OpenAIConfig,
+fn openai_models() -> Vec<ModelInfo> {
+    vec![
+        // GPT-4o 系列（推荐）
+        ModelInfo {
+            id: "gpt-4o".to_string(),
+            description: "GPT-4o — Flagship multimodal model, 128K context".to_string(),
+        },
+        ModelInfo {
+            id: "gpt-4o-mini".to_string(),
+            description: "GPT-4o Mini — Fast and affordable, 128K context".to_string(),
+        },
+        // GPT-4 Turbo
+        ModelInfo {
+            id: "gpt-4-turbo".to_string(),
+            description: "GPT-4 Turbo — Previous generation, 128K context".to_string(),
+        },
+        // GPT-3.5
+        ModelInfo {
+            id: "gpt-3.5-turbo".to_string(),
+            description: "GPT-3.5 Turbo — Fast and economical, 16K context".to_string(),
+        },
+        // 推理模型
+        ModelInfo {
+            id: "o1".to_string(),
+            description: "o1 — Advanced reasoning model, 200K context".to_string(),
+        },
+        ModelInfo {
+            id: "o1-mini".to_string(),
+            description: "o1-mini — Fast reasoning model, 128K context".to_string(),
+        },
+        ModelInfo {
+            id: "o1-pro".to_string(),
+            description: "o1-pro — Premium reasoning model, 200K context".to_string(),
+        },
+        ModelInfo {
+            id: "o3-mini".to_string(),
+            description: "o3-mini — Latest reasoning model, 200K context".to_string(),
+        },
+    ]
 }
 
-impl OpenAIProvider {
-    pub fn new(config: OpenAIConfig) -> Self {
-        Self { config }
+#[async_trait]
+impl ProviderExtension for OpenAiExtension {
+    fn id(&self) -> &str {
+        "openai"
     }
 
-    pub fn default_provider() -> Self {
-        Self::new(OpenAIConfig::default())
+    async fn list_models(
+        &self,
+        _http: &Client,
+        _auth: &mut dyn Authenticator,
+    ) -> anyhow::Result<Vec<ModelInfo>> {
+        Ok(openai_models())
     }
 
-    /// 将 Prompt AST 编译为 OpenAI 兼容请求体
-    pub fn compile_request(&self, ast: &PromptAst) -> serde_json::Value {
-        serde_json::json!({
-            "model": self.config.model,
-            "messages": ast.to_openai_messages(),
-            "temperature": 0.2
-        })
+    fn concurrency_config(&self) -> ConcurrencyConfig {
+        // OpenAI 付费用户: 10,000 RPM
+        // 按 10 秒平均响应时间计算，约 1000 并发
+        // 使用保守值 100 作为默认
+        ConcurrencyConfig::new(100)
     }
+}
 
-    pub async fn complete(&self, ast: &PromptAst) -> nl_core::Result<String> {
-        let body = self.compile_request(ast);
-        Ok(format!(
-            "openai request prepared: {}",
-            serde_json::to_string(&body).unwrap_or_default()
-        ))
-    }
+/// 返回 Arc 包装好的扩展实例（供 preset 使用）
+pub fn extension() -> Arc<OpenAiExtension> {
+    Arc::new(OpenAiExtension::new())
 }

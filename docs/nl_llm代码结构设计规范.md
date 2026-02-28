@@ -1,4 +1,4 @@
-# nl_llm 代码结构设计规范 v2.3
+# nl_llm 代码结构设计规范（2.3）
 
 ## 概述
 
@@ -747,7 +747,7 @@ impl AntigravityModelResolver {
 预设配置中使用：
 
 ```rust
-// crates/nl_llm_v2/src/presets/antigravity.rs
+// crates/nl_llm/src/presets/antigravity.rs
 pub fn builder() -> ClientBuilder {
     ClientBuilder::new()
         .site(CloudCodeSite::new())
@@ -2190,4 +2190,4 @@ println!("错误率: {:.2}%",
 
 ---
 
-*本文档作为 `nl_llm` 模块的完整设计规范 v2.3，指导后续实现开发。*
+*本文档作为 `nl_llm` 模块的完整设计规范（2.3），指导后续实现开发。*
