@@ -1,22 +1,44 @@
-FROM python:3.11-slim
+# 使用稳定的 Debian 发行版以降低 apt 镜像波动导致的构建失败概率（之前出现 502）
+FROM python:3.11-slim-bookworm
 
 # 设置无交互模式，避免 apt-get 卡住
 ENV DEBIAN_FRONTEND=noninteractive
 
 # 安装相关的依赖以及 Google Chrome
-RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg2 \
-    apt-transport-https \
-    ca-certificates \
-    curl \
-    unzip \
-    && curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg \
-    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
-    && apt-get update \
-    && apt-get install -y google-chrome-stable \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# - 将 Debian 源从 http 改为 https（Docker Desktop 内部 HTTP 代理偶发 502）
+# - 增加“手动重试”循环 + --fix-missing，降低偶发源波动导致的 build 失败概率
+RUN set -eux; \
+    echo 'Acquire::Retries "5"; Acquire::http::Timeout "30"; Acquire::https::Timeout "30";' > /etc/apt/apt.conf.d/80retries; \
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+      sed -i 's|http://deb.debian.org/debian|https://deb.debian.org/debian|g' /etc/apt/sources.list.d/debian.sources; \
+      sed -i 's|http://security.debian.org/debian-security|https://security.debian.org/debian-security|g' /etc/apt/sources.list.d/debian.sources; \
+    fi; \
+    for i in 1 2 3 4 5; do \
+      echo "[apt] attempt=$i"; \
+      apt-get update; \
+      if apt-get install -y --no-install-recommends --fix-missing \
+        wget \
+        gnupg2 \
+        apt-transport-https \
+        ca-certificates \
+        curl \
+        unzip; then \
+        break; \
+      fi; \
+      sleep $((i*3)); \
+    done; \
+    curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg; \
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list; \
+    for i in 1 2 3 4 5; do \
+      echo "[apt] chrome attempt=$i"; \
+      apt-get update; \
+      if apt-get install -y --no-install-recommends --fix-missing google-chrome-stable; then \
+        break; \
+      fi; \
+      sleep $((i*3)); \
+    done; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
 
 # 设置工作目录
 WORKDIR /app

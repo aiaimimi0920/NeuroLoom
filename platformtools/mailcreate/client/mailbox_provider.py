@@ -25,6 +25,7 @@ NOTE:
 
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass
 from typing import Optional
@@ -295,13 +296,31 @@ def wait_openai_code(
             raise RuntimeError("mailcreate_base_url is required")
         if not mailcreate_custom_auth:
             raise RuntimeError("mailcreate_custom_auth is required")
+
+        # MailCreate is self-hosted and (almost) free to poll, so we allow
+        # configuring a higher polling frequency via env.
+        # NOTE: GPTMail polling stays at 3.0s to avoid burning quota.
+        poll_seconds = 3.0
+        try:
+            v = (os.environ.get("MAILCREATE_POLL_SECONDS") or "").strip()
+            if v:
+                poll_seconds = float(v)
+        except Exception:
+            poll_seconds = 3.0
+
+        # guard rails: too aggressive polling can DoS our worker or amplify transient errors
+        if poll_seconds < 0.2:
+            poll_seconds = 0.2
+        if poll_seconds > 30.0:
+            poll_seconds = 30.0
+
         client = MailCreateClient(MailCreateConfig(base_url=mailcreate_base_url, custom_auth=mailcreate_custom_auth))
         return wait_for_6digit_code(
             client,
             jwt=raw_ref if ref_provider else mailbox_ref,
             from_contains="openai",
             timeout_seconds=timeout_seconds,
-            poll_seconds=3.0,
+            poll_seconds=poll_seconds,
         )
 
     if p in ("gptmail", "gpt"):
