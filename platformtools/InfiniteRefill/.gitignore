@@ -1,0 +1,33 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Logs
+*.log
+
+# Node
+node_modules/
+
+# Build outputs
+/dist/
+/build/
+
+# Wrangler / Cloudflare
+.wrangler/
+server/.wrangler/
+
+# Secrets / local vars
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+server/.dev.vars
+server/.dev.vars.*
+!server/.dev.vars.example
+
+# Local backups / outputs
+out/
+
+# Sample/private payloads (do NOT commit)
+客户端/热心群众/datas/

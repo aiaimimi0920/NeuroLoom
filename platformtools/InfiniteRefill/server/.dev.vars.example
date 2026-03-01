@@ -1,0 +1,35 @@
+# 本文件用于本地开发（wrangler dev）注入 secrets/vars。
+# 复制为 .dev.vars（不要提交到仓库）。
+
+# 超级管理员令牌（本地可随便，线上必须强随机）
+# 生成于 2026-02-28：48 bytes 随机（base64url）
+ADMIN_TOKEN=adm_PTAtWdJk8lLr2SZQEoqHHSuDUhGMfWUdZHvzSqT84AwAyblddnrAcrkeMlktUNyL
+
+# 超级管理员强校验：第二因子（请求 Header: X-Admin-Guard）
+# 生成于 2026-02-28：32 bytes 随机（base64url）
+ADMIN_GUARD=CDIQyfens6fVp0jSm4X1FqJgnDKpz72s4bT9k4SSTDU
+
+# 超级管理员强校验：IP 白名单（支持单 IP 与 CIDR，逗号分隔）
+# 当前探测到公网出口 IP（家庭宽带可能变化）：211.22.161.168
+# 如 IP 变化：更新该值，并同步更新 Worker secrets（ADMIN_IP_WHITELIST）
+ADMIN_IP_WHITELIST=211.22.161.168/32
+
+# refill key 加密主密钥（base64，解码后 32 bytes）
+# 线上建议用 wrangler secret put REFILL_KEYS_MASTER_KEY_B64
+REFILL_KEYS_MASTER_KEY_B64=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+
+# accounts.auth_json 加密主密钥（base64，解码后 32 bytes）
+# 用于加密存储账号 auth_json（token JSON），并在 /v1/refill/topup 下发时解密
+# 线上建议用 wrangler secret put ACCOUNTS_MASTER_KEY_B64
+ACCOUNTS_MASTER_KEY_B64=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+
+# R2（Workers binding 走 wrangler.toml 的 [[r2_buckets]]；以下用于生成 presigned URL）
+# Cloudflare Account ID（不是 zone id）
+R2_ACCOUNT_ID=bea2e3be0577ee4f7b3ffae4df6f53bb
+
+# bucket name（需与你在 wrangler.toml 里配置的一致）
+R2_BUCKET_NAME=infinite-refill-packages
+
+# R2 S3 API token（Access Key ID / Secret Access Key）
+R2_ACCESS_KEY_ID=REPLACE_ME
+R2_SECRET_ACCESS_KEY=REPLACE_ME

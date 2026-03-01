@@ -1,0 +1,67 @@
+version: '3.8'
+services:
+  codex_register:
+    build: .
+    container_name: codex_register_bot
+    # 使用默认 bridge 网络，避免 compose 创建 user-defined network 时触发 iptables 规则写入失败
+    network_mode: bridge
+    env_file:
+      - ./.env.center
+    volumes:
+      # 将运行数据目录映射出来（results/proxies/screenshot/logs）
+      - ./data:/data
+      # 映射源码，避免每次都要 rebuild
+      - ./main.py:/app/main.py
+      - ./uploader.py:/app/uploader.py
+      # 挂载 mailbox providers（MailCreate + GPTMail client）
+      # IMPORTANT:
+      #   In container, `main.py` expects client dir at `/mailcreate/client`.
+      - ../../mailcreate/client:/mailcreate/client:ro
+    environment:
+      # Runtime data dir
+      - DATA_DIR=/data
+      # multi-container: unique instance id for per-instance results shards/state
+      - INSTANCE_ID=${INSTANCE_ID:-codex_register_1}
+
+      # 关闭调试/现场 dump（减少日志与磁盘写入）
+      - DEBUG_TRACE=0
+      - DUMP_PAGE_BODY=0
+      - KEEP_ERROR_ARTIFACTS=0
+
+      # 省流量
+      - BLOCK_IMAGES=2 # 设为 2 会禁用图片 (极度推荐开启以省流量)
+      - BLOCK_CSS=2    # 设为 2 会禁用 CSS (可能会改变网页结构，导致找不到元素)
+      - BLOCK_FONTS=2  # 设为 2 会禁用自定义字体加载
+      - BLOCK_GOOGLE_OPT_GUIDE=2 # 强制回环 optimizationguide-pa.googleapis.com 到 127.0.0.1，节省代理流量
+      - BLOCK_NOISY_HOSTS=2 # 回环更多高噪音域名（update.googleapis.com / *.gvt1.com / *.cloudflarestream.com / browser-intake-datadoghq.com）
+
+      # 并发与防封参数设置
+      - CONCURRENCY=1   # 同时运行的浏览器/注册线程数 (先压到 1 方便定位问题)
+      - SLEEP_MIN=5      # 每个线程在完成一轮跑号后的最小休息时间(秒)
+      - SLEEP_MAX=20     # 每个线程在完成一轮跑号后的最大休息时间(秒)
+
+      # 已删除物理机全局代理设置 (防止和容器内的代理发生双重叠加消耗流量)
+    shm_size: '4gb' # 给 10 个 Chrome 提供足够的共享内存防止崩溃
+    restart: always
+
+  codex_uploader:
+    # 不需要新增镜像：复用同一个 build 产物（同一个 Dockerfile）即可
+    build: .
+    container_name: codex_register_uploader
+    # 使用默认 bridge 网络，避免 compose 创建 user-defined network 时触发 iptables 规则写入失败
+    network_mode: bridge
+    env_file:
+      - ./.env.center
+    volumes:
+      - ./data:/data
+      - ./uploader.py:/app/uploader.py
+    environment:
+      - DATA_DIR=/data
+      - INSTANCE_ID=${INSTANCE_ID:-codex_register_1}
+
+      # uploader loop
+      - UPLOAD_POLL_SECONDS=2
+      - UPLOAD_STALE_SECONDS=600
+      - UPLOAD_SLEEP_ON_ERROR=5
+    command: ["python", "uploader.py"]
+    restart: always

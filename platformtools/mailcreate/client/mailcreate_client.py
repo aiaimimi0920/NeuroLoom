@@ -25,6 +25,8 @@ import re
 import time
 import urllib.parse
 import urllib.request
+import ssl
+import http.client
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -65,39 +67,59 @@ def _req(
 
     req = urllib.request.Request(url, data=body_bytes, headers=base_headers, method=method)
 
-    try:
-        with urllib.request.urlopen(req, timeout=config.timeout_seconds) as resp:
-            text = resp.read().decode("utf-8", errors="replace")
-            return resp.getcode(), text, dict(resp.headers)
-    except urllib.error.HTTPError as e:
-        text = e.read().decode("utf-8", errors="replace")
-        return e.code, text, dict(e.headers)
-    except Exception as e:
-        raise MailCreateError(f"request failed: {method} {url}: {e}") from e
+    # CRITICAL: ensure mailbox API does NOT use any environment proxy variables.
+    # This avoids flaky TLS EOF when routed through overseas proxies.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+    # Retry a few times on transient TLS/connection resets.
+    last_exc: Exception | None = None
+    for attempt in range(1, 4):
+        try:
+            with opener.open(req, timeout=config.timeout_seconds) as resp:
+                text = resp.read().decode("utf-8", errors="replace")
+                return resp.getcode(), text, dict(resp.headers)
+        except urllib.error.HTTPError as e:
+            text = e.read().decode("utf-8", errors="replace")
+            return e.code, text, dict(e.headers)
+        except (ssl.SSLError, http.client.RemoteDisconnected, ConnectionResetError, TimeoutError, urllib.error.URLError) as e:
+            last_exc = e
+            if attempt < 3:
+                time.sleep(0.5 * attempt)
+                continue
+            break
+        except Exception as e:
+            last_exc = e
+            break
+
+    raise MailCreateError(f"request failed: {method} {url}: {last_exc}") from last_exc
 
 
 class MailCreateClient:
     def __init__(self, config: MailCreateConfig):
         self.config = config
 
+    def _maybe_auth_headers(self) -> Dict[str, str]:
+        # When server-side auth is disabled (DISABLE_CUSTOM_AUTH_CHECK=true),
+        # `custom_auth` can be empty.
+        return {"x-custom-auth": self.config.custom_auth} if self.config.custom_auth else {}
+
     def health_check(self) -> str:
         code, text, _ = _req(
             self.config,
             "GET",
             "/health_check",
-            headers={"x-custom-auth": self.config.custom_auth},
+            headers=self._maybe_auth_headers(),
         )
         if code != 200:
             raise MailCreateError(f"health_check failed: {code} {text}")
         return text
 
     def open_settings(self) -> Dict[str, Any]:
-        # /open_api/settings is still protected by x-custom-auth if PASSWORDS configured.
         code, text, _ = _req(
             self.config,
             "GET",
             "/open_api/settings",
-            headers={"x-custom-auth": self.config.custom_auth},
+            headers=self._maybe_auth_headers(),
         )
         if code != 200:
             raise MailCreateError(f"open_settings failed: {code} {text}")
@@ -114,7 +136,7 @@ class MailCreateClient:
             self.config,
             "POST",
             "/api/new_address",
-            headers={"x-custom-auth": self.config.custom_auth},
+            headers=self._maybe_auth_headers(),
             json_body=payload,
         )
         if code != 200:
@@ -165,12 +187,20 @@ class MailCreateClient:
         return json.loads(text) if text else {"success": True}
 
 
-_CODE_RE = re.compile(r"(?<!\d)(\d{6})(?!\d)")
+# Prefer context-aware extraction to avoid grabbing unrelated 6-digit numbers.
+_CODE_CONTEXT_RE = re.compile(
+    r"(?is)(?:verification\s*code|verify\s*code|security\s*code|code|验证码)[^0-9]{0,32}(\d{6})"
+)
+_CODE_ANY_RE = re.compile(r"(?<!\d)(\d{6})(?!\d)")
 
 
 def extract_6digit_code(text: str) -> Optional[str]:
-    m = _CODE_RE.search(text or "")
-    return m.group(1) if m else None
+    s = text or ""
+    m = _CODE_CONTEXT_RE.search(s)
+    if m:
+        return m.group(1)
+    m2 = _CODE_ANY_RE.search(s)
+    return m2.group(1) if m2 else None
 
 
 def wait_for_6digit_code(
@@ -198,6 +228,12 @@ def wait_for_6digit_code(
         # Some API variants return { results, count } via handleListQuery.
         if isinstance(data, dict) and "results" in data and isinstance(data["results"], list):
             emails = data["results"]
+
+        # Prefer newest mails first.
+        try:
+            emails = sorted(emails, key=lambda it: int(it.get("id") or 0), reverse=True)
+        except Exception:
+            pass
 
         for e in emails:
             try:

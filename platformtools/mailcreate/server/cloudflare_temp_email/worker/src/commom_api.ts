@@ -10,8 +10,9 @@ const api = new Hono<HonoCustomType>
 api.get('/open_api/settings', async (c) => {
     // check header x-custom-auth
     let needAuth = false;
+    const disableCustomAuthCheck = utils.getBooleanValue(c.env.DISABLE_CUSTOM_AUTH_CHECK);
     const passwords = utils.getPasswords(c);
-    if (passwords && passwords.length > 0) {
+    if (!disableCustomAuthCheck && passwords && passwords.length > 0) {
         const auth = c.req.raw.headers.get("x-custom-auth");
         needAuth = !auth || !passwords.includes(auth);
     }

@@ -140,12 +140,20 @@ class GPTMailClient:
         return data if isinstance(data, dict) else {}
 
 
-_CODE_RE = re.compile(r"(?<!\d)(\d{6})(?!\d)")
+# Prefer context-aware extraction to avoid grabbing unrelated 6-digit numbers.
+_CODE_CONTEXT_RE = re.compile(
+    r"(?is)(?:verification\s*code|verify\s*code|security\s*code|code|验证码)[^0-9]{0,32}(\d{6})"
+)
+_CODE_ANY_RE = re.compile(r"(?<!\d)(\d{6})(?!\d)")
 
 
 def extract_6digit_code(text: str) -> Optional[str]:
-    m = _CODE_RE.search(text or "")
-    return m.group(1) if m else None
+    s = text or ""
+    m = _CODE_CONTEXT_RE.search(s)
+    if m:
+        return m.group(1)
+    m2 = _CODE_ANY_RE.search(s)
+    return m2.group(1) if m2 else None
 
 
 def wait_for_6digit_code_gptmail(
@@ -161,6 +169,12 @@ def wait_for_6digit_code_gptmail(
 
     while time.time() < deadline:
         items = client.list_emails(email=email)
+
+        # Prefer newest mails first.
+        try:
+            items = sorted(items, key=lambda it: int(str(it.get("id") or "0")), reverse=True)
+        except Exception:
+            pass
 
         for e in items:
             mail_id = str(e.get("id") or "").strip()

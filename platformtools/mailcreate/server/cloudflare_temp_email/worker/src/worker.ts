@@ -51,9 +51,18 @@ app.use('/*', async (c, next) => {
 	if (lang) { c.set("lang", lang); }
 	const msgs = i18n.getMessages(lang || c.env.DEFAULT_LANG);
 
-	// check header x-custom-auth
+	// check header x-custom-auth (site password gate)
+	// NOTE: In some deployments we want the service fully public.
+	// Setting DISABLE_CUSTOM_AUTH_CHECK=true will bypass this check even if PASSWORDS is set as a Secret.
+	const disableCustomAuthCheck = getBooleanValue(c.env.DISABLE_CUSTOM_AUTH_CHECK);
 	const passwords = getPasswords(c);
-	if (!c.req.path.startsWith("/open_api") && !c.req.path.startsWith("/telegram/") && passwords && passwords.length > 0) {
+	if (
+		!disableCustomAuthCheck
+		&& !c.req.path.startsWith("/open_api")
+		&& !c.req.path.startsWith("/telegram/")
+		&& passwords
+		&& passwords.length > 0
+	) {
 		const auth = c.req.raw.headers.get("x-custom-auth");
 		if (!auth || !passwords.includes(auth)) {
 			return c.text(msgs.CustomAuthPasswordMsg, 401)

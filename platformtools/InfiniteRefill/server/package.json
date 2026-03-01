@@ -1,0 +1,20 @@
+{
+  "name": "infinite-refill-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "d1:init": "wrangler d1 execute refill_server_v2 --file ./migrations/0001_init.sql",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@zip.js/zip.js": "^2.7.62",
+    "aws4fetch": "^1.0.20"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250227.0",
+    "wrangler": "^3.114.0",
+    "typescript": "^5.5.4"
+  }
+}

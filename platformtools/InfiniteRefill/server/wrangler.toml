@@ -1,0 +1,50 @@
+name = "infinite-refill-server"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# 绑定到自定义域名（Cloudflare Zone: aiaimimi.com）
+routes = [
+  { pattern = "refill.aiaimimi.com/*", zone_name = "aiaimimi.com" }
+]
+
+# D1
+[[d1_databases]]
+binding = "DB"
+database_name = "refill_server_v2"
+database_id = "8d99b6ec-365b-46ba-9572-22c7763a4835"
+
+# 分发包：R2 存储
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "infinite-refill-packages"
+
+[vars]
+# 生产环境：把敏感值都放 Worker Secrets（wrangler secret put），不要写在本文件。
+# 本地开发：放到被 gitignore 的 server/.dev.vars。
+
+# 作品相关：是否启用 mine API（默认关闭）
+ENABLE_MINE_API = "0"
+
+# 管理员强校验：白名单（IP/CIDR），强烈建议仅在 secrets/.dev.vars 配置
+#ADMIN_IP_WHITELIST = "1.2.3.4,5.6.7.0/24"
+
+# 管理员强校验：第二因子（X-Admin-Guard），强烈建议仅在 secrets/.dev.vars 配置
+#ADMIN_GUARD = "REPLACE_ME"
+
+# R2 presigned URL 所需：
+# - R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY：R2 S3 API token（用 wrangler secret put）
+# - R2_ACCOUNT_ID：你的 Cloudflare Account ID
+# - R2_BUCKET_NAME：R2 bucket 名称（需与 [[r2_buckets]].bucket_name 一致）
+R2_ACCOUNT_ID = "bea2e3be0577ee4f7b3ffae4df6f53bb"
+R2_BUCKET_NAME = "infinite-refill-packages"
+
+# 安全边界：严禁把真实密钥写进可提交文件（包括本文件）。
+# 生产环境请使用：
+#   npx wrangler secret put R2_ACCESS_KEY_ID
+#   npx wrangler secret put R2_SECRET_ACCESS_KEY
+# 本地开发请放到被 gitignore 的 server/.dev.vars。
+#R2_ACCESS_KEY_ID = "REPLACE_ME"
+#R2_SECRET_ACCESS_KEY = "REPLACE_ME"
+
+# 可选：用于对 email_hash 做额外加盐（客户端也可以自己加盐；此处仅作为服务端内部一致性）
+# SERVER_PEPPER = ""

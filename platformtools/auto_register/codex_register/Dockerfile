@@ -25,8 +25,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 复制主逻辑脚本
+# 复制主逻辑脚本 + uploader
 COPY main.py .
+COPY uploader.py .
 
 # 设置环境变量，避免 Python 输出被缓冲
 ENV PYTHONUNBUFFERED=1
