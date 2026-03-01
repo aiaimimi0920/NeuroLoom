@@ -1657,7 +1657,8 @@ def smart_wait(driver, by, value, timeout=20, *, debug_kind: str = "", debug_mes
             if try_again_btns and try_again_btns[0].is_displayed():
                 _dbg("overlay", "Detected 'Oops' overlay; clicking 'Try again'", driver=driver)
                 driver.execute_script("arguments[0].click();", try_again_btns[0])
-                time.sleep(2)  # Wait for page to reload/recover
+                # Speed: keep a short pause for the overlay to disappear / rerender.
+                time.sleep(1.0)
                 continue
 
             # Check for the actual target element
@@ -1668,7 +1669,8 @@ def smart_wait(driver, by, value, timeout=20, *, debug_kind: str = "", debug_mes
                 return el
         except Exception:
             pass
-        time.sleep(0.5)
+        # Speed: tighter polling loop.
+        time.sleep(0.2)
 
     if debug_kind:
         msg = debug_message or f"wait failed for {by}={value}"
@@ -1759,14 +1761,24 @@ def register(driver, proxy=None) -> tuple[str, str]:
     _dbg("ui", "password ENTER pressed", driver=driver)
     print("Enter pressed")
     
-    code = get_oai_code(address_jwt=address_jwt, timeout_seconds=180, proxy=proxy)
+    try:
+        code = get_oai_code(address_jwt=address_jwt, timeout_seconds=180, proxy=proxy)
+    except Exception as e:
+        # CRITICAL: even if logs/dumps are disabled, we still want at least a screenshot.
+        try:
+            _save_error_artifacts(driver=driver, kind="code_wait_timeout", message=str(e))
+        except Exception:
+            pass
+        raise
+
     # Dump page + pause shortly to reduce race where code changes due to resend.
     try:
         _dbg("mail", f"got verification code={code} mailbox_ref={address_jwt}", driver=driver)
         _dump_page_body(driver=driver, kind="code_before_fill", message=f"code={code} mailbox_ref={address_jwt}")
     except Exception:
         pass
-    time.sleep(1.0)
+    # Speed: reduce the post-code pause.
+    time.sleep(0.3)
     print("Verification Code:", code)
     try:
         code_input = smart_wait(
@@ -1812,7 +1824,7 @@ def register(driver, proxy=None) -> tuple[str, str]:
 
         # If the page shows "Incorrect code", try one resend then re-fetch code.
         try:
-            time.sleep(1.0)
+            time.sleep(0.5)
             txt = driver.execute_script("return document && document.body ? document.body.innerText : '';")
             if "incorrect code" in str(txt or "").lower():
                 _dbg("code", "detected incorrect code, trying resend once", driver=driver)
@@ -1828,7 +1840,7 @@ def register(driver, proxy=None) -> tuple[str, str]:
                         debug_message="resend button not found",
                     )
                     resend_btn.click()
-                    time.sleep(2)
+                    time.sleep(1.0)
                 except Exception:
                     pass
 
@@ -1855,7 +1867,7 @@ def register(driver, proxy=None) -> tuple[str, str]:
                 # Speed: send code in one shot.
                 code_input2.send_keys(code2)
                 code_input2.send_keys(Keys.ENTER)
-                time.sleep(1.0)
+                time.sleep(0.5)
         except Exception:
             pass
 

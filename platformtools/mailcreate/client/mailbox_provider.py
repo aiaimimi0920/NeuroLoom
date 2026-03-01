@@ -25,6 +25,7 @@ NOTE:
 
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass
 from typing import Optional
@@ -280,6 +281,19 @@ def wait_openai_code(
     gptmail_keys_file: str = "",
     timeout_seconds: int = 180,
 ) -> str:
+    def _poll_seconds() -> float:
+        # Speed knob for code polling. Lower means faster, but higher request rate.
+        # Keep conservative defaults to avoid hammering the mailbox API.
+        raw = (os.environ.get("OPENAI_CODE_POLL_SECONDS", "2.0") or "2.0").strip()
+        try:
+            v = float(raw)
+        except Exception:
+            v = 2.0
+        if v < 0.5:
+            v = 0.5
+        if v > 10.0:
+            v = 10.0
+        return v
     # In auto mode we rely on encoded ref prefix.
     ref_provider, raw_ref = _decode_ref(mailbox_ref)
 
@@ -301,7 +315,7 @@ def wait_openai_code(
             jwt=raw_ref if ref_provider else mailbox_ref,
             from_contains="openai",
             timeout_seconds=timeout_seconds,
-            poll_seconds=3.0,
+            poll_seconds=_poll_seconds(),
         )
 
     if p in ("gptmail", "gpt"):
@@ -328,7 +342,7 @@ def wait_openai_code(
                 email=email,
                 from_contains="openai",
                 timeout_seconds=timeout_seconds,
-                poll_seconds=3.0,
+                poll_seconds=_poll_seconds(),
             )
 
         if not gptmail_keys_file:
@@ -370,7 +384,7 @@ def wait_openai_code(
                     email=email,
                     from_contains="openai",
                     timeout_seconds=remaining,
-                    poll_seconds=3.0,
+                    poll_seconds=_poll_seconds(),
                 )
             except GPTMailError as e:
                 last_err = e

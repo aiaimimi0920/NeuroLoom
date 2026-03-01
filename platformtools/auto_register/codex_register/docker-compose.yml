@@ -35,6 +35,9 @@ services:
       - BLOCK_GOOGLE_OPT_GUIDE=2 # 强制回环 optimizationguide-pa.googleapis.com 到 127.0.0.1，节省代理流量
       - BLOCK_NOISY_HOSTS=2 # 回环更多高噪音域名（update.googleapis.com / *.gvt1.com / *.cloudflarestream.com / browser-intake-datadoghq.com）
 
+      # 验证码轮询频率（越小越快，但会更频繁请求邮箱 API）
+      - OPENAI_CODE_POLL_SECONDS=1.0
+
       # 并发与防封参数设置
       - CONCURRENCY=1   # 同时运行的浏览器/注册线程数 (先压到 1 方便定位问题)
       - SLEEP_MIN=5      # 每个线程在完成一轮跑号后的最小休息时间(秒)
