@@ -7,37 +7,55 @@ import urllib.parse
 import urllib.request
 import urllib.error
 from dataclasses import dataclass
+from collections import deque
 from typing import Any, Dict
-import undetected_chromedriver as uc
-
-try:
-    from curl_cffi import requests as curl_requests
-except Exception:
-    curl_requests = None  # type: ignore
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.common.action_chains import ActionChains
 import time
 import random
-import string
 import os
 import re
 import json
 import glob
 import socket
 from urllib.parse import urlparse, parse_qs
-from urllib import request
 import tempfile
 import shutil
 import concurrent.futures
 import threading
-import socket
 
 write_lock = threading.Lock()
 driver_init_lock = threading.Lock()
+stats_lock = threading.Lock()
+proxy_state_lock = threading.Lock()
+
+RUN_STARTED_AT = time.time()
+
+_STATS: dict[str, Any] = {
+    "attempt": 0,
+    "success": 0,
+    "fail": 0,
+    "blocked": 0,
+    "otp_timeout": 0,
+    "proxy_error": 0,
+    "other": 0,
+    "stage_email": 0,
+    "stage_password": 0,
+    "stage_otp": 0,
+    "stage_profile": 0,
+    "stage_callback": 0,
+    "stage_other": 0,
+    "last_error": "",
+}
+
+_SUCCESS_TS = deque()
+_ATTEMPT_TS = deque()
+
+_PROXY_COOLDOWN_UNTIL: dict[str, float] = {}
+_PROXY_SCORE: dict[str, int] = {}
 
 # Runtime data directory (results / proxies / screenshots / logs).
 # - In local dev: defaults to ./data next to this file
@@ -140,6 +158,54 @@ REFILL_UPLOAD_KEY = (os.environ.get("REFILL_UPLOAD_KEY") or os.environ.get("INFI
 RESULTS_SHARD_SIZE = int(os.environ.get("RESULTS_SHARD_SIZE", "200"))
 if RESULTS_SHARD_SIZE <= 0:
     RESULTS_SHARD_SIZE = 200
+
+SUMMARY_PRINT_SECONDS = int(os.environ.get("SUMMARY_PRINT_SECONDS", "5") or "5")
+if SUMMARY_PRINT_SECONDS <= 0:
+    SUMMARY_PRINT_SECONDS = 5
+
+ROLLING_WINDOW_SECONDS = int(os.environ.get("ROLLING_WINDOW_SECONDS", "180") or "180")
+if ROLLING_WINDOW_SECONDS <= 0:
+    ROLLING_WINDOW_SECONDS = 180
+
+PROXY_ROTATE_SECONDS = int(os.environ.get("PROXY_ROTATE_SECONDS", "120") or "120")
+if PROXY_ROTATE_SECONDS < 0:
+    PROXY_ROTATE_SECONDS = 0
+
+COOLDOWN_PROXY_ERROR_SECONDS = int(os.environ.get("COOLDOWN_PROXY_ERROR_SECONDS", "120") or "120")
+if COOLDOWN_PROXY_ERROR_SECONDS < 0:
+    COOLDOWN_PROXY_ERROR_SECONDS = 0
+
+COOLDOWN_BLOCKED_SECONDS = int(os.environ.get("COOLDOWN_BLOCKED_SECONDS", "60") or "60")
+if COOLDOWN_BLOCKED_SECONDS < 0:
+    COOLDOWN_BLOCKED_SECONDS = 0
+
+COOLDOWN_OTP_TIMEOUT_SECONDS = int(os.environ.get("COOLDOWN_OTP_TIMEOUT_SECONDS", "30") or "30")
+if COOLDOWN_OTP_TIMEOUT_SECONDS < 0:
+    COOLDOWN_OTP_TIMEOUT_SECONDS = 0
+
+COOLDOWN_OTHER_SECONDS = int(os.environ.get("COOLDOWN_OTHER_SECONDS", "30") or "30")
+if COOLDOWN_OTHER_SECONDS < 0:
+    COOLDOWN_OTHER_SECONDS = 0
+
+# Debug/validation helper:
+# 0 = infinite loop (default), >0 = stop worker after N attempts.
+MAX_ATTEMPTS_PER_WORKER = int(os.environ.get("MAX_ATTEMPTS_PER_WORKER", "0") or "0")
+if MAX_ATTEMPTS_PER_WORKER < 0:
+    MAX_ATTEMPTS_PER_WORKER = 0
+
+# OTP wait timeout for browser flow (seconds).
+OTP_TIMEOUT_SECONDS = int(os.environ.get("OTP_TIMEOUT_SECONDS", "120") or "120")
+if OTP_TIMEOUT_SECONDS <= 0:
+    OTP_TIMEOUT_SECONDS = 120
+
+# 注册主流程是否强制要求代理。
+# - 1: 无代理直接判定本轮失败（默认）
+# - 0: 允许直连兜底
+REGISTER_PROXY_REQUIRED = (os.environ.get("REGISTER_PROXY_REQUIRED", "1") or "1").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+)
 
 
 def _data_path(*parts: str) -> str:
@@ -335,6 +401,225 @@ def _append_result_line(line: str) -> None:
     _write_json(_results_state_path(), {"shard_id": shard_id, "line_in_shard": line_in_shard})
 
 
+def _trim_ts(now_ts: float) -> None:
+    cutoff = now_ts - float(ROLLING_WINDOW_SECONDS)
+    while _SUCCESS_TS and _SUCCESS_TS[0] < cutoff:
+        _SUCCESS_TS.popleft()
+    while _ATTEMPT_TS and _ATTEMPT_TS[0] < cutoff:
+        _ATTEMPT_TS.popleft()
+
+
+def _stats_inc(kind: str, err: Exception | str | None = None, *, stage: str | None = None) -> None:
+    with stats_lock:
+        now_ts = time.time()
+        if kind == "attempt":
+            _STATS["attempt"] = int(_STATS.get("attempt", 0)) + 1
+            _ATTEMPT_TS.append(now_ts)
+            _trim_ts(now_ts)
+            return
+
+        if kind == "success":
+            _STATS["success"] = int(_STATS.get("success", 0)) + 1
+            _SUCCESS_TS.append(now_ts)
+            _trim_ts(now_ts)
+            return
+
+        _STATS["fail"] = int(_STATS.get("fail", 0)) + 1
+        if kind in _STATS:
+            _STATS[kind] = int(_STATS.get(kind, 0)) + 1
+        else:
+            _STATS["other"] = int(_STATS.get("other", 0)) + 1
+
+        if err is not None:
+            _STATS["last_error"] = str(err)
+
+        stg = stage or "stage_other"
+        if stg in _STATS:
+            _STATS[stg] = int(_STATS.get(stg, 0)) + 1
+        else:
+            _STATS["stage_other"] = int(_STATS.get("stage_other", 0)) + 1
+
+
+def _stats_snapshot() -> dict[str, Any]:
+    with stats_lock:
+        now_ts = time.time()
+        _trim_ts(now_ts)
+        st = dict(_STATS)
+        st["rolling_success"] = len(_SUCCESS_TS)
+        st["rolling_attempt"] = len(_ATTEMPT_TS)
+        st["rolling_window_seconds"] = ROLLING_WINDOW_SECONDS
+        return st
+
+
+def _classify_error(exc: Exception | str) -> str:
+    s = str(exc or "").lower()
+    if "timeout waiting for 6-digit code" in s or "otp_timeout" in s:
+        return "otp_timeout"
+    if "blocked" in s or "just a moment" in s:
+        return "blocked"
+    if (
+        "proxy" in s
+        or "ssl" in s
+        or "remotedisconnected" in s
+        or "connection aborted" in s
+        or "max retries exceeded" in s
+        or "unexpected_eof_while_reading" in s
+        or "unexpected_message" in s
+    ):
+        return "proxy_error"
+    return "other"
+
+
+def _infer_stage_from_error(err_text: str) -> str:
+    s = (err_text or "").lower()
+    if "email_input" in s or "email input" in s:
+        return "stage_email"
+    if "password_input" in s or "password input" in s:
+        return "stage_password"
+    if "code_input" in s or "otp" in s or "verification code" in s:
+        return "stage_otp"
+    if "about-you" in s or "birthday" in s or "profile" in s:
+        return "stage_profile"
+    if "callback" in s or "localhost:1455" in s or "state mismatch" in s:
+        return "stage_callback"
+    return "stage_other"
+
+
+def _event_log_path() -> str:
+    return os.path.join(_results_dir(), "browser_events.jsonl")
+
+
+def _record_event(event: str, **fields: Any) -> None:
+    try:
+        payload = {
+            "ts": _utc_now_iso(),
+            "event": event,
+            "instance": INSTANCE_ID,
+        }
+        payload.update(fields)
+        with write_lock:
+            _append_jsonl(_event_log_path(), payload)
+    except Exception:
+        pass
+
+
+def _summary_loop() -> None:
+    while True:
+        time.sleep(SUMMARY_PRINT_SECONDS)
+        st = _stats_snapshot()
+        elapsed = max(1.0, time.time() - RUN_STARTED_AT)
+        speed_h = float(st.get("success", 0)) * 3600.0 / elapsed
+
+        rw = max(1, int(st.get("rolling_window_seconds", ROLLING_WINDOW_SECONDS)))
+        rolling_success = int(st.get("rolling_success", 0) or 0)
+        rolling_attempt = int(st.get("rolling_attempt", 0) or 0)
+        rolling_h = rolling_success * 3600.0 / float(rw)
+        rolling_sr = (rolling_success / float(rolling_attempt)) if rolling_attempt > 0 else 0.0
+
+        print(
+            (
+                f"[BROWSER_SUMMARY] 完成 {st.get('success', 0)} | 尝试 {st.get('attempt', 0)} | 失败 {st.get('fail', 0)} "
+                f"| blocked {st.get('blocked', 0)} | otp_timeout {st.get('otp_timeout', 0)} | proxy_error {st.get('proxy_error', 0)} "
+                f"| 阶段(email/pwd/otp/profile/callback/other)="
+                f"{st.get('stage_email', 0)}/{st.get('stage_password', 0)}/{st.get('stage_otp', 0)}/"
+                f"{st.get('stage_profile', 0)}/{st.get('stage_callback', 0)}/{st.get('stage_other', 0)} "
+                f"| 速度(累计){speed_h:.0f}/h | 速度({rw}s){rolling_h:.0f}/h | 成功率({rw}s){rolling_sr*100:.1f}%"
+            ),
+            flush=True,
+        )
+
+
+def _proxy_is_cooled_down(proxy: str, now_ts: float | None = None) -> bool:
+    now_v = time.time() if now_ts is None else now_ts
+    with proxy_state_lock:
+        until = float(_PROXY_COOLDOWN_UNTIL.get(proxy, 0.0) or 0.0)
+    return until > now_v
+
+
+def _proxy_score_get(proxy: str) -> int:
+    with proxy_state_lock:
+        return int(_PROXY_SCORE.get(proxy, 0) or 0)
+
+
+def _proxy_mark_result(proxy: str | None, cls: str) -> None:
+    p = str(proxy or "").strip()
+    if not p:
+        return
+
+    c = (cls or "").strip().lower()
+    cool = 0
+    delta = 0
+
+    if c == "success":
+        delta = 1
+        cool = 0
+    elif c == "proxy_error":
+        delta = -2
+        cool = COOLDOWN_PROXY_ERROR_SECONDS
+    elif c == "blocked":
+        delta = -2
+        cool = COOLDOWN_BLOCKED_SECONDS
+    elif c == "otp_timeout":
+        delta = -1
+        cool = COOLDOWN_OTP_TIMEOUT_SECONDS
+    else:
+        delta = -1
+        cool = COOLDOWN_OTHER_SECONDS
+
+    with proxy_state_lock:
+        cur = int(_PROXY_SCORE.get(p, 0) or 0)
+        cur = max(-8, min(8, cur + delta))
+        _PROXY_SCORE[p] = cur
+        if cool > 0:
+            _PROXY_COOLDOWN_UNTIL[p] = time.time() + float(cool)
+
+
+def _pick_proxy(
+    *,
+    proxies: list[str],
+    current_proxy: str | None,
+    assigned_at: float,
+    force_direct: bool,
+) -> tuple[str | None, float]:
+    now_ts = time.time()
+
+    if force_direct:
+        return None, now_ts
+
+    if not proxies:
+        return None, now_ts
+
+    if current_proxy:
+        if (
+            PROXY_ROTATE_SECONDS > 0
+            and (now_ts - assigned_at) < PROXY_ROTATE_SECONDS
+            and not _proxy_is_cooled_down(current_proxy, now_ts)
+            and current_proxy in proxies
+        ):
+            return current_proxy, assigned_at
+
+    ready = [p for p in proxies if not _proxy_is_cooled_down(p, now_ts)]
+    if not ready:
+        return None, assigned_at
+
+    if current_proxy and len(ready) > 1 and current_proxy in ready:
+        ready = [p for p in ready if p != current_proxy]
+
+    # weighted choice by proxy score; lower score still has chance.
+    weights: list[int] = []
+    for p in ready:
+        s = _proxy_score_get(p)
+        weights.append(max(1, s + 9))  # score -8..8 -> weight 1..17
+
+    total = sum(weights)
+    r = random.randint(1, total)
+    acc = 0
+    for p, w in zip(ready, weights):
+        acc += w
+        if r <= acc:
+            return p, now_ts
+
+    return ready[-1], now_ts
 
 
 def _keep_last_n_files(pattern: str, *, keep: int = 10) -> None:
@@ -597,7 +882,9 @@ _PLATFORMTOOLS_DEV_VARS = (
     load_platformtools_dev_vars(start_dir=os.path.dirname(__file__)) if load_platformtools_dev_vars else {}
 )
 
-_PLAT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+# browser_version/main.py 位于 platformtools/auto_register/codex_register/browser_version
+# 这里需要回到 platformtools 根目录，再拼 mailcreate/client
+_PLAT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 _MAILCREATE_CLIENT_DIR = os.path.join(_PLAT_DIR, "mailcreate", "client")
 if _MAILCREATE_CLIENT_DIR not in sys.path:
     sys.path.insert(0, _MAILCREATE_CLIENT_DIR)
@@ -606,34 +893,6 @@ from mailbox_provider import Mailbox, create_mailbox, wait_openai_code as wait_o
 
 MAILBOX_PROVIDER = os.environ.get("MAILBOX_PROVIDER", "auto").strip().lower()
 
-# Registration flow mode:
-# - browser: existing Selenium flow
-# - protocol: HTTP protocol flow based on curl_cffi session + OAuth callback exchange
-REGISTER_FLOW_MODE = (os.environ.get("REGISTER_FLOW_MODE", "browser") or "browser").strip().lower()
-if REGISTER_FLOW_MODE not in ("browser", "protocol"):
-    REGISTER_FLOW_MODE = "browser"
-
-# 注册主流程是否强制要求代理。
-# - 1: 无代理直接判定本轮失败（默认）
-# - 0: 允许直连兜底（不建议）
-REGISTER_PROXY_REQUIRED = (os.environ.get("REGISTER_PROXY_REQUIRED", "1") or "1").strip().lower() not in (
-    "0",
-    "false",
-    "no",
-)
-
-# Protocol-flow knobs
-PROTOCOL_IMPERSONATE = (os.environ.get("PROTOCOL_IMPERSONATE", "chrome") or "chrome").strip() or "chrome"
-PROTOCOL_TIMEOUT_SECONDS = int(os.environ.get("PROTOCOL_TIMEOUT_SECONDS", "30") or "30")
-if PROTOCOL_TIMEOUT_SECONDS <= 0:
-    PROTOCOL_TIMEOUT_SECONDS = 30
-
-PROTOCOL_CHECK_GEO = (os.environ.get("PROTOCOL_CHECK_GEO", "1") or "1").strip().lower() not in ("0", "false", "no")
-PROTOCOL_BLOCKED_LOCS = {
-    x.strip().upper()
-    for x in (os.environ.get("PROTOCOL_BLOCKED_LOCS", "CN,HK") or "CN,HK").split(",")
-    if x.strip()
-}
 
 
 def _load_json_config(path: str) -> dict:
@@ -696,6 +955,94 @@ GPTMAIL_PREFIX = os.environ.get("GPTMAIL_PREFIX", "").strip() or None
 GPTMAIL_DOMAIN = os.environ.get("GPTMAIL_DOMAIN", "").strip() or None
 
 
+_MAIL_DOMAIN_HEALTH_ORDER = [
+    d.strip().lower()
+    for d in (os.environ.get("MAIL_DOMAIN_HEALTH_ORDER") or "mail.aiaimimi.com,aimiaimi.cc.cd,mimiaiai.cc.cd,aiaimimi.cc.cd,aiaiai.cc.cd").split(",")
+    if d.strip()
+]
+_MAILBOX_PICK_TRIES = int(os.environ.get("MAILBOX_PICK_TRIES", "3") or "3")
+if _MAILBOX_PICK_TRIES <= 0:
+    _MAILBOX_PICK_TRIES = 1
+
+
+def _domain_of_email(email: str) -> str:
+    s = str(email or "").strip().lower()
+    if "@" not in s:
+        return ""
+    return s.split("@", 1)[1].strip()
+
+
+def _domain_health_score(domain: str) -> int:
+    d = str(domain or "").strip().lower()
+    if not d:
+        return -10_000
+    try:
+        idx = _MAIL_DOMAIN_HEALTH_ORDER.index(d)
+        return 10_000 - idx
+    except ValueError:
+        return 0
+
+
+def _pick_mailcreate_with_health() -> Mailbox:
+    candidates: list[Mailbox] = []
+
+    # 1) 优先尝试固定高成功率域名
+    if MAILCREATE_DOMAIN:
+        mb = create_mailbox(
+            provider="mailcreate",
+            mailcreate_base_url=MAILCREATE_BASE_URL,
+            mailcreate_custom_auth=MAILCREATE_CUSTOM_AUTH,
+            mailcreate_domain=MAILCREATE_DOMAIN,
+            gptmail_base_url=GPTMAIL_BASE_URL,
+            gptmail_api_key=GPTMAIL_API_KEY,
+            gptmail_keys_file=GPTMAIL_KEYS_FILE,
+            gptmail_prefix=GPTMAIL_PREFIX,
+            gptmail_domain=GPTMAIL_DOMAIN,
+        )
+        candidates.append(mb)
+
+    # 2) 额外尝试健康域（去重）
+    for dom in _MAIL_DOMAIN_HEALTH_ORDER:
+        if len(candidates) >= _MAILBOX_PICK_TRIES:
+            break
+        if MAILCREATE_DOMAIN and dom == MAILCREATE_DOMAIN.strip().lower():
+            continue
+        try:
+            mb = create_mailbox(
+                provider="mailcreate",
+                mailcreate_base_url=MAILCREATE_BASE_URL,
+                mailcreate_custom_auth=MAILCREATE_CUSTOM_AUTH,
+                mailcreate_domain=dom,
+                gptmail_base_url=GPTMAIL_BASE_URL,
+                gptmail_api_key=GPTMAIL_API_KEY,
+                gptmail_keys_file=GPTMAIL_KEYS_FILE,
+                gptmail_prefix=GPTMAIL_PREFIX,
+                gptmail_domain=GPTMAIL_DOMAIN,
+            )
+            candidates.append(mb)
+        except Exception:
+            continue
+
+    # 3) 如果上面都没拿到，再兜底走原配置
+    if not candidates:
+        candidates.append(
+            create_mailbox(
+                provider=MAILBOX_PROVIDER,
+                mailcreate_base_url=MAILCREATE_BASE_URL,
+                mailcreate_custom_auth=MAILCREATE_CUSTOM_AUTH,
+                mailcreate_domain=MAILCREATE_DOMAIN,
+                gptmail_base_url=GPTMAIL_BASE_URL,
+                gptmail_api_key=GPTMAIL_API_KEY,
+                gptmail_keys_file=GPTMAIL_KEYS_FILE,
+                gptmail_prefix=GPTMAIL_PREFIX,
+                gptmail_domain=GPTMAIL_DOMAIN,
+            )
+        )
+
+    best = max(candidates, key=lambda m: _domain_health_score(_domain_of_email(m.email)))
+    return best
+
+
 def create_temp_mailbox() -> tuple[str, str]:
     """Create a new temp mailbox.
 
@@ -707,17 +1054,29 @@ def create_temp_mailbox() -> tuple[str, str]:
     - gptmail: email
     """
 
-    mb: Mailbox = create_mailbox(
-        provider=MAILBOX_PROVIDER,
-        mailcreate_base_url=MAILCREATE_BASE_URL,
-        mailcreate_custom_auth=MAILCREATE_CUSTOM_AUTH,
-        mailcreate_domain=MAILCREATE_DOMAIN,
-        gptmail_base_url=GPTMAIL_BASE_URL,
-        gptmail_api_key=GPTMAIL_API_KEY,
-        gptmail_keys_file=GPTMAIL_KEYS_FILE,
-        gptmail_prefix=GPTMAIL_PREFIX,
-        gptmail_domain=GPTMAIL_DOMAIN,
-    )
+    provider = (MAILBOX_PROVIDER or "").strip().lower()
+    if provider in ("mailcreate", "self", "local"):
+        mb = _pick_mailcreate_with_health()
+    else:
+        mb: Mailbox = create_mailbox(
+            provider=MAILBOX_PROVIDER,
+            mailcreate_base_url=MAILCREATE_BASE_URL,
+            mailcreate_custom_auth=MAILCREATE_CUSTOM_AUTH,
+            mailcreate_domain=MAILCREATE_DOMAIN,
+            gptmail_base_url=GPTMAIL_BASE_URL,
+            gptmail_api_key=GPTMAIL_API_KEY,
+            gptmail_keys_file=GPTMAIL_KEYS_FILE,
+            gptmail_prefix=GPTMAIL_PREFIX,
+            gptmail_domain=GPTMAIL_DOMAIN,
+        )
+
+        # auto 情况：若最终落到 mailcreate，再做一次健康域优选
+        if getattr(mb, "provider", "") == "mailcreate":
+            try:
+                mb = _pick_mailcreate_with_health()
+            except Exception:
+                pass
+
     return mb.email, mb.ref
 
 
@@ -1299,262 +1658,6 @@ def get_oai_code(*, address_jwt: str, timeout_seconds: int = 180, proxy: str | N
     return wait_openai_code(address_jwt=address_jwt, timeout_seconds=timeout_seconds)
 
 
-def _proxy_dict_for_requests(proxy: str | None) -> dict[str, str] | None:
-    p = str(proxy or "").strip()
-    if not p:
-        return None
-    return {"http": p, "https": p}
-
-
-def _decode_cookie_json_prefix(raw_cookie: str) -> dict[str, Any]:
-    """Decode first JWT-like segment from cookie and parse as JSON."""
-
-    v = str(raw_cookie or "").strip()
-    if not v:
-        return {}
-
-    head = v.split(".", 1)[0]
-    # OpenAI cookies may use standard base64 (not always urlsafe/padded).
-    for use_urlsafe in (False, True):
-        try:
-            pad = "=" * ((4 - (len(head) % 4)) % 4)
-            blob = (head + pad).encode("ascii")
-            decoded = (
-                base64.urlsafe_b64decode(blob)
-                if use_urlsafe
-                else base64.b64decode(blob)
-            )
-            obj = json.loads(decoded.decode("utf-8"))
-            if isinstance(obj, dict):
-                return obj
-        except Exception:
-            continue
-
-    return {}
-
-
-def _follow_redirects_for_callback(*, sess, start_url: str, max_hops: int = 8) -> str:
-    cur = str(start_url or "").strip()
-    if not cur:
-        raise RuntimeError("missing continue_url")
-
-    for _ in range(max_hops):
-        resp = sess.get(cur, allow_redirects=False, timeout=PROTOCOL_TIMEOUT_SECONDS)
-        status = int(getattr(resp, "status_code", 0) or 0)
-        loc = str(resp.headers.get("Location") or "").strip()
-
-        if loc and "localhost:1455" in loc:
-            return loc
-
-        if status in (301, 302, 303, 307, 308) and loc:
-            if loc.startswith("/"):
-                pu = urllib.parse.urlparse(cur)
-                loc = f"{pu.scheme}://{pu.netloc}{loc}"
-            cur = loc
-            continue
-
-        # 非重定向且未拿到 callback
-        break
-
-    raise RuntimeError("protocol flow did not reach localhost callback")
-
-
-def register_protocol(proxy: str | None = None) -> tuple[str, str]:
-    """Protocol-based register flow (no browser automation).
-
-    Mirrors the reference flow using curl_cffi session + auth/openai endpoints,
-    then reuses submit_callback_url for token exchange/output JSON format.
-    """
-
-    if curl_requests is None:
-        raise RuntimeError("protocol flow requires curl_cffi; please install curl_cffi")
-
-    proxies = _proxy_dict_for_requests(proxy)
-    sess = curl_requests.Session(
-        proxies=proxies,
-        impersonate=PROTOCOL_IMPERSONATE,
-    )
-
-    if PROTOCOL_CHECK_GEO:
-        try:
-            trace_resp = sess.get("https://cloudflare.com/cdn-cgi/trace", timeout=10)
-            trace_txt = str(getattr(trace_resp, "text", "") or "")
-            loc_m = re.search(r"^loc=(.+)$", trace_txt, re.MULTILINE)
-            ip_m = re.search(r"^ip=(.+)$", trace_txt, re.MULTILINE)
-            loc = (loc_m.group(1) if loc_m else "").strip().upper()
-            ip = (ip_m.group(1) if ip_m else "").strip()
-            if loc:
-                print(f"[protocol] trace loc={loc} ip={ip}")
-            if loc and loc in PROTOCOL_BLOCKED_LOCS:
-                raise RuntimeError(f"protocol flow blocked geo loc={loc}")
-        except RuntimeError:
-            raise
-        except Exception as e:
-            print(f"[protocol] trace check failed: {e}")
-
-    email, address_jwt = get_email(proxy)
-    print("Email obtained:", email)
-
-    oauth = generate_oauth_url()
-    print("OAuth URL:", oauth.auth_url)
-
-    # Hit authorize first to establish cookies (oai-did etc.)
-    sess.get(oauth.auth_url, timeout=PROTOCOL_TIMEOUT_SECONDS)
-
-    did = str(sess.cookies.get("oai-did") or "").strip()
-    if not did:
-        raise RuntimeError("protocol flow missing oai-did cookie")
-
-    # Sentinel token
-    sentinel_req = json.dumps({"p": "", "id": did, "flow": "authorize_continue"}, ensure_ascii=False, separators=(",", ":"))
-    sen_resp = curl_requests.post(
-        "https://sentinel.openai.com/backend-api/sentinel/req",
-        headers={
-            "origin": "https://sentinel.openai.com",
-            "referer": "https://sentinel.openai.com/backend-api/sentinel/frame.html?sv=20260219f9f6",
-            "content-type": "text/plain;charset=UTF-8",
-        },
-        data=sentinel_req,
-        proxies=proxies,
-        impersonate=PROTOCOL_IMPERSONATE,
-        timeout=PROTOCOL_TIMEOUT_SECONDS,
-    )
-    if int(getattr(sen_resp, "status_code", 0) or 0) != 200:
-        raise RuntimeError(f"sentinel req failed: http={sen_resp.status_code}")
-
-    try:
-        sentinel_token = str((sen_resp.json() or {}).get("token") or "").strip()
-    except Exception:
-        sentinel_token = ""
-    if not sentinel_token:
-        raise RuntimeError("sentinel token missing")
-
-    sentinel_header_value = json.dumps(
-        {
-            "p": "",
-            "t": "",
-            "c": sentinel_token,
-            "id": did,
-            "flow": "authorize_continue",
-        },
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
-
-    signup_body = json.dumps(
-        {
-            "username": {"value": email, "kind": "email"},
-            "screen_hint": "signup",
-        },
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
-    signup_resp = sess.post(
-        "https://auth.openai.com/api/accounts/authorize/continue",
-        headers={
-            "referer": "https://auth.openai.com/create-account",
-            "accept": "application/json",
-            "content-type": "application/json",
-            "openai-sentinel-token": sentinel_header_value,
-        },
-        data=signup_body,
-        timeout=PROTOCOL_TIMEOUT_SECONDS,
-    )
-    if int(getattr(signup_resp, "status_code", 0) or 0) != 200:
-        raise RuntimeError(f"authorize/continue failed: http={signup_resp.status_code} body={str(getattr(signup_resp, 'text', '') or '')[:300]}")
-
-    pwd = generate_pwd()
-    otp_send_resp = sess.post(
-        "https://auth.openai.com/api/accounts/passwordless/send-otp",
-        headers={
-            "referer": "https://auth.openai.com/create-account/password",
-            "accept": "application/json",
-            "content-type": "application/json",
-        },
-        timeout=PROTOCOL_TIMEOUT_SECONDS,
-    )
-    if int(getattr(otp_send_resp, "status_code", 0) or 0) != 200:
-        raise RuntimeError(f"send-otp failed: http={otp_send_resp.status_code} body={str(getattr(otp_send_resp, 'text', '') or '')[:300]}")
-
-    code = get_oai_code(address_jwt=address_jwt, timeout_seconds=180, proxy=proxy)
-    print("Verification Code:", code)
-
-    otp_verify_resp = sess.post(
-        "https://auth.openai.com/api/accounts/email-otp/validate",
-        headers={
-            "referer": "https://auth.openai.com/email-verification",
-            "accept": "application/json",
-            "content-type": "application/json",
-        },
-        data=json.dumps({"code": str(code)}),
-        timeout=PROTOCOL_TIMEOUT_SECONDS,
-    )
-    if int(getattr(otp_verify_resp, "status_code", 0) or 0) != 200:
-        raise RuntimeError(f"email-otp/validate failed: http={otp_verify_resp.status_code} body={str(getattr(otp_verify_resp, 'text', '') or '')[:300]}")
-
-    first_name, last_name = generate_name()
-    birthdate = "2000-02-20"
-
-    create_account_resp = sess.post(
-        "https://auth.openai.com/api/accounts/create_account",
-        headers={
-            "referer": "https://auth.openai.com/about-you",
-            "accept": "application/json",
-            "content-type": "application/json",
-        },
-        data=json.dumps({"name": f"{first_name} {last_name}", "birthdate": birthdate}),
-        timeout=PROTOCOL_TIMEOUT_SECONDS,
-    )
-    if int(getattr(create_account_resp, "status_code", 0) or 0) != 200:
-        raise RuntimeError(f"create_account failed: http={create_account_resp.status_code} body={str(getattr(create_account_resp, 'text', '') or '')[:400]}")
-
-    auth_cookie = str(sess.cookies.get("oai-client-auth-session") or "").strip()
-    auth_obj = _decode_cookie_json_prefix(auth_cookie)
-    ws_list = auth_obj.get("workspaces") if isinstance(auth_obj, dict) else None
-    workspace_id = ""
-    if isinstance(ws_list, list) and ws_list and isinstance(ws_list[0], dict):
-        workspace_id = str(ws_list[0].get("id") or "").strip()
-    if not workspace_id:
-        raise RuntimeError("workspace id missing in auth session cookie")
-
-    select_resp = sess.post(
-        "https://auth.openai.com/api/accounts/workspace/select",
-        headers={
-            "referer": "https://auth.openai.com/sign-in-with-chatgpt/codex/consent",
-            "content-type": "application/json",
-            "accept": "application/json",
-        },
-        data=json.dumps({"workspace_id": workspace_id}),
-        timeout=PROTOCOL_TIMEOUT_SECONDS,
-    )
-    if int(getattr(select_resp, "status_code", 0) or 0) != 200:
-        raise RuntimeError(f"workspace/select failed: http={select_resp.status_code} body={str(getattr(select_resp, 'text', '') or '')[:300]}")
-
-    try:
-        continue_url = str((select_resp.json() or {}).get("continue_url") or "").strip()
-    except Exception:
-        continue_url = ""
-    if not continue_url:
-        raise RuntimeError("workspace/select missing continue_url")
-
-    callback_url = _follow_redirects_for_callback(sess=sess, start_url=continue_url, max_hops=8)
-
-    reg_email, config_json = submit_callback_url(
-        callback_url=callback_url,
-        expected_state=oauth.state,
-        code_verifier=oauth.code_verifier,
-        redirect_uri=oauth.redirect_uri,
-        proxy=proxy,
-        mailbox_ref=address_jwt,
-        password=pwd,
-        first_name=first_name,
-        last_name=last_name,
-        birthdate=birthdate,
-    )
-
-    return reg_email, config_json
-
-
 AUTH_URL = "https://auth.openai.com/oauth/authorize"
 TOKEN_URL = "https://auth.openai.com/oauth/token"
 CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
@@ -1920,6 +2023,7 @@ def new_driver(proxy: str | None = None):
         options.add_argument('--headless')
 
     options.add_argument('--no-sandbox')
+    options.add_argument('--incognito')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1920,1080')
@@ -2087,8 +2191,8 @@ def enter_birthday(driver) -> str:
 def smart_wait(driver, by, value, timeout=20, *, debug_kind: str = "", debug_message: str = ""):
     """Wait for an element.
 
-    While waiting, it also checks for OpenAI's “Oops, an error occurred!” overlay
-    and clicks “Try again” automatically.
+    If page shows fatal error hints (e.g. “糟糕，出错了” / "Oops, an error occurred"),
+    treat current round as dead immediately and abort this attempt.
 
     In debug mode, when it fails it will dump the current page body/source and
     raise a RuntimeError (NOT TimeoutException), so logs won't be filled with
@@ -2098,19 +2202,26 @@ def smart_wait(driver, by, value, timeout=20, *, debug_kind: str = "", debug_mes
     if debug_kind:
         _dbg("wait", f"{debug_kind} by={by} value={value!r} timeout={timeout}s", driver=driver)
 
+    fatal_hints = [
+        "糟糕",
+        "出错了",
+        "oops",
+        "something went wrong",
+        "an error occurred",
+    ]
+
     end_time = time.time() + timeout
     while time.time() < end_time:
         try:
-            # Check for the "Try again" button and click it if it appears
-            try_again_btns = driver.find_elements(
-                By.XPATH,
-                "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'try again')]",
-            )
-            if try_again_btns and try_again_btns[0].is_displayed():
-                _dbg("overlay", "Detected 'Oops' overlay; clicking 'Try again'", driver=driver)
-                _click_with_debug(driver, try_again_btns[0], tag="overlay_try_again", note="smart_wait oops overlay")
-                time.sleep(2)  # Wait for page to reload/recover
-                continue
+            # Fail-fast on fatal error pages/overlays.
+            page_text = str(
+                driver.execute_script(
+                    "return document && document.body ? (document.body.innerText || '') : '';"
+                )
+                or ""
+            ).lower()
+            if any(h in page_text for h in fatal_hints):
+                raise RuntimeError("fatal ui error page detected (糟糕/出错了/oops)，end this round")
 
             # Check for the actual target element
             el = driver.find_element(by, value)
@@ -2118,8 +2229,19 @@ def smart_wait(driver, by, value, timeout=20, *, debug_kind: str = "", debug_mes
                 if debug_kind:
                     _dbg("wait", f"{debug_kind} ok", driver=driver)
                 return el
-        except Exception:
-            pass
+        except Exception as e:
+            if isinstance(e, RuntimeError):
+                if debug_kind:
+                    msg = debug_message or f"wait aborted by fatal ui error for {by}={value}"
+                    try:
+                        _dump_page_body(driver=driver, kind=debug_kind, message=msg)
+                    except Exception:
+                        pass
+                    try:
+                        _save_error_artifacts(driver=driver, kind=debug_kind, message=msg)
+                    except Exception:
+                        pass
+                raise
         time.sleep(0.5)
 
     if debug_kind:
@@ -2174,14 +2296,24 @@ def register(driver, proxy=None) -> tuple[str, str]:
     print("Sign up clicked")
 
     # fill email
-    email_input = smart_wait(
-        driver,
-        By.ID,
-        "_r_f_-email",
-        timeout=20,
-        debug_kind="email_input",
-        debug_message="email input not found",
-    )
+    try:
+        email_input = smart_wait(
+            driver,
+            By.ID,
+            "_r_f_-email",
+            timeout=20,
+            debug_kind="email_input",
+            debug_message="email input not found",
+        )
+    except Exception:
+        email_input = smart_wait(
+            driver,
+            By.CSS_SELECTOR,
+            'input[type="email"], input[name*="email" i], input[id*="email" i]',
+            timeout=15,
+            debug_kind="email_input_fallback",
+            debug_message="email input fallback not found",
+        )
     _dbg("ui", "reach email input", driver=driver)
     email_input.clear()
     _dbg("ui", f"fill email={email}", driver=driver)
@@ -2193,14 +2325,24 @@ def register(driver, proxy=None) -> tuple[str, str]:
     print("Enter pressed")
 
     # fill password
-    pwd_input = smart_wait(
-        driver,
-        By.ID,
-        "_r_u_-new-password",
-        timeout=30,
-        debug_kind="password_input",
-        debug_message=f"password input not found; email={email}",
-    )
+    try:
+        pwd_input = smart_wait(
+            driver,
+            By.ID,
+            "_r_u_-new-password",
+            timeout=30,
+            debug_kind="password_input",
+            debug_message=f"password input not found; email={email}",
+        )
+    except Exception:
+        pwd_input = smart_wait(
+            driver,
+            By.CSS_SELECTOR,
+            'input[type="password"], input[name*="password" i], input[id*="password" i]',
+            timeout=15,
+            debug_kind="password_input_fallback",
+            debug_message=f"password input fallback not found; email={email}",
+        )
     _dbg("ui", "reach password input", driver=driver)
     print("Reach password input")
     pwd = generate_pwd()
@@ -2210,8 +2352,24 @@ def register(driver, proxy=None) -> tuple[str, str]:
     pwd_input.send_keys(Keys.ENTER)
     _dbg("ui", "password ENTER pressed", driver=driver)
     print("Enter pressed")
-    
-    code = get_oai_code(address_jwt=address_jwt, timeout_seconds=180, proxy=proxy)
+
+    # 严格流程顺序：先确认已进入验证码阶段，再去邮箱拉取验证码。
+    try:
+        smart_wait(
+            driver,
+            By.CSS_SELECTOR,
+            'input[autocomplete="one-time-code"], input[inputmode="numeric"][maxlength="6"], div[role="group"] input[inputmode="numeric"][maxlength="1"]',
+            timeout=25,
+            debug_kind="otp_stage_ready",
+            debug_message="password submitted but otp stage not ready",
+        )
+        _dbg("otp", "otp stage ready, now polling mailbox", driver=driver)
+    except Exception:
+        # 页面未到验证码阶段时，不提前拉邮箱，直接按流程失败返回更准确原因。
+        raise RuntimeError("password submitted but otp stage not reached")
+
+    _dbg("mail", f"start polling mailbox timeout={OTP_TIMEOUT_SECONDS}s", driver=driver)
+    code = get_oai_code(address_jwt=address_jwt, timeout_seconds=OTP_TIMEOUT_SECONDS, proxy=proxy)
     # Dump page + pause shortly to reduce race where code changes due to resend.
     try:
         _dbg("mail", f"got verification code={code} mailbox_ref={address_jwt}", driver=driver)
@@ -2220,15 +2378,94 @@ def register(driver, proxy=None) -> tuple[str, str]:
         pass
     time.sleep(1.0)
     print("Verification Code:", code)
-    try:
-        code_input = smart_wait(
-            driver,
-            By.ID,
-            "_r_4_-code",
-            timeout=10,
-            debug_kind="code_input",
-            debug_message="Timeout waiting for code input",
+    def _wait_after_otp_submit(timeout: int = 25) -> bool:
+        """Wait until we actually leave email-verification stage.
+
+        Returns True when page likely accepted OTP and moved on.
+        """
+
+        end_ts = time.time() + max(5, int(timeout))
+        while time.time() < end_ts:
+            try:
+                cur = str(getattr(driver, "current_url", "") or "")
+            except Exception:
+                cur = ""
+
+            # Callback reached.
+            if "localhost:1455" in cur:
+                return True
+
+            # Leave auth.openai email verification path.
+            if "email-verification" not in cur and "auth.openai.com" in cur:
+                return True
+
+            # About-you form appears => OTP accepted.
+            try:
+                if driver.find_elements(By.CSS_SELECTOR, 'div[role="group"][id$="-birthday"]'):
+                    return True
+            except Exception:
+                pass
+
+            # Typical OTP error text means still on current stage.
+            try:
+                txt = str(driver.execute_script("return document && document.body ? (document.body.innerText || '') : ''; ") or "").lower()
+                if "incorrect code" in txt or "invalid code" in txt:
+                    return False
+            except Exception:
+                pass
+
+            time.sleep(0.4)
+
+        return False
+
+    def _submit_code_segmented(code_str: str) -> None:
+        code_inputs = WebDriverWait(driver, 10).until(
+            lambda d: d.find_elements(
+                By.CSS_SELECTOR,
+                'div[role="group"] input[inputmode="numeric"][maxlength="1"]'
+            )
         )
+        if len(code_inputs) < 6:
+            raise TimeoutException("segmented code inputs not enough")
+
+        for current, digit in zip(code_inputs[:6], code_str[:6]):
+            WebDriverWait(driver, 1).until(EC.element_to_be_clickable(current))
+            _click_with_debug(driver, current, tag="otp_digit_box", note="register segmented otp input")
+            try:
+                current.clear()
+            except Exception:
+                pass
+            current.send_keys(digit)
+
+        time.sleep(0.2)
+        try:
+            driver.switch_to.active_element.send_keys(Keys.ENTER)
+        except Exception:
+            pass
+
+    try:
+        used_segmented = False
+        code_input = None
+
+        try:
+            code_input = smart_wait(
+                driver,
+                By.ID,
+                "_r_4_-code",
+                timeout=10,
+                debug_kind="code_input",
+                debug_message="Timeout waiting for code input",
+            )
+        except Exception:
+            code_input = smart_wait(
+                driver,
+                By.CSS_SELECTOR,
+                'input[autocomplete="one-time-code"], input[inputmode="numeric"][maxlength="6"], input[name*="code" i], input[id*="code" i]',
+                timeout=10,
+                debug_kind="code_input_fallback",
+                debug_message="Timeout waiting for code input fallback",
+            )
+
         print("Reach code input")
 
         # Defensive: ensure the code input is empty.
@@ -2257,16 +2494,33 @@ def register(driver, proxy=None) -> tuple[str, str]:
         except Exception:
             pass
 
-        # Speed: send code in one shot.
-        code_input.send_keys(code)
-        code_input.send_keys(Keys.ENTER)
+        # Try single-input first.
+        try:
+            code_input.send_keys(code)
+            typed_val = str(code_input.get_attribute("value") or "")
+        except Exception:
+            typed_val = ""
+
+        # If value isn't really present, switch to segmented mode.
+        if len(re.sub(r"\D", "", typed_val)) < 6:
+            _dbg("code", f"single otp input not accepted typed='{typed_val}' -> segmented fallback", driver=driver)
+            _submit_code_segmented(str(code))
+            used_segmented = True
+        else:
+            time.sleep(0.2)
+            code_input.send_keys(Keys.ENTER)
+
         print("Enter pressed")
 
-        # If the page shows "Incorrect code", try one resend then re-fetch code.
+        accepted = _wait_after_otp_submit(timeout=25)
+        if not accepted:
+            _dump_page_body(driver=driver, kind="otp_not_accepted", message=f"code_submitted used_segmented={used_segmented}")
+            raise RuntimeError("otp submitted but page did not advance")
+
+        # If the page still explicitly says "Incorrect code", try one resend then re-fetch code.
         try:
-            time.sleep(1.0)
-            txt = driver.execute_script("return document && document.body ? document.body.innerText : '';")
-            if "incorrect code" in str(txt or "").lower():
+            txt = str(driver.execute_script("return document && document.body ? document.body.innerText : '';") or "").lower()
+            if "incorrect code" in txt:
                 _dbg("code", "detected incorrect code, trying resend once", driver=driver)
                 _dump_page_body(driver=driver, kind="code_incorrect", message="incorrect code after submit")
 
@@ -2285,46 +2539,44 @@ def register(driver, proxy=None) -> tuple[str, str]:
                     pass
 
                 # re-fetch code and submit again (single retry)
-                code2 = get_oai_code(address_jwt=address_jwt, timeout_seconds=180, proxy=proxy)
+                code2 = get_oai_code(address_jwt=address_jwt, timeout_seconds=OTP_TIMEOUT_SECONDS, proxy=proxy)
                 _dbg("mail", f"re-fetched verification code={code2}", driver=driver)
                 try:
                     _dump_page_body(driver=driver, kind="code_retry", message=f"code2={code2}")
                 except Exception:
                     pass
 
-                code_input2 = smart_wait(
-                    driver,
-                    By.ID,
-                    "_r_4_-code",
-                    timeout=10,
-                    debug_kind="code_input_retry",
-                    debug_message="code input not found on retry",
-                )
                 try:
-                    code_input2.clear()
+                    code_input2 = smart_wait(
+                        driver,
+                        By.ID,
+                        "_r_4_-code",
+                        timeout=10,
+                        debug_kind="code_input_retry",
+                        debug_message="code input not found on retry",
+                    )
+                    try:
+                        code_input2.clear()
+                    except Exception:
+                        pass
+                    code_input2.send_keys(code2)
+                    time.sleep(0.2)
+                    code_input2.send_keys(Keys.ENTER)
                 except Exception:
-                    pass
-                # Speed: send code in one shot.
-                code_input2.send_keys(code2)
-                code_input2.send_keys(Keys.ENTER)
-                time.sleep(1.0)
+                    _submit_code_segmented(str(code2))
+
+                if not _wait_after_otp_submit(timeout=25):
+                    _dump_page_body(driver=driver, kind="otp_not_accepted_retry", message="retry otp submitted but page did not advance")
+                    raise RuntimeError("otp retry submitted but page did not advance")
         except Exception:
-            pass
+            raise
 
     except TimeoutException:
         print("Reach new code input")
-        code_inputs = WebDriverWait(driver, 10).until(
-            lambda d: d.find_elements(
-                By.CSS_SELECTOR,
-                'div[role="group"] input[inputmode="numeric"][maxlength="1"]'
-            )
-        )
-        for current, digit in zip(code_inputs, code):
-            WebDriverWait(driver, 1).until(EC.element_to_be_clickable(current))
-            _click_with_debug(driver, current, tag="otp_digit_box", note="register segmented otp input")
-            current.clear()
-            current.send_keys(digit)
-        driver.switch_to.active_element.send_keys(Keys.ENTER)
+        _submit_code_segmented(str(code))
+        if not _wait_after_otp_submit(timeout=25):
+            _dump_page_body(driver=driver, kind="otp_not_accepted_segmented", message="segmented otp submitted but page did not advance")
+            raise RuntimeError("segmented otp submitted but page did not advance")
         
     first_name, last_name = generate_name()
     full_name_str = first_name + " " + last_name
@@ -2740,6 +2992,17 @@ def register(driver, proxy=None) -> tuple[str, str]:
         pass
 
     def _click_final_continue_if_present() -> bool:
+        # Guard: only click continue/agree inside auth flow pages.
+        # This avoids mis-clicks on openai.com policy pages.
+        try:
+            u = str(getattr(driver, "current_url", "") or "")
+        except Exception:
+            u = ""
+        u_low = u.lower()
+        if "auth.openai.com" not in u_low:
+            _dbg("ui", f"skip continue click outside auth flow: {u}", driver=driver)
+            return False
+
         xpaths = [
             "//button[(contains(., 'Agree') or contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue')) and not(contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue with'))]",
             "//button[contains(normalize-space(.), '继续') or contains(normalize-space(.), '同意') or contains(normalize-space(.), '允许') or contains(normalize-space(.), '授权')]",
@@ -2755,22 +3018,36 @@ def register(driver, proxy=None) -> tuple[str, str]:
 
     continue_button = None
     try:
+        # If we already drifted to policies page, attempt one back-navigation first.
+        try:
+            u0 = str(getattr(driver, "current_url", "") or "")
+            if "openai.com/policies" in u0:
+                _dbg("recover", f"before continue: landed on policies page: {u0}", driver=driver)
+                driver.back()
+                time.sleep(1)
+        except Exception:
+            pass
+
         # Final confirmation page click (if we are not on about-you / force submit didn't navigate)
         print("Clicking continue/agree button")
         if not _click_final_continue_if_present():
-            continue_button = smart_wait(
-                driver,
-                By.XPATH,
-                (
-                    "//button[(contains(., 'Agree') or "
-                    "contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue')) "
-                    "and not(contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue with'))]"
-                ),
-                timeout=10,
-                debug_kind="continue_button",
-                debug_message="continue/agree button not found",
-            )
-            _click_with_debug(driver, continue_button, tag="continue_button_fallback", note="register continue/agree fallback")
+            u_click = str(getattr(driver, "current_url", "") or "")
+            if "auth.openai.com" in u_click.lower():
+                continue_button = smart_wait(
+                    driver,
+                    By.XPATH,
+                    (
+                        "//button[(contains(., 'Agree') or "
+                        "contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue')) "
+                        "and not(contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue with'))]"
+                    ),
+                    timeout=10,
+                    debug_kind="continue_button",
+                    debug_message="continue/agree button not found",
+                )
+                _click_with_debug(driver, continue_button, tag="continue_button_fallback", note="register continue/agree fallback")
+            else:
+                _dbg("ui", f"skip continue fallback outside auth flow: {u_click}", driver=driver)
         time.sleep(1)
 
         # Dump after click to see where we landed (helps debug accidental navigation to terms page).
@@ -2859,12 +3136,73 @@ def register(driver, proxy=None) -> tuple[str, str]:
         except Exception:
             pass
 
-    try:
-        # Give it a few tries; sometimes a transient nav goes to policies page.
-        for _ in range(3):
-            _maybe_recover_from_terms_page()
+    def _maybe_click_consent_continue_once() -> bool:
+        """在 consent 页兜底再点一次继续（处理偶发未触发跳转）。"""
+        try:
+            u = str(getattr(driver, "current_url", "") or "")
+        except Exception:
+            u = ""
+        u_low = u.lower()
+
+        # 仅在 auth/codex consent 相关页面触发，避免误点击其他页面
+        if (
+            "auth.openai.com" not in u_low
+            or (
+                "sign-in-with-chatgpt/codex/consent" not in u_low
+                and "login-to-codex" not in u_low
+                and "consent" not in u_low
+            )
+        ):
+            return False
+
+        try:
+            # 尝试关闭浏览器原生弹窗焦点（如保存密码提示）
+            driver.switch_to.active_element.send_keys(Keys.ESCAPE)
+        except Exception:
+            pass
+
+        # 先复用现有继续按钮点击逻辑
+        try:
+            if _click_final_continue_if_present():
+                _dbg("consent", "fallback click continue by _click_final_continue_if_present", driver=driver)
+                return True
+        except Exception:
+            pass
+
+        # 再做一层更激进的 JS click 兜底
+        xpaths = [
+            "//button[contains(normalize-space(.), '继续')]",
+            "//button[contains(normalize-space(.), '同意')]",
+            "//button[contains(normalize-space(.), '允许')]",
+            "//button[contains(normalize-space(.), 'Continue')]",
+            "//button[contains(normalize-space(.), 'Agree')]",
+            "//a[contains(normalize-space(.), '继续')]",
+            "//a[contains(normalize-space(.), 'Continue')]",
+        ]
+        for xp in xpaths:
             try:
-                WebDriverWait(driver, 20).until(EC.url_contains("localhost:1455"))
+                el = _find_visible(driver, By.XPATH, xp)
+                if not el:
+                    continue
+                try:
+                    el.click()
+                except Exception:
+                    driver.execute_script("arguments[0].click();", el)
+                _dbg("consent", f"fallback js click continue xpath={xp}", driver=driver)
+                return True
+            except Exception:
+                continue
+
+        return False
+
+    try:
+        # Give it a few tries; sometimes a transient nav goes to policies page
+        # 或 consent 页需要再次点击继续。
+        for _ in range(6):
+            _maybe_recover_from_terms_page()
+            _maybe_click_consent_continue_once()
+            try:
+                WebDriverWait(driver, 12).until(EC.url_contains("localhost:1455"))
                 break
             except TimeoutException:
                 continue
@@ -3128,10 +3466,19 @@ def _repairer_drive_login_and_get_callback_url(*, driver, oauth: OAuthStart, ema
 
     # Step: fill email
     email_input = None
+    email_selectors = [
+        'input[type="email"]',
+        'input[name*="email" i]',
+        'input[id*="email" i]',
+        'input[autocomplete="username"]',
+    ]
     try:
         email_input = smart_wait(driver, By.ID, "_r_f_-email", timeout=15)
     except Exception:
-        email_input = _find_visible(driver, By.CSS_SELECTOR, 'input[type="email"]')
+        for sel in email_selectors:
+            email_input = _find_visible(driver, By.CSS_SELECTOR, sel)
+            if email_input:
+                break
 
     if not email_input:
         raise RuntimeError("email input not found")
@@ -3144,7 +3491,18 @@ def _repairer_drive_login_and_get_callback_url(*, driver, oauth: OAuthStart, ema
     email_input.send_keys(Keys.ENTER)
 
     def _password_input():
-        return _find_visible(driver, By.CSS_SELECTOR, 'input[type="password"]')
+        selectors = [
+            'input[type="password"]',
+            'input[name*="password" i]',
+            'input[id*="password" i]',
+            'input[autocomplete="current-password"]',
+            'input[autocomplete="new-password"]',
+        ]
+        for sel in selectors:
+            el = _find_visible(driver, By.CSS_SELECTOR, sel)
+            if el:
+                return el
+        return None
 
     # Some flows require clicking "Continue" then "Continue with password".
     for _ in range(60):
@@ -3654,77 +4012,149 @@ def load_proxies() -> list[str]:
         return proxies
     return []
 
+
+def _persist_register_success(*, reg_email: str, res: str) -> None:
+    """Persist success outputs (results shard + auth json + wait_update mirror)."""
+
+    with write_lock:
+        _append_result_line(res)
+
+        codex_auth_dir = _data_path(CODEX_AUTH_DIRNAME)
+        os.makedirs(codex_auth_dir, exist_ok=True)
+
+        ts_ms = int(time.time() * 1000)
+        rand = secrets.token_hex(3)
+        auth_path = os.path.join(
+            codex_auth_dir,
+            f"codex-{reg_email}-free-{INSTANCE_ID}-{ts_ms}-{rand}.json",
+        )
+        with open(auth_path, "w", encoding="utf-8") as f:
+            f.write(json.dumps(json.loads(res), indent=2, ensure_ascii=False))
+
+        try:
+            _sync_codex_auth_copy(src_path=auth_path)
+        except Exception:
+            pass
+
+        wait_update_dir = _data_path(WAIT_UPDATE_DIRNAME)
+        os.makedirs(wait_update_dir, exist_ok=True)
+        try:
+            shutil.copy2(auth_path, os.path.join(wait_update_dir, os.path.basename(auth_path)))
+        except Exception:
+            pass
+
+
+def _run_register_once(*, proxy: str | None) -> tuple[str, str]:
+    """Run browser register flow once and return (email, auth_json)."""
+
+    driver = None
+    proxy_dir = None
+    keep_open_on_fail = (
+        int(os.environ.get("KEEP_BROWSER_OPEN_ON_FAIL", "0") or "0") == 1
+        and int(os.environ.get("HEADLESS", "1") or "1") == 0
+    )
+
+    ok = False
+    try:
+        with driver_init_lock:
+            driver, proxy_dir = new_driver(proxy)
+        out = register(driver, proxy)
+        ok = True
+        return out
+    finally:
+        should_close = (not keep_open_on_fail) or ok
+        if should_close and driver:
+            try:
+                driver.quit()
+            except Exception:
+                pass
+        elif driver:
+            print("[debug] KEEP_BROWSER_OPEN_ON_FAIL=1: 保留失败现场浏览器窗口，便于人工检查")
+
+        if proxy_dir and os.path.exists(proxy_dir):
+            shutil.rmtree(proxy_dir, ignore_errors=True)
+
+
 def worker(worker_id: int):
+    current_proxy: str | None = None
+    assigned_at = 0.0
+    local_attempt = 0
+
+    # In local visible debug mode (HEADLESS=0), default to single attempt
+    # unless user explicitly sets MAX_ATTEMPTS_PER_WORKER.
+    headless_v = int(os.environ.get("HEADLESS", "1") or "1")
+    effective_max_attempts = MAX_ATTEMPTS_PER_WORKER
+    if headless_v == 0 and effective_max_attempts <= 0:
+        effective_max_attempts = 1
+
     while True:
+        if effective_max_attempts > 0 and local_attempt >= effective_max_attempts:
+            print(f"[Worker {worker_id}] 达到 MAX_ATTEMPTS_PER_WORKER={effective_max_attempts}，停止该 worker")
+            break
+
+        local_attempt += 1
+        if effective_max_attempts > 0:
+            print(f"[Worker {worker_id}] 开始第 {local_attempt}/{effective_max_attempts} 次尝试")
+        else:
+            print(f"[Worker {worker_id}] 开始第 {local_attempt} 次尝试")
         proxies = load_proxies()
-        proxy = random.choice(proxies) if proxies else None
+
+        proxy, assigned_at = _pick_proxy(
+            proxies=proxies,
+            current_proxy=current_proxy,
+            assigned_at=assigned_at,
+            force_direct=False,
+        )
+
+        current_proxy = proxy
 
         if proxy:
             print(f"[Worker {worker_id}] ---> 使用代理: {proxy} <---")
         elif REGISTER_PROXY_REQUIRED:
             print(
                 f"[Worker {worker_id}] [x] register_proxy_required no_proxy_available "
-                f"flow={REGISTER_FLOW_MODE} headless={int(os.environ.get('HEADLESS', '1') or '1')}"
+                f"flow=browser headless={headless_v}"
             )
             time.sleep(1.0)
             continue
         else:
             print(f"[Worker {worker_id}] ---> 未配置可用代理，使用本地网络直连 <---")
 
-        driver = None
-        proxy_dir = None
+        _stats_inc("attempt")
+        _record_event("attempt", worker_id=worker_id, proxy=(proxy or "DIRECT"))
         try:
-            if REGISTER_FLOW_MODE == "protocol":
-                print(f"[Worker {worker_id}] ---> 协议流模式（REGISTER_FLOW_MODE=protocol） <---")
-                reg_email, res = register_protocol(proxy)
-            else:
-                with driver_init_lock:
-                    driver, proxy_dir = new_driver(proxy)
-                reg_email, res = register(driver, proxy)
-            
-            # Write outputs (sharded results + per-account json)
-            with write_lock:
-                _append_result_line(res)
+            reg_email, res = _run_register_once(proxy=proxy)
+            _persist_register_success(reg_email=reg_email, res=res)
 
-                # Write per-account auth json file into codex_auth/
-                codex_auth_dir = _data_path(CODEX_AUTH_DIRNAME)
-                os.makedirs(codex_auth_dir, exist_ok=True)
-                # Use a unique filename to avoid collisions when multiple containers
-                # share the same data volume.
-                ts_ms = int(time.time() * 1000)
-                rand = secrets.token_hex(3)
-                auth_path = os.path.join(
-                    codex_auth_dir,
-                    f"codex-{reg_email}-free-{INSTANCE_ID}-{ts_ms}-{rand}.json",
-                )
-                with open(auth_path, "w", encoding="utf-8") as f:
-                    f.write(json.dumps(json.loads(res), indent=2, ensure_ascii=False))
-
-                # 可选：配置同步（把 codex_auth 写入同步目录）
-                try:
-                    _sync_codex_auth_copy(src_path=auth_path)
-                except Exception:
-                    pass
-
-                # Also copy into wait_update/ for downstream pickup
-                wait_update_dir = _data_path(WAIT_UPDATE_DIRNAME)
-                os.makedirs(wait_update_dir, exist_ok=True)
-                try:
-                    shutil.copy2(auth_path, os.path.join(wait_update_dir, os.path.basename(auth_path)))
-                except Exception:
-                    pass
-                    
+            _stats_inc("success")
+            _proxy_mark_result(proxy, "success")
+            _record_event("success", worker_id=worker_id, email=reg_email, proxy=(proxy or "DIRECT"), proxy_score=_proxy_score_get(proxy or ""))
             print(
                 f"[Worker {worker_id}] [✓] 注册成功，Token 已保存在 {CODEX_AUTH_DIRNAME} 并复制到 {WAIT_UPDATE_DIRNAME}，并追加到 results 分片！"
             )
             
         except RuntimeError as e:
+            err_cls = _classify_error(e)
+            stg = _infer_stage_from_error(str(e))
+            _stats_inc(err_cls, err=e, stage=stg)
+            _proxy_mark_result(proxy, err_cls)
+            _record_event("fail", worker_id=worker_id, reason=str(e), error_class=err_cls, stage=stg, proxy=(proxy or "DIRECT"), proxy_score=_proxy_score_get(proxy or ""))
             # Expected blocks, no stack trace needed
             print(f"[Worker {worker_id}] [x] {e} (准备换IP重试)")
         except TimeoutException as e:
+            err_cls = _classify_error(e)
+            stg = _infer_stage_from_error(str(e))
+            _stats_inc(err_cls, err=e, stage=stg)
+            _proxy_mark_result(proxy, err_cls)
+            _record_event("fail", worker_id=worker_id, reason=str(e), error_class=err_cls, stage=stg, proxy=(proxy or "DIRECT"), proxy_score=_proxy_score_get(proxy or ""))
             print(f"[Worker {worker_id}] [x] 页面加载超时，可能遇到风控盾拦截。 (准备换IP重试)")
         except Exception as e:
             err_str = str(e)
+            err_cls = _classify_error(e)
+            stg = _infer_stage_from_error(err_str)
+            _stats_inc(err_cls, err=e, stage=stg)
+            _proxy_mark_result(proxy, err_cls)
+            _record_event("fail", worker_id=worker_id, reason=err_str, error_class=err_cls, stage=stg, proxy=(proxy or "DIRECT"), proxy_score=_proxy_score_get(proxy or ""))
             if "RemoteDisconnected" in err_str or "Connection aborted" in err_str or "Max retries exceeded" in err_str or "UNEXPECTED_EOF_WHILE_READING" in err_str or "UNEXPECTED_MESSAGE" in err_str:
                 print(f"[Worker {worker_id}] [x] 代理连接强制中断 (SSL/EOF断流)，准备换IP重试")
             else:
@@ -3732,15 +4162,6 @@ def worker(worker_id: int):
                 trace_str = traceback.format_exc()
                 print(f"[Worker {worker_id}] [x] 本次注册流程意外中止:\\n{trace_str}")
             
-        finally:
-            if driver:
-                try:
-                    driver.quit()
-                except Exception:
-                    pass
-            if proxy_dir and os.path.exists(proxy_dir):
-                shutil.rmtree(proxy_dir, ignore_errors=True)
-        
         # 自由调整休眠时间
         sleep_min = int(os.environ.get("SLEEP_MIN", "5"))
         sleep_max = int(os.environ.get("SLEEP_MAX", "20"))
@@ -3798,6 +4219,9 @@ if __name__ == "__main__":
     print(f"账号 JSON 将写入 {_data_path(CODEX_AUTH_DIRNAME)} 并复制到 {_data_path(WAIT_UPDATE_DIRNAME)}")
     print(f"代理池请直接写入 {proxy_file}")
     
+    t_summary = threading.Thread(target=_summary_loop, name="browser_summary", daemon=True)
+    t_summary.start()
+
     if concurrency > 0:
         with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
             for i in range(concurrency):

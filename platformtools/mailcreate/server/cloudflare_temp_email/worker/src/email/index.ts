@@ -13,22 +13,72 @@ import { EmailRuleSettings } from "../models";
 import { CONSTANTS } from "../constants";
 
 
-async function email(message: ForwardableEmailMessage, env: Bindings, ctx: ExecutionContext) {
-    if (await isBlocked(message.from, env)) {
-        message.setReject("Reject from address");
-        console.log(`Reject message from ${message.from} to ${message.to}`);
-        return;
+async function _logRejectToDb(
+    env: Bindings,
+    {
+        from,
+        to,
+        rawEmail,
+        messageId,
+        reason,
+        detail,
+    }: {
+        from: string,
+        to: string,
+        rawEmail: string,
+        messageId: string | null,
+        reason: string,
+        detail?: string,
     }
+): Promise<void> {
+    try {
+        const metadata = JSON.stringify({
+            event: "reject",
+            reason,
+            detail: detail || "",
+            ts: new Date().toISOString(),
+        });
+        await env.DB.prepare(
+            `INSERT INTO raw_mails (source, address, raw, message_id, metadata) VALUES (?, ?, ?, ?, ?)`
+        ).bind(from, to, rawEmail || "", messageId, metadata).run();
+    } catch (e) {
+        console.error("log reject to db error", e);
+    }
+}
+
+
+async function email(message: ForwardableEmailMessage, env: Bindings, ctx: ExecutionContext) {
     const rawEmail = await new Response(message.raw).text();
     const parsedEmailContext: ParsedEmailContext = {
         rawEmail: rawEmail
     };
+    const message_id = message.headers.get("Message-ID");
+
+    if (await isBlocked(message.from, env)) {
+        message.setReject("Reject from address");
+        await _logRejectToDb(env, {
+            from: message.from,
+            to: message.to,
+            rawEmail,
+            messageId: message_id,
+            reason: "black_list",
+        });
+        console.log(`Reject message from ${message.from} to ${message.to}`);
+        return;
+    }
 
     // check if junk mail
     try {
-        const is_junk = await check_if_junk_mail(env, message.to, parsedEmailContext, message.headers.get("Message-ID"));
+        const is_junk = await check_if_junk_mail(env, message.to, parsedEmailContext, message_id);
         if (is_junk) {
             message.setReject("Junk mail");
+            await _logRejectToDb(env, {
+                from: message.from,
+                to: message.to,
+                rawEmail,
+                messageId: message_id,
+                reason: "junk_mail",
+            });
             console.log(`Junk mail from ${message.from} to ${message.to}`);
             return;
         }
@@ -47,6 +97,13 @@ async function email(message: ForwardableEmailMessage, env: Bindings, ctx: Execu
             ).bind(message.to).first("id");
             if (!db_address_id) {
                 message.setReject("Unknown address");
+                await _logRejectToDb(env, {
+                    from: message.from,
+                    to: message.to,
+                    rawEmail,
+                    messageId: message_id,
+                    reason: "unknown_address",
+                });
                 console.log(`Unknown address mail from ${message.from} to ${message.to}`);
                 return;
             }
@@ -62,7 +119,6 @@ async function email(message: ForwardableEmailMessage, env: Bindings, ctx: Execu
         console.error("remove attachment error", error);
     }
 
-    const message_id = message.headers.get("Message-ID");
     // save email
     try {
         const { success } = await env.DB.prepare(

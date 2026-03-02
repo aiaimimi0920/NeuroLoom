@@ -115,6 +115,24 @@ CREATE TABLE IF NOT EXISTS pending_verification_accounts (
   reported_at TEXT NOT NULL
 );
 
+-- auth_repairs：账号修缮失败计数（用于 repairer 上报失败、累计 3 次进墓地区）
+CREATE TABLE IF NOT EXISTS auth_repairs (
+  account_id TEXT PRIMARY KEY,
+  fail_count INTEGER NOT NULL DEFAULT 0,
+  first_failed_at TEXT NOT NULL,
+  last_failed_at TEXT NOT NULL,
+  last_fail_note TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_auth_repairs_last_failed_at ON auth_repairs(last_failed_at);
+
+-- auth_tombstones：账号墓地区（fail_count>=3 后写入，作为永久失败标记）
+CREATE TABLE IF NOT EXISTS auth_tombstones (
+  account_id TEXT PRIMARY KEY,
+  reason TEXT,
+  note TEXT,
+  created_at TEXT NOT NULL
+);
+
 -- packages_batches：手动分发包批次（仅存“对象索引”，不保存明文 key）
 CREATE TABLE IF NOT EXISTS package_batches (
   batch_id TEXT PRIMARY KEY,

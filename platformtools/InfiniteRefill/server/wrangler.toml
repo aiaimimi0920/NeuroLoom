@@ -16,7 +16,7 @@ database_id = "8d99b6ec-365b-46ba-9572-22c7763a4835"
 # 分发包：R2 存储
 [[r2_buckets]]
 binding = "BUCKET"
-bucket_name = "infinite-refill-packages"
+bucket_name = "infinite-refill"
 
 [vars]
 # 生产环境：把敏感值都放 Worker Secrets（wrangler secret put），不要写在本文件。
@@ -36,7 +36,7 @@ ENABLE_MINE_API = "0"
 # - R2_ACCOUNT_ID：你的 Cloudflare Account ID
 # - R2_BUCKET_NAME：R2 bucket 名称（需与 [[r2_buckets]].bucket_name 一致）
 R2_ACCOUNT_ID = "bea2e3be0577ee4f7b3ffae4df6f53bb"
-R2_BUCKET_NAME = "infinite-refill-packages"
+R2_BUCKET_NAME = "infinite-refill"
 
 # 安全边界：严禁把真实密钥写进可提交文件（包括本文件）。
 # 生产环境请使用：

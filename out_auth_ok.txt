@@ -1,0 +1,15 @@
+HTTP/1.1 200 Connection established
+
+HTTP/1.1 200 OK
+Date: Sun, 01 Mar 2026 18:29:58 GMT
+Content-Type: application/json
+Content-Length: 1817
+Connection: keep-alive
+Access-Control-Allow-Origin: *
+Report-To: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=0B9%2B%2F9PShWAypweHFtosTuR76M9DMxDWYDLqLig28MbTmUuaDIgTEVYCY3jfPDMmNeYIzyduOPMLD2kN4vQGrLis%2FhmcvL6oUqYy1Cbs4nVS"}]}
+Nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+Server: cloudflare
+CF-RAY: 9d5a3aee0f8e2b87-LAX
+alt-svc: h3=":443"; ma=86400
+
+{"announcement":"","alwaysShowAnnouncement":false,"prefix":"tmp","addressRegex":"[^a-z0-9]","minAddressLen":3,"maxAddressLen":30,"defaultDomains":["mail.aiaimimi.com","aiaiai.cc.cd","aiaiai.us.ci","aiaimimi.cc.cd","aiaimimi.us.ci","aimiaimi.cc.cd","aimiaimi.us.ci","artai.cc.cd","artai.us.ci","artcore.cc.cd","arth.cc.cd","arthook.cc.cd","arth.us.ci","artllm.cc.cd","artllm.us.ci","artn.cc.cd","artnexus.cc.cd","artnexus.us.ci","artn.us.ci","bigloom.us.ci","happygame.us.ci","jaker.us.ci","loomart.cc.cd","loomart.us.ci","loom.cc.cd","loomloom.us.ci","miaimiai.cc.cd","mimiaiai.cc.cd","mimiaiai.us.ci","mimimi.cc.cd","neuro.cc.cd","neurocore.cc.cd","neurocore.us.ci","neurollm.cc.cd","neurollm.us.ci","neuroloom.cc.cd","neuroloom.us.ci","smartloom.us.ci","yamiyu.cc.cd","yamiyu.us.ci"],"domains":["mail.aiaimimi.com","aiaiai.cc.cd","aiaiai.us.ci","aiaimimi.cc.cd","aiaimimi.us.ci","aimiaimi.cc.cd","aimiaimi.us.ci","artai.cc.cd","artai.us.ci","artcore.cc.cd","arth.cc.cd","arthook.cc.cd","arth.us.ci","artllm.cc.cd","artllm.us.ci","artn.cc.cd","artnexus.cc.cd","artnexus.us.ci","artn.us.ci","bigloom.us.ci","happygame.us.ci","jaker.us.ci","loomart.cc.cd","loomart.us.ci","loom.cc.cd","loomloom.us.ci","miaimiai.cc.cd","mimiaiai.cc.cd","mimiaiai.us.ci","mimimi.cc.cd","neuro.cc.cd","neurocore.cc.cd","neurocore.us.ci","neurollm.cc.cd","neurollm.us.ci","neuroloom.cc.cd","neuroloom.us.ci","smartloom.us.ci","yamiyu.cc.cd","yamiyu.us.ci"],"domainLabels":[],"needAuth":false,"enableUserCreateEmail":true,"disableAnonymousUserCreateEmail":false,"disableCustomAddressName":false,"enableUserDeleteEmail":true,"enableAutoReply":false,"enableIndexAbout":false,"enableWebhook":false,"isS3Enabled":false,"enableSendMail":false,"version":"v1.4.0","showGithub":true,"disableAdminPasswordCheck":false,"enableAddressPassword":false}

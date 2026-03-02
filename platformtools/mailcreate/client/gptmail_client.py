@@ -28,6 +28,7 @@ import re
 import time
 import urllib.parse
 import urllib.request
+import quopri
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -140,20 +141,43 @@ class GPTMailClient:
         return data if isinstance(data, dict) else {}
 
 
-# Prefer context-aware extraction to avoid grabbing unrelated 6-digit numbers.
+# Prefer deterministic extraction:
+# 1) HTML <title> 中的 6 位数字（用户指定优先）
+# 2) 语义锚点后的 6 位 OTP
+_TITLE_6_RE = re.compile(r"(?is)<title[^>]*>.*?(\d{6}).*?</title>")
 _CODE_CONTEXT_RE = re.compile(
-    r"(?is)(?:verification\s*code|verify\s*code|security\s*code|code|验证码)[^0-9]{0,32}(\d{6})"
+    r"(?is)(?:verification\s*code|verify\s*code|security\s*code|one[-\s]*time\s*code|otp\s*code|验证码|校验码|代码为|代码是|code\s*(?:is|:))[^0-9]{0,40}(\d{6})"
 )
-_CODE_ANY_RE = re.compile(r"(?<!\d)(\d{6})(?!\d)")
+
+
+def _normalize_qp_soft_breaks(s: str) -> str:
+    return (s or "").replace("=\r\n", "").replace("=\n", "")
+
+
+def _decode_quoted_printable(s: str) -> str:
+    try:
+        b = (s or "").encode("utf-8", errors="ignore")
+        return quopri.decodestring(b).decode("utf-8", errors="ignore")
+    except Exception:
+        return s or ""
 
 
 def extract_6digit_code(text: str) -> Optional[str]:
-    s = text or ""
-    m = _CODE_CONTEXT_RE.search(s)
-    if m:
-        return m.group(1)
-    m2 = _CODE_ANY_RE.search(s)
-    return m2.group(1) if m2 else None
+    raw = text or ""
+    s1 = _normalize_qp_soft_breaks(raw)
+    s2 = _normalize_qp_soft_breaks(_decode_quoted_printable(raw))
+
+    for s in (s1, s2):
+        m_title = _TITLE_6_RE.search(s)
+        if m_title:
+            return m_title.group(1)
+
+    for s in (s1, s2):
+        m_ctx = _CODE_CONTEXT_RE.search(s)
+        if m_ctx:
+            return m_ctx.group(1)
+
+    return None
 
 
 def wait_for_6digit_code_gptmail(
@@ -166,8 +190,12 @@ def wait_for_6digit_code_gptmail(
 ) -> str:
     deadline = time.time() + timeout_seconds
     seen_ids: set[str] = set()
+    poll_rounds = 0
+    last_batch_size = 0
+    last_sources: List[str] = []
 
     while time.time() < deadline:
+        poll_rounds += 1
         items = client.list_emails(email=email)
 
         # Prefer newest mails first.
@@ -175,6 +203,17 @@ def wait_for_6digit_code_gptmail(
             items = sorted(items, key=lambda it: int(str(it.get("id") or "0")), reverse=True)
         except Exception:
             pass
+
+        last_batch_size = len(items)
+        last_sources = []
+        for _e in items[:5]:
+            try:
+                _src = str((_e.get("from_address") or _e.get("from") or "")).strip()
+                _sid = str(_e.get("id") or "").strip()
+                if _src or _sid:
+                    last_sources.append(f"{_sid}:{_src}")
+            except Exception:
+                continue
 
         for e in items:
             mail_id = str(e.get("id") or "").strip()
@@ -202,4 +241,9 @@ def wait_for_6digit_code_gptmail(
 
         time.sleep(poll_seconds)
 
-    raise GPTMailError(f"timeout waiting for 6-digit code (timeout={timeout_seconds}s)")
+    raise GPTMailError(
+        "timeout waiting for 6-digit code "
+        f"(timeout={timeout_seconds}s rounds={poll_rounds} seen_ids={len(seen_ids)} "
+        f"last_batch={last_batch_size} from_contains={from_contains!r} "
+        f"email={email} last_sources={last_sources})"
+    )

@@ -174,3 +174,6 @@ tools/oai_register/startup.bat
 tools/oai_register/test_api.py
 tools/oai_register/test_gateway.py
 tools/oai_register/test_kookeey.py
+
+# InfiniteRefill 本地运维指令（含密钥，严禁提交）
+platformtools/InfiniteRefill/运维.md

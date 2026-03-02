@@ -35,6 +35,20 @@ from gptmail_client import GPTMailClient, GPTMailConfig, GPTMailError, wait_for_
 from gptmail_key_manager import GPTMailKeyManager
 
 
+MAILBOX_VERBOSE = (os.environ.get("MAILBOX_VERBOSE", "0") or "0").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+    "off",
+    "",
+)
+
+
+def _mb_log(msg: str) -> None:
+    if MAILBOX_VERBOSE:
+        print(msg)
+
+
 def _mask_key(k: str) -> str:
     s = (k or "").strip()
     if not s:
@@ -234,7 +248,22 @@ def create_mailbox(
     p = (provider or "").strip().lower()
 
     if p in ("auto", "prefer_gptmail", "gptmail_first"):
-        try:
+        # 规则：
+        # 1) 先判断是否还有可用 GPTMail key（单 key 或 keys_file 任一可用）
+        # 2) 有可用 key -> 走 GPTMail
+        # 3) 没有可用 key -> 直接走 MailCreate（自建）
+        has_available_gptmail_key = False
+
+        if gptmail_api_key:
+            has_available_gptmail_key = True
+        else:
+            try:
+                km = GPTMailKeyManager.from_file(gptmail_keys_file)
+                has_available_gptmail_key = km.any_available()
+            except Exception:
+                has_available_gptmail_key = False
+
+        if has_available_gptmail_key:
             return _create_mailbox_gptmail(
                 base_url=gptmail_base_url,
                 api_key=gptmail_api_key,
@@ -242,12 +271,12 @@ def create_mailbox(
                 prefix=gptmail_prefix,
                 domain=gptmail_domain,
             )
-        except Exception:
-            return _create_mailbox_mailcreate(
-                base_url=mailcreate_base_url,
-                custom_auth=mailcreate_custom_auth,
-                domain=mailcreate_domain,
-            )
+
+        return _create_mailbox_mailcreate(
+            base_url=mailcreate_base_url,
+            custom_auth=mailcreate_custom_auth,
+            domain=mailcreate_domain,
+        )
 
     if p in ("mailcreate", "self", "local"):
         return _create_mailbox_mailcreate(
@@ -291,11 +320,21 @@ def wait_openai_code(
         p = ref_provider
         mailbox_ref = raw_ref
 
+    ref_preview = str(mailbox_ref or "").strip()
+    if len(ref_preview) > 18:
+        ref_preview = ref_preview[:18] + "..."
+    _mb_log(
+        f"[mailbox-provider] wait_openai_code provider_req={provider} provider_resolved={p} "
+        f"ref_provider={ref_provider or 'none'} ref_preview={ref_preview} timeout={timeout_seconds}s"
+    )
+
     if p in ("mailcreate", "self", "local"):
         if not mailcreate_base_url:
             raise RuntimeError("mailcreate_base_url is required")
-        if not mailcreate_custom_auth:
-            raise RuntimeError("mailcreate_custom_auth is required")
+        # NOTE:
+        # - custom_auth can be empty when Worker sets DISABLE_CUSTOM_AUTH_CHECK=true.
+        # - keep this path permissive; if auth is actually required, server will return
+        #   a clear 401 and we bubble it up for diagnosis.
 
         # MailCreate is self-hosted and (almost) free to poll, so we allow
         # configuring a higher polling frequency via env.
@@ -315,13 +354,21 @@ def wait_openai_code(
             poll_seconds = 30.0
 
         client = MailCreateClient(MailCreateConfig(base_url=mailcreate_base_url, custom_auth=mailcreate_custom_auth))
-        return wait_for_6digit_code(
-            client,
-            jwt=raw_ref if ref_provider else mailbox_ref,
-            from_contains="openai",
-            timeout_seconds=timeout_seconds,
-            poll_seconds=poll_seconds,
-        )
+        target_jwt = raw_ref if ref_provider else mailbox_ref
+        _mb_log(f"[mailbox-provider] mailcreate poll start poll_seconds={poll_seconds} timeout={timeout_seconds}s")
+        try:
+            code = wait_for_6digit_code(
+                client,
+                jwt=target_jwt,
+                from_contains="openai",
+                timeout_seconds=timeout_seconds,
+                poll_seconds=poll_seconds,
+            )
+            _mb_log(f"[mailbox-provider] mailcreate poll ok code_len={len(str(code or ''))}")
+            return code
+        except Exception as e:
+            _mb_log(f"[mailbox-provider] mailcreate poll fail err_type={type(e).__name__} err={e}")
+            raise
 
     if p in ("gptmail", "gpt"):
         """Poll GPTMail inbox for OpenAI code.
@@ -342,13 +389,20 @@ def wait_openai_code(
 
         if gptmail_api_key:
             client = GPTMailClient(GPTMailConfig(base_url=gptmail_base_url, api_key=gptmail_api_key))
-            return wait_for_6digit_code_gptmail(
-                client,
-                email=email,
-                from_contains="openai",
-                timeout_seconds=timeout_seconds,
-                poll_seconds=3.0,
-            )
+            _mb_log(f"[mailbox-provider] gptmail(single-key) poll start timeout={timeout_seconds}s")
+            try:
+                code = wait_for_6digit_code_gptmail(
+                    client,
+                    email=email,
+                    from_contains="openai",
+                    timeout_seconds=timeout_seconds,
+                    poll_seconds=3.0,
+                )
+                _mb_log(f"[mailbox-provider] gptmail(single-key) poll ok code_len={len(str(code or ''))}")
+                return code
+            except Exception as e:
+                _mb_log(f"[mailbox-provider] gptmail(single-key) poll fail err_type={type(e).__name__} err={e}")
+                raise
 
         if not gptmail_keys_file:
             raise RuntimeError("gptmail requires GPTMAIL_API_KEY or GPTMAIL_KEYS_FILE")
@@ -394,7 +448,7 @@ def wait_openai_code(
             except GPTMailError as e:
                 last_err = e
                 if _should_rotate_gptmail_key(e):
-                    print(f"[gptmail] poll failed: key={_mask_key(k)} err={e}")
+                    _mb_log(f"[gptmail] poll failed: key={_mask_key(k)} err={e}")
                     km.mark_exhausted(k, persist=True, reason=str(e))
                     continue
                 raise
