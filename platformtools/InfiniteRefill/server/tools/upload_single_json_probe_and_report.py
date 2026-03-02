@@ -40,9 +40,15 @@ def sha256_hex(s: str) -> str:
 
 
 def load_auth(path: str) -> Dict[str, Any]:
-    with open(path, "r", encoding="utf-8") as f:
+    # utf-8-sig: 自动吞掉 UTF-8 BOM，避免 \ufeff 导致 JSON 解析失败
+    with open(path, "r", encoding="utf-8-sig") as f:
         obj = json.load(f)
     return obj if isinstance(obj, dict) else {}
+
+
+def canonical_auth_json(auth: Dict[str, Any]) -> str:
+    # 统一输出为无 BOM 的标准 JSON 文本
+    return json.dumps(auth, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
 
 def extract_email_and_account_id(auth: Dict[str, Any], file_path: str) -> Tuple[Optional[str], Optional[str]]:
@@ -127,12 +133,22 @@ def main() -> int:
 
     probed_at = utc_now_iso()
     token = extract_access_token(auth)
-    auth_json_str = json.dumps(auth)
+    auth_json_str = canonical_auth_json(auth)
 
     if args.mode == "register":
         # 模式A：允许上传 auth_json（服务端会加密存储）。
         # 注意：access_token 字段不会被服务端使用，这里不再上传，避免口径混乱。
-        payload = {"accounts": [{"email_hash": email_hash, "account_id": account_id, "seen_at": probed_at, "auth_json": auth_json_str}]}
+        payload = {
+            "accounts": [
+                {
+                    "email_hash": email_hash,
+                    "account_id": account_id,
+                    "seen_at": probed_at,
+                    # 服务端接口期望 object；这里把规范化 JSON 再反序列化为对象上传
+                    "auth_json": json.loads(auth_json_str),
+                }
+            ]
+        }
         status, text = asyncio.run(post_json(args.server, args.upload_key, "/v1/accounts/register", payload))
         print(f"HTTP {status}\n{text}")
         return 0 if 200 <= status < 300 else 2

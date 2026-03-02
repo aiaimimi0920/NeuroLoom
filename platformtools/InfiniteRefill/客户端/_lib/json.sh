@@ -30,7 +30,7 @@ json_auth_fields4() {
 import json,sys
 p=sys.argv[1]
 try:
-  with open(p,'r',encoding='utf-8') as fp:
+  with open(p,'r',encoding='utf-8-sig') as fp:
     d=json.load(fp)
 except Exception:
   sys.exit(1)
@@ -232,16 +232,20 @@ JXA
   return 3
 }
 
-# 解析 topup 响应并把 accounts[].auth_json 写入 out_dir；成功输出写入数量
+# 解析 topup 响应并把 accounts[] 写入 out_dir；成功输出写入数量
+# 兼容两种服务端返回：
+# - 旧：accounts[].auth_json
+# - 新：accounts[].download_url（预签名下载链接）
 json_topup_write_accounts_from_response() {
   local resp_file="$1"
   local out_dir="$2"
 
   need_json_parser >/dev/null 2>&1 || return 3
+  need_cmd curl >/dev/null 2>&1 || return 3
 
   if have_cmd python3; then
     python3 - "$resp_file" "$out_dir" <<'PY'
-import json, os, random, sys, time
+import json, os, random, sys, time, urllib.request
 resp=sys.argv[1]
 out_dir=sys.argv[2]
 
@@ -261,15 +265,33 @@ written=0
 for item in accounts:
   if not isinstance(item, dict):
     continue
+
   fn=item.get('file_name') or f"无限续杯-{int(time.time())}-{random.randint(1000,9999)}.json"
-  auth=item.get('auth_json')
-  if auth is None:
-    continue
   path=os.path.join(out_dir, fn)
-  with open(path,'w',encoding='utf-8') as out:
-    json.dump(auth, out, ensure_ascii=False, indent=2)
-    out.write('\n')
-  written += 1
+
+  auth=item.get('auth_json')
+  if auth is not None:
+    with open(path,'w',encoding='utf-8') as out:
+      json.dump(auth, out, ensure_ascii=False, indent=2)
+      out.write('\n')
+    written += 1
+    continue
+
+  dl=(item.get('download_url') or '').strip()
+  if dl:
+    try:
+      req=urllib.request.Request(dl, method='GET')
+      with urllib.request.urlopen(req, timeout=30) as r:
+        raw=r.read()
+      text=raw.decode('utf-8-sig', errors='strict')
+      parsed=json.loads(text)
+      canon=json.dumps(parsed, ensure_ascii=False, separators=(',',':'), sort_keys=True)
+      with open(path,'w',encoding='utf-8') as out:
+        out.write(canon)
+        out.write('\n')
+      written += 1
+    except Exception:
+      continue
 
 print(str(written))
 PY
@@ -287,6 +309,14 @@ function writeUtf8(path, text){
   const ns = $(text);
   ns.writeToFileAtomicallyEncodingError($(path), true, $.NSUTF8StringEncoding, null);
 }
+function fetchText(urlStr){
+  const nsUrl = $.NSURL.URLWithString($(urlStr));
+  if (!nsUrl) return null;
+  const data = $.NSData.dataWithContentsOfURL(nsUrl);
+  if (!data) return null;
+  const text = $.NSString.alloc.initWithDataEncoding(data, $.NSUTF8StringEncoding);
+  return text ? ObjC.unwrap(text) : null;
+}
 const resp = ObjC.unwrap($.getenv('RESP_FILE'));
 const outDir = ObjC.unwrap($.getenv('OUT_DIR'));
 let data;
@@ -297,10 +327,29 @@ let written = 0;
 for (let i=0;i<accounts.length;i++) {
   const item = accounts[i] || {};
   const fn = item.file_name || ('无限续杯-' + Math.floor(Date.now()/1000) + '-' + Math.floor(Math.random()*10000) + '.json');
+  const path = outDir + '/' + fn;
+
   const auth = item.auth_json;
-  if (auth === undefined || auth === null) continue;
-  writeUtf8(outDir + '/' + fn, JSON.stringify(auth, null, 2) + '\n');
-  written++;
+  if (auth !== undefined && auth !== null) {
+    writeUtf8(path, JSON.stringify(auth, null, 2) + '\n');
+    written++;
+    continue;
+  }
+
+  const dl = (item.download_url || '').toString().trim();
+  if (dl) {
+    const t = fetchText(dl);
+    if (t !== null) {
+      try {
+        const t2 = (t.charCodeAt(0) === 0xFEFF) ? t.slice(1) : t;
+        const canon = JSON.stringify(JSON.parse(t2), null, 2) + '\n';
+        writeUtf8(path, canon);
+        written++;
+      } catch(e) {
+        // 非法 JSON 则跳过
+      }
+    }
+  }
 }
 console.log(String(written));
 JXA
@@ -314,12 +363,25 @@ JXA
       return 2
     fi
 
-    written=0
+    local written=0
     while IFS= read -r item; do
       fn="$(printf "%s" "$item" | jq -r '.file_name // empty')"
       [[ -z "$fn" ]] && fn="无限续杯-$(date -u +%s)-$RANDOM.json"
-      printf "%s" "$item" | jq '.auth_json' > "$out_dir/$fn"
-      written=$((written+1))
+
+      has_auth="$(printf "%s" "$item" | jq -r 'has("auth_json") and (.auth_json != null)')"
+      if [[ "$has_auth" == "true" ]]; then
+        printf "%s" "$item" | jq '.auth_json' > "$out_dir/$fn"
+        written=$((written+1))
+        continue
+      fi
+
+      dl="$(printf "%s" "$item" | jq -r '.download_url // empty')"
+      if [[ -n "$dl" ]]; then
+        if curl -fsSL "$dl" | jq -cS . > "$out_dir/$fn" 2>/dev/null; then
+          printf '\n' >> "$out_dir/$fn"
+          written=$((written+1))
+        fi
+      fi
     done < <(jq -c '.accounts[]?' "$resp_file")
 
     echo "$written"
