@@ -36,7 +36,7 @@ if /I "%~1"=="--from-task" (
 
 set "SERVER_URL="
 set "USER_KEY="
-set "ACCOUNTS_DIR=%ROOT_DIR%\accounts"
+set "ACCOUNTS_DIR=%SCRIPT_DIR%accounts"
 set "TARGET_POOL_SIZE=10"
 set "TOTAL_HOLD_LIMIT=50"
 set "SYNC_TARGET_DIR="
@@ -93,7 +93,7 @@ if "%USER_KEY%"=="" (
   goto :EXIT_MAIN
 )
 
-if "%ACCOUNTS_DIR%"=="" set "ACCOUNTS_DIR=%ROOT_DIR%\accounts"
+if "%ACCOUNTS_DIR%"=="" set "ACCOUNTS_DIR=%SCRIPT_DIR%accounts"
 if not exist "%ACCOUNTS_DIR%" mkdir "%ACCOUNTS_DIR%" >nul 2>nul
 if not exist "%ACCOUNTS_DIR%" (
   echo [ERROR] 账户目录不存在且创建失败："%ACCOUNTS_DIR%"

@@ -30,7 +30,7 @@ CFG="$ROOT_DIR/config.yaml"
 USER_CFG="$SCRIPT_DIR/无限续杯配置.env"
 ROOT_CFG="$ROOT_DIR/无限续杯配置.env"
 
-ACCOUNTS_DIR="$ROOT_DIR/accounts"
+ACCOUNTS_DIR="$SCRIPT_DIR/accounts"
 CLEAN_DELETE_STATUSES="401,429"
 CLEAN_EXPIRED_DAYS="30"
 if [[ -f "$ROOT_CFG" ]]; then

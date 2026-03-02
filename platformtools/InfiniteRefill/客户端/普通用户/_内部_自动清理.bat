@@ -22,7 +22,7 @@ set "ROOT_CFG=%ROOT_DIR%\无限续杯配置.env"
 
 set "APPLY=0"
 set "NOPAUSE=0"
-set "ACCOUNTS_DIR=%ROOT_DIR%\accounts"
+set "ACCOUNTS_DIR=%SCRIPT_DIR%accounts"
 set "CLEAN_DELETE_STATUSES=401,429"
 set "CLEAN_EXPIRED_DAYS=30"
 
@@ -49,7 +49,7 @@ if exist "%USER_CFG%" (
   )
 )
 
-if "%ACCOUNTS_DIR%"=="" set "ACCOUNTS_DIR=%ROOT_DIR%\accounts"
+if "%ACCOUNTS_DIR%"=="" set "ACCOUNTS_DIR=%SCRIPT_DIR%accounts"
 if not exist "%ACCOUNTS_DIR%" mkdir "%ACCOUNTS_DIR%" >nul 2>nul
 if not exist "%ACCOUNTS_DIR%" (
   echo [ERROR] 账户目录不存在且创建失败："%ACCOUNTS_DIR%"

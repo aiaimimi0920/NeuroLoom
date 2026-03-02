@@ -21,7 +21,7 @@ if "%ACTIVE_CFG%"=="" (
     echo # 注意：请勿分享/上传此文件（含密钥）。
     echo SERVER_URL=
     echo USER_KEY=
-    echo ACCOUNTS_DIR=%ROOT_DIR%\accounts
+    echo ACCOUNTS_DIR=%SCRIPT_DIR%accounts
     echo TARGET_POOL_SIZE=10
     echo TOTAL_HOLD_LIMIT=50
     echo INTERVAL_MINUTES=30
@@ -83,13 +83,16 @@ echo.
 echo ====== 设置无限续杯配置 ======
 set "默认服务器地址="
 set "默认用户密钥="
-set "默认账户目录=%ROOT_DIR%\accounts"
+set "默认账户目录=%SCRIPT_DIR%accounts"
 set "默认总持有上限=50"
+set "旧推导账户目录=%ROOT_DIR%\accounts"
 for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%ACTIVE_CFG%") do (
   if /I "%%A"=="SERVER_URL" set "默认服务器地址=%%B"
   if /I "%%A"=="USER_KEY" set "默认用户密钥=%%B"
+  if /I "%%A"=="ACCOUNTS_DIR" set "默认账户目录=%%B"
   if /I "%%A"=="TOTAL_HOLD_LIMIT" set "默认总持有上限=%%B"
 )
+if /I "!默认账户目录!"=="!旧推导账户目录!" set "默认账户目录=%SCRIPT_DIR%accounts"
 if not exist "!默认账户目录!" (
   for /d %%D in ("%SCRIPT_DIR%*") do (
     if exist "%%~fD\accounts" (
