@@ -91,6 +91,12 @@ WAIT_UPDATE_DIRNAME = "wait_update"
 ERROR_DIRNAME = "error"
 RESULTS_DIRNAME = "results"
 
+# Codex usage probe (aligned with main/browser_version behavior)
+WHAM_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
+PROBE_LOCAL_COOLDOWN_MAX_SECONDS = int(os.environ.get("PROBE_LOCAL_COOLDOWN_MAX_SECONDS", "1800") or "1800")
+if PROBE_LOCAL_COOLDOWN_MAX_SECONDS < 0:
+    PROBE_LOCAL_COOLDOWN_MAX_SECONDS = 0
+
 
 def _sanitize_instance_id(v: str) -> str:
     s = (v or "").strip()
@@ -210,6 +216,19 @@ def _append_result_line(line: str) -> None:
         line_in_shard = 0
 
     _write_json(_results_state_path(), {"shard_id": shard_id, "line_in_shard": line_in_shard})
+
+
+def _append_jsonl(path: str, obj: Any) -> None:
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+    except Exception:
+        pass
+    try:
+        line = json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
 
 
 # Mail provider config
@@ -564,6 +583,15 @@ class OAuthStart:
     redirect_uri: str
 
 
+@dataclass
+class ProbeResult:
+    status_code: int | None
+    note: str
+    category: str
+    retry_after_seconds: int = 0
+    http_status: int | None = None
+
+
 _MAIL_DOMAIN_HEALTH_ORDER = [
     d.strip().lower()
     for d in (os.environ.get("MAIL_DOMAIN_HEALTH_ORDER") or "mail.aiaimimi.com,aimiaimi.cc.cd,mimiaiai.cc.cd,aiaimimi.cc.cd,aiaiai.cc.cd").split(",")
@@ -801,6 +829,197 @@ def _post_form(url: str, data: Dict[str, str], timeout: int = 30, proxy: str | N
                 f"token exchange failed: {resp.status}: {raw.decode('utf-8', 'replace')}"
             )
         return json.loads(raw.decode("utf-8"))
+
+
+def _infer_account_id_from_auth(auth_obj: Any) -> str | None:
+    if not isinstance(auth_obj, dict):
+        return None
+
+    v = str(auth_obj.get("account_id") or "").strip()
+    if v:
+        return v
+
+    auth_claims = auth_obj.get("https://api.openai.com/auth")
+    if isinstance(auth_claims, dict):
+        v2 = str(auth_claims.get("chatgpt_account_id") or "").strip()
+        if v2:
+            return v2
+
+    return None
+
+
+def _infer_access_token_from_auth(auth_obj: Any) -> str | None:
+    if not isinstance(auth_obj, dict):
+        return None
+    v = str(auth_obj.get("access_token") or "").strip()
+    return v or None
+
+
+def _wham_headers(*, access_token: str, account_id: str) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {access_token}",
+        "chatgpt-account-id": account_id,
+        "Accept": "application/json",
+        "originator": "codex_cli_rs",
+    }
+
+
+def _parse_retry_after_seconds_from_error_body(*, http_status: int, raw_body: str, now_ts: float | None = None) -> int:
+    if http_status != 429:
+        return 0
+
+    now = float(now_ts if now_ts is not None else time.time())
+
+    try:
+        obj = json.loads(raw_body) if raw_body else {}
+    except Exception:
+        obj = {}
+
+    if not isinstance(obj, dict):
+        return 0
+
+    err = obj.get("error")
+    if not isinstance(err, dict):
+        return 0
+
+    et = str(err.get("type") or "").strip()
+    if et and et != "usage_limit_reached":
+        return 0
+
+    try:
+        resets_at = int(err.get("resets_at") or 0)
+    except Exception:
+        resets_at = 0
+    if resets_at > 0:
+        wait = int(max(0, resets_at - int(now)))
+        if wait > 0:
+            return wait
+
+    try:
+        resets_in = int(err.get("resets_in_seconds") or 0)
+    except Exception:
+        resets_in = 0
+    if resets_in > 0:
+        return resets_in
+
+    return 0
+
+
+def _extract_retry_after_seconds_from_wham_obj(obj: Any) -> int:
+    if not isinstance(obj, dict):
+        return 0
+
+    rl = obj.get("rate_limit")
+    if isinstance(rl, dict):
+        for k in ("resets_in_seconds", "retry_after_seconds", "retry_after"):
+            try:
+                v = int(rl.get(k) or 0)
+            except Exception:
+                v = 0
+            if v > 0:
+                return v
+        for k in ("resets_at", "reset_at"):
+            try:
+                ts = int(rl.get(k) or 0)
+            except Exception:
+                ts = 0
+            if ts > 0:
+                wait = int(max(0, ts - int(time.time())))
+                if wait > 0:
+                    return wait
+
+    for k in ("resets_in_seconds", "retry_after_seconds", "retry_after"):
+        try:
+            v = int(obj.get(k) or 0)
+        except Exception:
+            v = 0
+        if v > 0:
+            return v
+
+    return 0
+
+
+def _wham_usage_is_quota0(obj: Any) -> bool:
+    if not isinstance(obj, dict):
+        return False
+
+    rl = obj.get("rate_limit")
+    if isinstance(rl, dict):
+        allowed = rl.get("allowed")
+        if allowed is False:
+            return True
+        limit_reached = rl.get("limit_reached")
+        if limit_reached is True:
+            return True
+
+        pw = rl.get("primary_window")
+        if isinstance(pw, dict):
+            try:
+                used_percent = pw.get("used_percent")
+                if used_percent is not None and float(used_percent) >= 100:
+                    return True
+            except Exception:
+                pass
+
+    for k in ("allowed", "limit_reached", "is_available"):
+        if k in obj and obj.get(k) in (False, 0):
+            return True
+
+    return False
+
+
+def _probe_wham_one(*, auth_obj: Any, proxy: str | None = None) -> ProbeResult:
+    account_id = _infer_account_id_from_auth(auth_obj)
+    access_token = _infer_access_token_from_auth(auth_obj)
+    if not account_id or not access_token:
+        return ProbeResult(status_code=None, note="missing account_id/access_token", category="invalid_input")
+
+    headers = _wham_headers(access_token=access_token, account_id=account_id)
+    req = urllib.request.Request(WHAM_USAGE_URL, headers=headers, method="GET")
+
+    try:
+        with get_opener(proxy).open(req, timeout=PROTOCOL_TIMEOUT_SECONDS) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+            http_status = int(getattr(resp, "status", 200) or 200)
+    except urllib.error.HTTPError as e:
+        code = int(getattr(e, "code", 0) or 0)
+        body = ""
+        try:
+            body = e.read().decode("utf-8", errors="replace")
+        except Exception:
+            body = ""
+
+        if code == 401:
+            return ProbeResult(status_code=401, note="http401", category="invalid_auth", http_status=401)
+        if code == 429:
+            retry_after = _parse_retry_after_seconds_from_error_body(http_status=429, raw_body=body)
+            return ProbeResult(
+                status_code=429,
+                note="http429",
+                category="quota_limited",
+                retry_after_seconds=retry_after,
+                http_status=429,
+            )
+        return ProbeResult(status_code=None, note=f"http{code}", category="upstream_http_error", http_status=code)
+    except Exception as e:
+        return ProbeResult(status_code=None, note=f"error:{e}", category="network_error")
+
+    try:
+        obj = json.loads(raw) if raw else {}
+    except Exception:
+        obj = {}
+
+    if _wham_usage_is_quota0(obj):
+        retry_after = _extract_retry_after_seconds_from_wham_obj(obj)
+        return ProbeResult(
+            status_code=429,
+            note="quota0",
+            category="quota_limited",
+            retry_after_seconds=retry_after,
+            http_status=http_status,
+        )
+
+    return ProbeResult(status_code=200, note="ok", category="ok", http_status=http_status)
 
 
 def generate_oauth_url(*, redirect_uri: str = DEFAULT_REDIRECT_URI, scope: str = DEFAULT_SCOPE) -> OAuthStart:
@@ -1249,6 +1468,7 @@ def load_proxies() -> list[str]:
 def worker(worker_id: int) -> None:
     current_proxy: str | None = None
     assigned_at = 0.0
+    cooldown_until_by_account: dict[str, float] = {}
 
     while True:
         proxies = load_proxies()
@@ -1282,6 +1502,7 @@ def worker(worker_id: int) -> None:
 
         try:
             reg_email, res = register_protocol(proxy)
+            auth_payload = json.loads(res)
 
             with write_lock:
                 _append_result_line(res)
@@ -1297,7 +1518,7 @@ def worker(worker_id: int) -> None:
                 )
 
                 with open(auth_path, "w", encoding="utf-8") as f:
-                    f.write(json.dumps(json.loads(res), indent=2, ensure_ascii=False))
+                    f.write(json.dumps(auth_payload, indent=2, ensure_ascii=False))
 
                 wait_update_dir = _data_path(WAIT_UPDATE_DIRNAME)
                 os.makedirs(wait_update_dir, exist_ok=True)
@@ -1308,8 +1529,50 @@ def worker(worker_id: int) -> None:
                 except Exception:
                     pass
 
+            probe_result = ProbeResult(status_code=None, note="probe_skipped", category="probe_skipped")
+            try:
+                account_id = _infer_account_id_from_auth(auth_payload) or ""
+                now_ts = time.time()
+                cd_until = float(cooldown_until_by_account.get(account_id) or 0.0) if account_id else 0.0
+                if account_id and cd_until > now_ts:
+                    retry_after = int(max(0, cd_until - now_ts))
+                    probe_result = ProbeResult(
+                        status_code=429,
+                        note="local_cooldown",
+                        category="cooldown_local",
+                        retry_after_seconds=retry_after,
+                        http_status=None,
+                    )
+                else:
+                    probe_result = _probe_wham_one(auth_obj=auth_payload, proxy=proxy)
+                    if account_id and probe_result.retry_after_seconds > 0:
+                        wait_seconds = probe_result.retry_after_seconds
+                        if PROBE_LOCAL_COOLDOWN_MAX_SECONDS > 0:
+                            wait_seconds = min(wait_seconds, PROBE_LOCAL_COOLDOWN_MAX_SECONDS)
+                        cooldown_until_by_account[account_id] = time.time() + max(0, wait_seconds)
+
+                _append_jsonl(
+                    os.path.join(_results_dir(), "probe_report.jsonl"),
+                    {
+                        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                        "worker_id": worker_id,
+                        "email": reg_email,
+                        "account_id": _infer_account_id_from_auth(auth_payload),
+                        "status_code": probe_result.status_code,
+                        "probe_category": probe_result.category,
+                        "probe_note": probe_result.note,
+                        "retry_after_seconds": probe_result.retry_after_seconds,
+                        "upstream_status": probe_result.http_status,
+                    },
+                )
+            except Exception:
+                pass
+
             _stats_inc("success")
-            _log(f"[Protocol Worker {worker_id}] [✓] success email={reg_email}")
+            _log(
+                f"[Protocol Worker {worker_id}] [✓] success email={reg_email} "
+                f"probe={probe_result.status_code}/{probe_result.category}"
+            )
 
         except Exception as e:
             cls = _classify_error(e)

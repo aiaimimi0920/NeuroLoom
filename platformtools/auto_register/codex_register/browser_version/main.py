@@ -139,6 +139,10 @@ TOPUP_COOLDOWN_SECONDS = int(os.environ.get("TOPUP_COOLDOWN_SECONDS", "600"))
 if TOPUP_COOLDOWN_SECONDS < 0:
     TOPUP_COOLDOWN_SECONDS = 0
 
+PROBE_LOCAL_COOLDOWN_MAX_SECONDS = int(os.environ.get("PROBE_LOCAL_COOLDOWN_MAX_SECONDS", "1800"))
+if PROBE_LOCAL_COOLDOWN_MAX_SECONDS < 0:
+    PROBE_LOCAL_COOLDOWN_MAX_SECONDS = 0
+
 # 可选：将 codex_auth 的变更同步到另一个目录（用于“配置同步/二次同步”链路）。
 # - 写入新 auth：copy 到同步目录
 # - 删除失效 auth：同步目录也删除
@@ -1201,6 +1205,90 @@ def _wham_headers(*, access_token: str, account_id: str) -> dict[str, str]:
     }
 
 
+@dataclass
+class ProbeResult:
+    status_code: int | None
+    note: str
+    category: str
+    retry_after_seconds: int = 0
+    http_status: int | None = None
+
+
+def _parse_retry_after_seconds_from_error_body(*, http_status: int, raw_body: str, now_ts: float | None = None) -> int:
+    if http_status != 429:
+        return 0
+
+    now = float(now_ts if now_ts is not None else time.time())
+
+    try:
+        obj = json.loads(raw_body) if raw_body else {}
+    except Exception:
+        obj = {}
+
+    if not isinstance(obj, dict):
+        return 0
+
+    err = obj.get("error")
+    if not isinstance(err, dict):
+        return 0
+
+    et = str(err.get("type") or "").strip()
+    if et and et != "usage_limit_reached":
+        return 0
+
+    try:
+        resets_at = int(err.get("resets_at") or 0)
+    except Exception:
+        resets_at = 0
+    if resets_at > 0:
+        wait = int(max(0, resets_at - int(now)))
+        if wait > 0:
+            return wait
+
+    try:
+        resets_in = int(err.get("resets_in_seconds") or 0)
+    except Exception:
+        resets_in = 0
+    if resets_in > 0:
+        return resets_in
+
+    return 0
+
+
+def _extract_retry_after_seconds_from_wham_obj(obj: Any) -> int:
+    if not isinstance(obj, dict):
+        return 0
+
+    rl = obj.get("rate_limit")
+    if isinstance(rl, dict):
+        for k in ("resets_in_seconds", "retry_after_seconds", "retry_after"):
+            try:
+                v = int(rl.get(k) or 0)
+            except Exception:
+                v = 0
+            if v > 0:
+                return v
+        for k in ("resets_at", "reset_at"):
+            try:
+                ts = int(rl.get(k) or 0)
+            except Exception:
+                ts = 0
+            if ts > 0:
+                wait = int(max(0, ts - int(time.time())))
+                if wait > 0:
+                    return wait
+
+    for k in ("resets_in_seconds", "retry_after_seconds", "retry_after"):
+        try:
+            v = int(obj.get(k) or 0)
+        except Exception:
+            v = 0
+        if v > 0:
+            return v
+
+    return 0
+
+
 def _wham_usage_is_quota0(obj: Any) -> bool:
     """Best-effort 判定：wham/usage 表示当前不可用/冷却。
 
@@ -1238,24 +1326,11 @@ def _wham_usage_is_quota0(obj: Any) -> bool:
     return False
 
 
-def _probe_wham_one(*, auth_obj: Any, proxy: str | None = None) -> tuple[int | None, str]:
-    """Probe wham usage.
-
-    Returns:
-      (status_code_for_report, note)
-
-    status_code_for_report mapping (per user request):
-      - ok => 200
-      - quota0/cooldown => 429
-      - invalid => 401
-
-    For unknown errors, returns (None, "...")
-    """
-
+def _probe_wham_one(*, auth_obj: Any, proxy: str | None = None) -> ProbeResult:
     account_id = _infer_account_id_from_auth(auth_obj)
     access_token = _infer_access_token_from_auth(auth_obj)
     if not account_id or not access_token:
-        return None, "missing account_id/access_token"
+        return ProbeResult(status_code=None, note="missing account_id/access_token", category="invalid_input")
 
     headers = _wham_headers(access_token=access_token, account_id=account_id)
 
@@ -1263,24 +1338,43 @@ def _probe_wham_one(*, auth_obj: Any, proxy: str | None = None) -> tuple[int | N
         raw, _hdr = get(WHAM_USAGE_URL, headers=headers, proxy=proxy)
     except urllib.error.HTTPError as e:
         code = int(getattr(e, "code", 0) or 0)
-        if code == 401:
-            return 401, "http401"
-        if code == 429:
-            return 429, "http429"
-        return None, f"http{code}"
-    except Exception as e:
-        return None, f"error:{e}"
+        body = ""
+        try:
+            body = e.read().decode("utf-8", errors="replace")
+        except Exception:
+            body = ""
 
-    # 200
+        if code == 401:
+            return ProbeResult(status_code=401, note="http401", category="invalid_auth", http_status=401)
+        if code == 429:
+            retry_after = _parse_retry_after_seconds_from_error_body(http_status=429, raw_body=body)
+            return ProbeResult(
+                status_code=429,
+                note="http429",
+                category="quota_limited",
+                retry_after_seconds=retry_after,
+                http_status=429,
+            )
+        return ProbeResult(status_code=None, note=f"http{code}", category="upstream_http_error", http_status=code)
+    except Exception as e:
+        return ProbeResult(status_code=None, note=f"error:{e}", category="network_error")
+
     try:
         obj = json.loads(raw) if raw else {}
     except Exception:
         obj = {}
 
     if _wham_usage_is_quota0(obj):
-        return 429, "quota0"
+        retry_after = _extract_retry_after_seconds_from_wham_obj(obj)
+        return ProbeResult(
+            status_code=429,
+            note="quota0",
+            category="quota_limited",
+            retry_after_seconds=retry_after,
+            http_status=200,
+        )
 
-    return 200, "ok"
+    return ProbeResult(status_code=200, note="ok", category="ok", http_status=200)
 
 
 def _post_json_simple(*, url: str, headers: dict[str, str], payload: Any, timeout: int = 30) -> tuple[int, str]:
@@ -1517,6 +1611,7 @@ def _probe_loop() -> None:
     copy_topup_to_wait_update = int(os.environ.get("TOPUP_COPY_TO_WAIT_UPDATE", "0"))
 
     last_topup_at = 0.0
+    cooldown_until_by_account: dict[str, float] = {}
 
     print(
         f"[probe] enabled=1 interval={interval}s max_files={max_files} target_pool={TARGET_POOL_SIZE} invalid_threshold={TRIGGER_INVALID_THRESHOLD}"
@@ -1546,15 +1641,42 @@ def _probe_loop() -> None:
                     continue
 
                 email_hash = _sha256_hex_str(account_id)
-                status_code, note = _probe_wham_one(auth_obj=auth_obj, proxy=probe_proxy)
+
+                now_ts = time.time()
+                cd_until = float(cooldown_until_by_account.get(account_id) or 0.0)
+                if cd_until > now_ts:
+                    retry_after = int(max(0, cd_until - now_ts))
+                    result = ProbeResult(
+                        status_code=429,
+                        note="local_cooldown",
+                        category="cooldown_local",
+                        retry_after_seconds=retry_after,
+                        http_status=None,
+                    )
+                else:
+                    result = _probe_wham_one(auth_obj=auth_obj, proxy=probe_proxy)
+                    if result.retry_after_seconds > 0:
+                        wait_seconds = result.retry_after_seconds
+                        if PROBE_LOCAL_COOLDOWN_MAX_SECONDS > 0:
+                            wait_seconds = min(wait_seconds, PROBE_LOCAL_COOLDOWN_MAX_SECONDS)
+                        cooldown_until_by_account[account_id] = time.time() + max(0, wait_seconds)
+
+                status_code = result.status_code
+                note = result.note
 
                 it: dict[str, Any] = {
                     "email_hash": email_hash,
                     "account_id": account_id,
                     "probed_at": _utc_now_iso(),
+                    "probe_category": result.category,
+                    "probe_note": result.note,
                 }
                 if status_code is not None:
                     it["status_code"] = int(status_code)
+                if result.retry_after_seconds > 0:
+                    it["retry_after_seconds"] = int(result.retry_after_seconds)
+                if result.http_status is not None:
+                    it["upstream_status"] = int(result.http_status)
 
                 # report probe (no file_name field)
                 reports_for_probe.append(it)
@@ -1566,25 +1688,28 @@ def _probe_loop() -> None:
 
                 if status_code in (401, 429):
                     invalid_like += 1
-                    invalid_paths.append((name, p))
+                    if result.category != "cooldown_local":
+                        invalid_paths.append((name, p))
 
                 # minimal local log
                 if status_code is not None and status_code != 200:
-                    print(f"[probe] {name} -> {status_code} ({note})")
+                    print(f"[probe] {name} -> {status_code} ({note}) cat={result.category} retry={result.retry_after_seconds}s")
 
-            # 新策略：缺一个补一个（不再依赖 80% 无效阈值）
-            pool_size = min(TARGET_POOL_SIZE, len(reports_for_probe))
+            healthy_count = sum(1 for r in reports_for_probe if int(r.get("status_code") or 0) == 200)
+            pool_size = min(TARGET_POOL_SIZE, healthy_count)
             need_topup = pool_size < TARGET_POOL_SIZE
 
-            # 上报：仅在“真的需要续杯/且存在无效项”时上报（避免无意义 flood）
             if need_topup and invalid_like > 0:
-                # 仅上报无效/冷却（服务端会据此写 invalid/exhausted 库）
-                reports_bad = [r for r in reports_for_probe if int(r.get("status_code") or 0) in (401, 429)]
+                reports_bad = [
+                    r
+                    for r in reports_for_probe
+                    if int(r.get("status_code") or 0) in (401, 429)
+                ]
                 _report_probe_to_server(reports=reports_bad)
 
             now_ts = time.time()
             if need_topup and (now_ts - last_topup_at >= TOPUP_COOLDOWN_SECONDS):
-                print(f"[probe] triggering topup: pool={pool_size} invalid_like={invalid_like}")
+                print(f"[probe] triggering topup: pool={pool_size} invalid_like={invalid_like} probed={len(reports_for_probe)}")
                 got = _topup_from_server(reports=reports_for_topup)
 
                 if got:
@@ -3769,13 +3894,23 @@ def _repair_one_auth_file(path: str, *, proxy: str | None) -> tuple[bool, str, s
 
     # probe for log (optional)
     try:
-        status_code, note = _probe_wham_one(auth_obj=auth_obj, proxy=None)
+        result = _probe_wham_one(auth_obj=auth_obj, proxy=None)
     except Exception:
-        status_code, note = None, "probe_failed"
+        result = ProbeResult(status_code=None, note="probe_failed", category="probe_failed")
 
     _append_jsonl(
         os.path.join(_repairer_results_dir(), "repairer_probe.jsonl"),
-        {"ts": _utc_now_iso(), "file": name, "account_id": account_id, "email": email, "status_code": status_code, "note": note},
+        {
+            "ts": _utc_now_iso(),
+            "file": name,
+            "account_id": account_id,
+            "email": email,
+            "status_code": result.status_code,
+            "note": result.note,
+            "probe_category": result.category,
+            "retry_after_seconds": result.retry_after_seconds,
+            "upstream_status": result.http_status,
+        },
     )
 
     driver = None
