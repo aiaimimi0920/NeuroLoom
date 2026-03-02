@@ -2,17 +2,38 @@
 setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
 
-REM 可直接双击运行（内置默认密钥）；也支持命令行覆盖。
+REM 可直接双击运行；支持命令行覆盖；默认从 platformtools/.dev.vars 读取。
 REM 用法（可选覆盖）：
 REM   一键生成80组x50_手动执行.cmd [SERVER_URL] [ADMIN_TOKEN] [ADMIN_GUARD]
+REM .dev.vars 支持以下键（任一命中即可）：
+REM   SERVER_URL / INFINITE_REFILL_SERVER_URL / REFILL_SERVER_URL
+REM   ADMIN_TOKEN / INFINITE_REFILL_ADMIN_TOKEN / REFILL_ADMIN_TOKEN
+REM   ADMIN_GUARD / INFINITE_REFILL_ADMIN_GUARD / REFILL_ADMIN_GUARD
 
 set "SERVER_URL=%~1"
 set "ADMIN_TOKEN=%~2"
 set "ADMIN_GUARD=%~3"
 
+set "DEV_VARS=%~dp0..\..\.dev.vars"
+if exist "%DEV_VARS%" (
+  for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%DEV_VARS%") do (
+    if /I "%%A"=="SERVER_URL" if "!SERVER_URL!"=="" set "SERVER_URL=%%B"
+    if /I "%%A"=="INFINITE_REFILL_SERVER_URL" if "!SERVER_URL!"=="" set "SERVER_URL=%%B"
+    if /I "%%A"=="REFILL_SERVER_URL" if "!SERVER_URL!"=="" set "SERVER_URL=%%B"
+
+    if /I "%%A"=="ADMIN_TOKEN" if "!ADMIN_TOKEN!"=="" set "ADMIN_TOKEN=%%B"
+    if /I "%%A"=="INFINITE_REFILL_ADMIN_TOKEN" if "!ADMIN_TOKEN!"=="" set "ADMIN_TOKEN=%%B"
+    if /I "%%A"=="REFILL_ADMIN_TOKEN" if "!ADMIN_TOKEN!"=="" set "ADMIN_TOKEN=%%B"
+
+    if /I "%%A"=="ADMIN_GUARD" if "!ADMIN_GUARD!"=="" set "ADMIN_GUARD=%%B"
+    if /I "%%A"=="INFINITE_REFILL_ADMIN_GUARD" if "!ADMIN_GUARD!"=="" set "ADMIN_GUARD=%%B"
+    if /I "%%A"=="REFILL_ADMIN_GUARD" if "!ADMIN_GUARD!"=="" set "ADMIN_GUARD=%%B"
+  )
+)
+
 if "%SERVER_URL%"=="" set "SERVER_URL=https://refill.aiaimimi.com"
-if "%ADMIN_TOKEN%"=="" set "ADMIN_TOKEN=adm_PTAtWdJk8lLr2SZQEoqHHSuDUhGMfWUdZHvzSqT84AwAyblddnrAcrkeMlktUNyL"
-if "%ADMIN_GUARD%"=="" set "ADMIN_GUARD=CDIQyfens6fVp0jSm4X1FqJgnDKpz72s4bT9k4SSTDU"
+if "%ADMIN_TOKEN%"=="" goto :USAGE
+if "%ADMIN_GUARD%"=="" goto :USAGE
 
 set "OUT_JSON=issue_80x50_response.json"
 set "OUT_ZIP=80x50-packages.bundle.zip"

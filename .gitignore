@@ -175,5 +175,10 @@ tools/oai_register/test_api.py
 tools/oai_register/test_gateway.py
 tools/oai_register/test_kookeey.py
 
-# InfiniteRefill 本地运维指令（含密钥，严禁提交）
+# InfiniteRefill 本地运维产物（严禁提交）
+platformtools/InfiniteRefill/运维/**
+!platformtools/InfiniteRefill/运维/
+!platformtools/InfiniteRefill/运维/一键生成80组x50_手动执行.cmd
+
+# InfiniteRefill 本地运维说明（含密钥，严禁提交）
 platformtools/InfiniteRefill/运维.md
