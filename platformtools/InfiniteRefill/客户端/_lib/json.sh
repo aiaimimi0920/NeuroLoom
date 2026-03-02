@@ -82,6 +82,66 @@ JXA
   return 3
 }
 
+# 归一化 wham 探测状态：
+# - 保留 401/429/000
+# - 对 2xx 响应读取 body，若命中“周配额耗尽/不可用”信号，则映射为 429
+# 返回：标准三位状态码
+json_normalize_wham_status() {
+  local status="$1"
+  local body_file="$2"
+
+  if [[ -z "$status" || ! "$status" =~ ^[0-9]{3}$ ]]; then
+    echo "000"
+    return 0
+  fi
+  if [[ "$status" == "000" || "$status" == "401" || "$status" == "429" ]]; then
+    echo "$status"
+    return 0
+  fi
+  if [[ "${status:0:1}" != "2" ]]; then
+    echo "$status"
+    return 0
+  fi
+
+  local q0="0"
+  if have_cmd python3; then
+    q0="$(python3 - "$body_file" <<'PY'
+import json, sys
+p=sys.argv[1]
+q=0
+try:
+  with open(p,'r',encoding='utf-8-sig') as fp:
+    o=json.load(fp)
+  if isinstance(o, dict):
+    rl=o.get('rate_limit')
+    if isinstance(rl, dict):
+      if rl.get('allowed') is False: q=1
+      if rl.get('limit_reached') is True: q=1
+      try:
+        if float((rl.get('primary_window') or {}).get('used_percent',0) or 0) >= 100:
+          q=1
+      except Exception:
+        pass
+    for k in ('allowed','limit_reached','is_available'):
+      v=o.get(k)
+      if v is False or v == 0:
+        q=1
+except Exception:
+  pass
+print(q)
+PY
+)"
+  elif have_cmd jq; then
+    q0="$(jq -r 'try ((.rate_limit.allowed==false) or (.rate_limit.limit_reached==true) or (((.rate_limit.primary_window.used_percent // 0)|tonumber) >= 100) or (.allowed==false) or (.limit_reached==true) or (.is_available==false) or (.allowed==0) or (.limit_reached==0) or (.is_available==0)) catch false | if . then "1" else "0" end' "$body_file" 2>/dev/null || echo 0)"
+  fi
+
+  if [[ "$q0" == "1" ]]; then
+    echo "429"
+  else
+    echo "$status"
+  fi
+}
+
 json_check_no_sensitive_keys() {
   # 已禁用“敏感字段”检测：允许包含 access_token/refresh_token/id_token。
   # 保留该函数仅为兼容旧脚本调用点。

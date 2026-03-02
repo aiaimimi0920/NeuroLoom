@@ -700,6 +700,85 @@ GPTMAIL_KEYS_FILE = os.environ.get(
 GPTMAIL_PREFIX = os.environ.get("GPTMAIL_PREFIX", "").strip() or None
 GPTMAIL_DOMAIN = os.environ.get("GPTMAIL_DOMAIN", "").strip() or None
 
+_MAIL_DOMAIN_HEALTH_ORDER = [
+    d.strip().lower()
+    for d in (os.environ.get("MAIL_DOMAIN_HEALTH_ORDER") or "mail.aiaimimi.com,aimiaimi.cc.cd,mimiaiai.cc.cd,aiaimimi.cc.cd,aiaiai.cc.cd").split(",")
+    if d.strip()
+]
+_MAILBOX_PICK_TRIES = int(os.environ.get("MAILBOX_PICK_TRIES", "3") or "3")
+if _MAILBOX_PICK_TRIES <= 0:
+    _MAILBOX_PICK_TRIES = 1
+
+
+def _pick_mailcreate_with_health() -> Mailbox:
+    # 域名池：MAILCREATE_DOMAIN（若配置）+ MAIL_DOMAIN_HEALTH_ORDER（去重）。
+    # 在自建渠道下按等概率随机抽样，避免长期集中到单域名。
+    domains: list[str] = []
+    seen: set[str] = set()
+
+    def _add_domain(raw: str) -> None:
+        d = str(raw or "").strip().lower()
+        if not d or d in seen:
+            return
+        seen.add(d)
+        domains.append(d)
+
+    _add_domain(MAILCREATE_DOMAIN)
+    for dom in _MAIL_DOMAIN_HEALTH_ORDER:
+        _add_domain(dom)
+
+    # 未配置任何显式域名时，让服务端按其 DOMAINS 配置随机。
+    if not domains:
+        return create_mailbox(
+            provider="mailcreate",
+            mailcreate_base_url=MAILCREATE_BASE_URL,
+            mailcreate_custom_auth=MAILCREATE_CUSTOM_AUTH,
+            mailcreate_domain="",
+            gptmail_base_url=GPTMAIL_BASE_URL,
+            gptmail_api_key=GPTMAIL_API_KEY,
+            gptmail_keys_file=GPTMAIL_KEYS_FILE,
+            gptmail_prefix=GPTMAIL_PREFIX,
+            gptmail_domain=GPTMAIL_DOMAIN,
+        )
+
+    tries = max(1, _MAILBOX_PICK_TRIES)
+    tries = min(tries, len(domains))
+    picked_domains = random.sample(domains, k=tries)
+
+    last_err: Exception | None = None
+    for dom in picked_domains:
+        try:
+            return create_mailbox(
+                provider="mailcreate",
+                mailcreate_base_url=MAILCREATE_BASE_URL,
+                mailcreate_custom_auth=MAILCREATE_CUSTOM_AUTH,
+                mailcreate_domain=dom,
+                gptmail_base_url=GPTMAIL_BASE_URL,
+                gptmail_api_key=GPTMAIL_API_KEY,
+                gptmail_keys_file=GPTMAIL_KEYS_FILE,
+                gptmail_prefix=GPTMAIL_PREFIX,
+                gptmail_domain=GPTMAIL_DOMAIN,
+            )
+        except Exception as e:
+            last_err = e
+            continue
+
+    # 所有随机候选失败后，回退服务端随机分配。
+    if last_err is not None:
+        return create_mailbox(
+            provider="mailcreate",
+            mailcreate_base_url=MAILCREATE_BASE_URL,
+            mailcreate_custom_auth=MAILCREATE_CUSTOM_AUTH,
+            mailcreate_domain="",
+            gptmail_base_url=GPTMAIL_BASE_URL,
+            gptmail_api_key=GPTMAIL_API_KEY,
+            gptmail_keys_file=GPTMAIL_KEYS_FILE,
+            gptmail_prefix=GPTMAIL_PREFIX,
+            gptmail_domain=GPTMAIL_DOMAIN,
+        )
+
+    raise RuntimeError("failed to pick mailcreate domain")
+
 
 def create_temp_mailbox() -> tuple[str, str]:
     """Create a new temp mailbox.
@@ -712,17 +791,29 @@ def create_temp_mailbox() -> tuple[str, str]:
     - gptmail: email
     """
 
-    mb: Mailbox = create_mailbox(
-        provider=MAILBOX_PROVIDER,
-        mailcreate_base_url=MAILCREATE_BASE_URL,
-        mailcreate_custom_auth=MAILCREATE_CUSTOM_AUTH,
-        mailcreate_domain=MAILCREATE_DOMAIN,
-        gptmail_base_url=GPTMAIL_BASE_URL,
-        gptmail_api_key=GPTMAIL_API_KEY,
-        gptmail_keys_file=GPTMAIL_KEYS_FILE,
-        gptmail_prefix=GPTMAIL_PREFIX,
-        gptmail_domain=GPTMAIL_DOMAIN,
-    )
+    provider = (MAILBOX_PROVIDER or "").strip().lower()
+    if provider in ("mailcreate", "self", "local"):
+        mb = _pick_mailcreate_with_health()
+    else:
+        mb: Mailbox = create_mailbox(
+            provider=MAILBOX_PROVIDER,
+            mailcreate_base_url=MAILCREATE_BASE_URL,
+            mailcreate_custom_auth=MAILCREATE_CUSTOM_AUTH,
+            mailcreate_domain=MAILCREATE_DOMAIN,
+            gptmail_base_url=GPTMAIL_BASE_URL,
+            gptmail_api_key=GPTMAIL_API_KEY,
+            gptmail_keys_file=GPTMAIL_KEYS_FILE,
+            gptmail_prefix=GPTMAIL_PREFIX,
+            gptmail_domain=GPTMAIL_DOMAIN,
+        )
+
+        # auto 情况：若最终落到 mailcreate，再做一次随机域优选
+        if getattr(mb, "provider", "") == "mailcreate":
+            try:
+                mb = _pick_mailcreate_with_health()
+            except Exception:
+                pass
+
     return mb.email, mb.ref
 
 

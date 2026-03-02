@@ -1,0 +1,2 @@
+{"phase": "start", "total_rows": 1, "bucket": "infinite-refill", "db": "refill_server_v2", "remote": true, "dry_run": false, "timeout": 12, "retries": 0, "max_errors": 1}
+{"phase": "done", "total_rows": 1, "migrated": 0, "cleaned_duplicate_old": 0, "skipped": 1, "errors": 0, "timeouts": 0}

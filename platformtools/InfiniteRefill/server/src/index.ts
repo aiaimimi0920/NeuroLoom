@@ -1,7 +1,7 @@
 /// <reference types="@cloudflare/workers-types" />
 
 import { AwsClient } from "aws4fetch";
-import { BlobWriter, TextReader, ZipWriter } from "@zip.js/zip.js";
+import { BlobReader, BlobWriter, TextReader, ZipWriter } from "@zip.js/zip.js";
 
 export interface Env {
   DB: D1Database;
@@ -72,6 +72,15 @@ function json(obj: unknown, status = 200): Response {
 
 async function ensureRuntimeSchema(env: Env): Promise<void> {
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS system_settings (k TEXT PRIMARY KEY, v TEXT NOT NULL, updated_at TEXT NOT NULL)").run();
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS user_daily_sync_all_usage (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, day TEXT NOT NULL, sync_count INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL)").run();
+  await env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_daily_sync_all_usage_user_day_uq ON user_daily_sync_all_usage(user_id, day)").run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_user_daily_sync_all_usage_user_day ON user_daily_sync_all_usage(user_id, day)").run();
+  await env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_daily_refill_usage_user_day_uq ON user_daily_refill_usage(user_id, day)").run();
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS sync_all_risk_events (id INTEGER PRIMARY KEY AUTOINCREMENT, day TEXT NOT NULL, ip TEXT NOT NULL, key_hash TEXT NOT NULL, ua_hash TEXT NOT NULL, fingerprint TEXT NOT NULL, auth_ok INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)").run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_sync_all_risk_events_day_ip ON sync_all_risk_events(day, ip)").run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_sync_all_risk_events_day_ua ON sync_all_risk_events(day, ua_hash)").run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_sync_all_risk_events_day_fp ON sync_all_risk_events(day, fingerprint)").run();
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS risk_blacklist (subject_type TEXT NOT NULL, subject_value TEXT NOT NULL, reason TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT, PRIMARY KEY(subject_type, subject_value))").run();
 
   try {
     await env.DB.prepare("ALTER TABLE users_v2 ADD COLUMN account_limit_delta INTEGER NOT NULL DEFAULT 0").run();
@@ -646,6 +655,102 @@ async function requireUserKey(req: Request, env: Env): Promise<{ raw: string; ha
   return { raw, hash: h };
 }
 
+type BlacklistSubjectType = "ip" | "ua_hash" | "fingerprint";
+
+async function isSubjectBlacklisted(
+  env: Env,
+  subjectType: BlacklistSubjectType,
+  subjectValue: string,
+  nowIso: string,
+): Promise<{ blocked: boolean; reason?: string }> {
+  const row = await env.DB
+    .prepare("SELECT reason FROM risk_blacklist WHERE subject_type=? AND subject_value=? AND (expires_at IS NULL OR expires_at='' OR expires_at>?) LIMIT 1")
+    .bind(subjectType, subjectValue, nowIso)
+    .first<{ reason: string }>();
+  if (!row) return { blocked: false };
+  return { blocked: true, reason: String(row.reason || "") || `${subjectType}_blacklisted` };
+}
+
+async function upsertBlacklist(
+  env: Env,
+  subjectType: BlacklistSubjectType,
+  subjectValue: string,
+  reason: string,
+  createdAt: string,
+  expiresAt: string,
+): Promise<void> {
+  await env.DB
+    .prepare("INSERT INTO risk_blacklist(subject_type,subject_value,reason,created_at,expires_at) VALUES(?,?,?,?,?) ON CONFLICT(subject_type,subject_value) DO UPDATE SET reason=excluded.reason, created_at=excluded.created_at, expires_at=excluded.expires_at")
+    .bind(subjectType, subjectValue, reason, createdAt, expiresAt)
+    .run();
+}
+
+async function recordSyncAllRiskEvent(
+  env: Env,
+  day: string,
+  ip: string,
+  keyHash: string,
+  uaHash: string,
+  fingerprint: string,
+  authOk: boolean,
+  createdAt: string,
+): Promise<void> {
+  await env.DB
+    .prepare("INSERT INTO sync_all_risk_events(day,ip,key_hash,ua_hash,fingerprint,auth_ok,created_at) VALUES(?,?,?,?,?,?,?)")
+    .bind(day, ip, keyHash, uaHash, fingerprint, authOk ? 1 : 0, createdAt)
+    .run();
+}
+
+async function evaluateSyncAllRiskAndMaybeBlacklist(
+  env: Env,
+  day: string,
+  ip: string,
+  uaHash: string,
+  fingerprint: string,
+  nowIso: string,
+): Promise<{ blockedNow: boolean; reason: string }> {
+  const ipStats = await env.DB
+    .prepare("SELECT COUNT(1) AS total, COUNT(DISTINCT key_hash) AS dk, SUM(CASE WHEN auth_ok=0 THEN 1 ELSE 0 END) AS failed FROM sync_all_risk_events WHERE day=? AND ip=?")
+    .bind(day, ip)
+    .first<{ total: number; dk: number; failed: number }>();
+  const ipDistinctKeys = Number(ipStats?.dk || 0);
+  const ipFailed = Number(ipStats?.failed || 0);
+
+  const fpStats = await env.DB
+    .prepare("SELECT COUNT(1) AS total, COUNT(DISTINCT key_hash) AS dk, SUM(CASE WHEN auth_ok=0 THEN 1 ELSE 0 END) AS failed FROM sync_all_risk_events WHERE day=? AND fingerprint=?")
+    .bind(day, fingerprint)
+    .first<{ total: number; dk: number; failed: number }>();
+  const fpDistinctKeys = Number(fpStats?.dk || 0);
+  const fpFailed = Number(fpStats?.failed || 0);
+
+  const uaStats = await env.DB
+    .prepare("SELECT COUNT(1) AS total, COUNT(DISTINCT key_hash) AS dk, SUM(CASE WHEN auth_ok=0 THEN 1 ELSE 0 END) AS failed FROM sync_all_risk_events WHERE day=? AND ua_hash=?")
+    .bind(day, uaHash)
+    .first<{ total: number; dk: number; failed: number }>();
+  const uaDistinctKeys = Number(uaStats?.dk || 0);
+  const uaFailed = Number(uaStats?.failed || 0);
+
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+
+  if (ipDistinctKeys >= 6 && ipFailed >= 10) {
+    await upsertBlacklist(env, "ip", ip, `sync_all_key_spray_ip: distinct_keys=${ipDistinctKeys}, failed=${ipFailed}`, nowIso, expiresAt);
+    await upsertBlacklist(env, "fingerprint", fingerprint, `sync_all_key_spray_fingerprint: distinct_keys=${fpDistinctKeys}, failed=${fpFailed}`, nowIso, expiresAt);
+    return { blockedNow: true, reason: "sync_all_ip_key_spray" };
+  }
+
+  if (fpDistinctKeys >= 4 && fpFailed >= 8) {
+    await upsertBlacklist(env, "fingerprint", fingerprint, `sync_all_key_spray_fingerprint: distinct_keys=${fpDistinctKeys}, failed=${fpFailed}`, nowIso, expiresAt);
+    return { blockedNow: true, reason: "sync_all_fingerprint_key_spray" };
+  }
+
+  if (uaDistinctKeys >= 20 && uaFailed >= 30) {
+    await upsertBlacklist(env, "ua_hash", uaHash, `sync_all_key_spray_ua: distinct_keys=${uaDistinctKeys}, failed=${uaFailed}`, nowIso, expiresAt);
+    return { blockedNow: true, reason: "sync_all_ua_key_spray" };
+  }
+
+  return { blockedNow: false, reason: "" };
+}
+
 function extractR2KeyFromInput(raw: string | null | undefined, bucketName: string): string | null {
   const s = String(raw || "").trim();
   if (!s) return null;
@@ -791,6 +896,14 @@ type IssuePackagesBody = {
   account_limit_delta?: number;
   server_url: string;
   ttl_minutes?: number;
+  /** 可选：再打一个“总包.zip”（里面包含本批次所有数字包 + key_manifest.json） */
+  return_bundle_zip?: boolean;
+  /**
+   * ZIP 加密格式：
+   * - zipcrypto: 传统 ZipCrypto（Windows 资源管理器兼容更好）
+   * - aes: AES（安全更强，但资源管理器兼容性较差）
+   */
+  zip_encryption?: "zipcrypto" | "aes";
 };
 
 type UploaderIssuePackagesBody = {
@@ -799,6 +912,32 @@ type UploaderIssuePackagesBody = {
   label?: string;
   server_url: string;
   ttl_minutes?: number;
+};
+
+type AdminUsersRebindBody = {
+  /** 目标用户 key_hash 列表（最终每个 key 分到相同数量账号） */
+  key_hashes: string[];
+  /** 每个用户分配账号数，默认 50 */
+  accounts_per_user?: number;
+  /** 候选来源 owner 列表；为空时默认取“全部私有 owner” */
+  source_owner_hashes?: string[];
+  /** 是否把公有池(-1)也作为候选来源；默认 false */
+  include_public_pool?: boolean;
+  /** 仅预演不落库；默认 false */
+  dry_run?: boolean;
+  /** 兼容写入 user_keys 的标签前缀 */
+  label_prefix?: string;
+};
+
+type AdminUsersCreateBody = {
+  /** 目标用户 key_hash 列表（明文 key 先在客户端自行 sha256） */
+  key_hashes: string[];
+  /** 用户显示名前缀 */
+  label_prefix?: string;
+  /** 账户上限加值 */
+  account_limit_delta?: number;
+  /** 仅预演不落库 */
+  dry_run?: boolean;
 };
 
 // --- Artworks (艺术品) ---
@@ -1119,6 +1258,249 @@ export default {
         return json({ ok: true, user_id: userId, disabled: 0, enabled_keys: Number(keyStats?.c || 0) });
       }
 
+      if (path === "/admin/users/rebind" && req.method === "POST") {
+        await requireAdmin(req, env);
+        const body = await parseJson<AdminUsersRebindBody>(req);
+
+        const now = utcNowIso();
+        const accountsPerUser = Math.max(1, Math.min(500, Math.trunc(Number(body?.accounts_per_user || 50))));
+        const dryRun = body?.dry_run === true;
+        const includePublicPool = body?.include_public_pool === true;
+        const labelPrefix = String(body?.label_prefix || "rebind:user").trim() || "rebind:user";
+
+        const targetHashes = [...new Set(
+          (Array.isArray(body?.key_hashes) ? body.key_hashes : [])
+            .map((x) => String(x || "").trim().toLowerCase())
+            .filter((x) => isHexSha256(x)),
+        )];
+        if (targetHashes.length === 0) return json({ ok: false, error: "missing_key_hashes" }, 400);
+
+        const reqTotal = targetHashes.length * accountsPerUser;
+
+        let sourceOwners = [...new Set(
+          (Array.isArray(body?.source_owner_hashes) ? body.source_owner_hashes : [])
+            .map((x) => String(x || "").trim().toLowerCase())
+            .filter((x) => isHexSha256(x)),
+        )];
+
+        if (sourceOwners.length === 0) {
+          const allOwners = await env.DB
+            .prepare("SELECT owner FROM accounts_v2 WHERE owner NOT IN ('-1','-2','-3','-4') GROUP BY owner ORDER BY owner")
+            .all<{ owner: string }>();
+          sourceOwners = (allOwners.results || []).map((r) => String(r.owner || "").trim().toLowerCase()).filter((x) => isHexSha256(x));
+        }
+        if (includePublicPool) sourceOwners = [...new Set([...sourceOwners, "-1"])];
+        if (sourceOwners.length === 0) return json({ ok: false, error: "no_source_owners" }, 400);
+
+        const srcPlaceholders = sourceOwners.map(() => "?").join(",");
+        const srcRows = await env.DB
+          .prepare(`SELECT account_id, owner FROM accounts_v2 WHERE owner IN (${srcPlaceholders}) ORDER BY updated_at DESC, account_id ASC`)
+          .bind(...sourceOwners)
+          .all<{ account_id: string; owner: string }>();
+
+        const pool = (srcRows.results || []).map((r) => ({ account_id: String(r.account_id || "").trim(), owner: String(r.owner || "").trim() }))
+          .filter((r) => r.account_id);
+
+        if (pool.length < reqTotal) {
+          return json({
+            ok: false,
+            error: "insufficient_source_accounts",
+            requested_total: reqTotal,
+            source_available: pool.length,
+            target_users: targetHashes.length,
+            accounts_per_user: accountsPerUser,
+          }, 409);
+        }
+
+        const picked = pool.slice(0, reqTotal);
+        const assignByKey = new Map<string, string[]>();
+        const movePlan: Array<{ account_id: string; from_owner: string; to_owner: string }> = [];
+
+        for (let i = 0; i < targetHashes.length; i++) assignByKey.set(targetHashes[i], []);
+
+        for (let i = 0; i < picked.length; i++) {
+          const keyHash = targetHashes[Math.floor(i / accountsPerUser)] || targetHashes[targetHashes.length - 1];
+          const row = picked[i];
+          assignByKey.get(keyHash)!.push(row.account_id);
+          movePlan.push({ account_id: row.account_id, from_owner: row.owner, to_owner: keyHash });
+        }
+
+        if (dryRun) {
+          return json({
+            ok: true,
+            dry_run: true,
+            target_users: targetHashes.length,
+            accounts_per_user: accountsPerUser,
+            requested_total: reqTotal,
+            source_owners: sourceOwners,
+            source_available: pool.length,
+            planned_moves: movePlan.length,
+            sample_moves: movePlan.slice(0, 10),
+            per_user_counts: targetHashes.map((h) => ({ key_hash: h, count: (assignByKey.get(h) || []).length })),
+          });
+        }
+
+        const userIdByKey = new Map<string, string>();
+        for (const h of targetHashes) {
+          await env.DB.prepare("INSERT OR IGNORE INTO user_keys(key_hash,label,enabled,created_at) VALUES(?,?,1,?)")
+            .bind(h, `${labelPrefix}:${h.slice(0, 8)}`, now)
+            .run();
+          await env.DB.prepare("UPDATE user_keys SET enabled=1 WHERE key_hash=?").bind(h).run();
+
+          let uk = await env.DB.prepare("SELECT user_id FROM user_keys_v2 WHERE key_hash=? LIMIT 1").bind(h).first<{ user_id: string }>();
+          if (!uk) {
+            const userId = `u_${crypto.randomUUID()}`;
+            await env.DB
+              .prepare("INSERT INTO users_v2(id,display_name,roles,current_account_ids,daily_refill_limit,account_limit_delta,disabled,created_at,updated_at) VALUES(?,?,?,?,200,0,0,?,?)")
+              .bind(userId, `${labelPrefix}:${h.slice(0, 8)}`, "user", "[]", now, now)
+              .run();
+            await env.DB
+              .prepare("INSERT INTO user_keys_v2(key_hash,user_id,role,enabled,created_at,updated_at) VALUES(?,?,?,1,?,?)")
+              .bind(h, userId, "user", now, now)
+              .run();
+            uk = { user_id: userId };
+          } else {
+            await env.DB.prepare("UPDATE user_keys_v2 SET enabled=1, updated_at=? WHERE key_hash=?").bind(now, h).run();
+            await env.DB.prepare("UPDATE users_v2 SET disabled=0, updated_at=? WHERE id=?").bind(now, uk.user_id).run();
+          }
+          userIdByKey.set(h, uk.user_id);
+        }
+
+        for (const mv of movePlan) {
+          await env.DB.prepare("UPDATE accounts_v2 SET owner=?, updated_at=? WHERE account_id=?")
+            .bind(mv.to_owner, now, mv.account_id)
+            .run();
+        }
+
+        for (const h of targetHashes) {
+          const ids = assignByKey.get(h) || [];
+          const uid = userIdByKey.get(h);
+          if (!uid) continue;
+          await env.DB.prepare("UPDATE users_v2 SET current_account_ids=?, updated_at=? WHERE id=?")
+            .bind(JSON.stringify(ids), now, uid)
+            .run();
+        }
+
+        const verifyRows = await env.DB
+          .prepare(`SELECT owner, COUNT(1) AS c FROM accounts_v2 WHERE owner IN (${targetHashes.map(() => "?").join(",")}) GROUP BY owner ORDER BY owner`)
+          .bind(...targetHashes)
+          .all<{ owner: string; c: number }>();
+
+        return json({
+          ok: true,
+          target_users: targetHashes.length,
+          accounts_per_user: accountsPerUser,
+          requested_total: reqTotal,
+          moved_total: movePlan.length,
+          source_available: pool.length,
+          source_owners: sourceOwners,
+          per_user_counts: (verifyRows.results || []).map((r) => ({ key_hash: String(r.owner || ""), count: Number(r.c || 0) })),
+        });
+      }
+
+      if (path === "/admin/users/create" && req.method === "POST") {
+        await requireAdmin(req, env);
+        const body = await parseJson<AdminUsersCreateBody>(req);
+
+        const now = utcNowIso();
+        const labelPrefix = String(body?.label_prefix || "admin:user").trim() || "admin:user";
+        const delta = Math.max(-500, Math.min(500, Math.trunc(Number(body?.account_limit_delta || 0))));
+        const dryRun = body?.dry_run === true;
+
+        const hashes = [...new Set(
+          (Array.isArray(body?.key_hashes) ? body.key_hashes : [])
+            .map((x) => String(x || "").trim().toLowerCase())
+            .filter((x) => isHexSha256(x)),
+        )];
+        if (hashes.length === 0) return json({ ok: false, error: "missing_key_hashes" }, 400);
+
+        const existingRows = await env.DB
+          .prepare(`SELECT key_hash, user_id, enabled FROM user_keys_v2 WHERE key_hash IN (${hashes.map(() => "?").join(",")})`)
+          .bind(...hashes)
+          .all<{ key_hash: string; user_id: string; enabled: number }>();
+        const existingByHash = new Map<string, { user_id: string; enabled: number }>();
+        for (const r of existingRows.results || []) existingByHash.set(String(r.key_hash || "").toLowerCase(), { user_id: r.user_id, enabled: Number(r.enabled || 0) });
+
+        if (dryRun) {
+          const exists = hashes.filter((h) => existingByHash.has(h));
+          const willCreate = hashes.filter((h) => !existingByHash.has(h));
+          return json({
+            ok: true,
+            dry_run: true,
+            total: hashes.length,
+            exists_count: exists.length,
+            create_count: willCreate.length,
+            exists,
+            will_create: willCreate,
+            account_limit_delta: delta,
+            label_prefix: labelPrefix,
+          });
+        }
+
+        const created: Array<{ key_hash: string; user_id: string }> = [];
+        const enabledExisting: Array<{ key_hash: string; user_id: string }> = [];
+
+        for (const h of hashes) {
+          await env.DB.prepare("INSERT OR IGNORE INTO user_keys(key_hash,label,enabled,created_at) VALUES(?,?,1,?)")
+            .bind(h, `${labelPrefix}:${h.slice(0, 8)}`, now)
+            .run();
+          await env.DB.prepare("UPDATE user_keys SET enabled=1 WHERE key_hash=?").bind(h).run();
+
+          const ex = existingByHash.get(h);
+          if (ex) {
+            await env.DB.prepare("UPDATE user_keys_v2 SET enabled=1, updated_at=? WHERE key_hash=?").bind(now, h).run();
+            await env.DB.prepare("UPDATE users_v2 SET disabled=0, updated_at=? WHERE id=?").bind(now, ex.user_id).run();
+            enabledExisting.push({ key_hash: h, user_id: ex.user_id });
+            continue;
+          }
+
+          const userId = `u_${crypto.randomUUID()}`;
+          await env.DB
+            .prepare("INSERT INTO users_v2(id,display_name,roles,current_account_ids,daily_refill_limit,account_limit_delta,disabled,created_at,updated_at) VALUES(?,?,?,?,200,?,0,?,?)")
+            .bind(userId, `${labelPrefix}:${h.slice(0, 8)}`, "user", "[]", delta, now, now)
+            .run();
+          await env.DB
+            .prepare("INSERT INTO user_keys_v2(key_hash,user_id,role,enabled,created_at,updated_at) VALUES(?,?,?,1,?,?)")
+            .bind(h, userId, "user", now, now)
+            .run();
+          created.push({ key_hash: h, user_id: userId });
+        }
+
+        return json({
+          ok: true,
+          total: hashes.length,
+          created_count: created.length,
+          enabled_existing_count: enabledExisting.length,
+          created,
+          enabled_existing: enabledExisting,
+          account_limit_delta: delta,
+          label_prefix: labelPrefix,
+        });
+      }
+
+      if (path === "/admin/users/reset" && req.method === "POST") {
+        await requireAdmin(req, env);
+
+        const now = utcNowIso();
+        const released = await env.DB
+          .prepare("UPDATE accounts_v2 SET owner='-1', updated_at=? WHERE owner NOT IN ('-1','-2','-3','-4')")
+          .bind(now)
+          .run();
+
+        const deletedUsage = await env.DB.prepare("DELETE FROM user_daily_refill_usage").run();
+        const deletedUserKeys = await env.DB.prepare("DELETE FROM user_keys_v2").run();
+        const deletedUsers = await env.DB.prepare("DELETE FROM users_v2").run();
+
+        return json({
+          ok: true,
+          released_accounts: Number(released.meta?.changes || 0),
+          deleted_usage_rows: Number(deletedUsage.meta?.changes || 0),
+          deleted_user_keys: Number(deletedUserKeys.meta?.changes || 0),
+          deleted_users: Number(deletedUsers.meta?.changes || 0),
+          ts: now,
+        });
+      }
+
       if (path === "/admin/keys/issue" && req.method === "POST") {
         await requireAdmin(req, env);
         const body = await parseJson<IssueKeysBody>(req);
@@ -1204,9 +1586,16 @@ export default {
           batchAccountLimitDelta = explicit - baseAccountLimit;
         }
 
-        const minAccountsRequired = Math.max(1, Math.min(bindPoolSize, Math.trunc(Number(body?.min_accounts_required ?? 5) || 5)));
+        const minAccountsDefault = type === "user" ? bindPoolSize : 1;
+        const minAccountsRequired = Math.max(
+          1,
+          Math.min(bindPoolSize, Math.trunc(Number(body?.min_accounts_required ?? minAccountsDefault) || minAccountsDefault)),
+        );
         const serverUrl = String(body?.server_url || "").trim();
         const ttlMinutes = body?.ttl_minutes ? Math.max(1, Math.min(24 * 60, Math.trunc(Number(body.ttl_minutes)))) : 60;
+        const returnBundleZip = body?.return_bundle_zip === true;
+        const zipEncryption = String(body?.zip_encryption || "zipcrypto").trim().toLowerCase() === "aes" ? "aes" : "zipcrypto";
+        const useZipCrypto = zipEncryption === "zipcrypto";
 
         if (type !== "user" && type !== "upload") {
           return json({ ok: false, error: "invalid_type" }, 400);
@@ -1256,6 +1645,7 @@ export default {
           name: string;
           no: number;
           key: string;
+          password: string;
           key_hash: string;
           user_id: string | null;
           assigned_count: number;
@@ -1263,6 +1653,7 @@ export default {
         }> = [];
         const errors: Array<{ idx: number; error: string }> = [];
         const manifestMap: Record<string, string> = {};
+        const zipArtifacts: Array<{ name: string; blob: Blob }> = [];
 
         for (let i = 1; i <= count; i++) {
           const k = genKey();
@@ -1271,11 +1662,11 @@ export default {
           const r2Key = `batches/${batchId}/${zipName}`;
 
           try {
-            let assigned: Array<{ account_id: string; email: string; password: string; r2_url: string | null }> = [];
+            let assigned: Array<{ account_id: string; email: string; password: string; r2_url: string | null; auth_json_text: string | null }> = [];
             let userId: string | null = null;
 
             if (type === "user") {
-              userId = `u_pkg_${batchId}_${String(i).padStart(3, "0")}`;
+              userId = `u_${crypto.randomUUID().replace(/-/g, "")}`;
 
               // 先尝试“独占抢占账号”，满足最小要求后再创建 user/user_key。
               const candidateRows = await env.DB
@@ -1292,11 +1683,21 @@ export default {
                   .bind(h, now, now, row.account_id)
                   .run();
                 if ((claim.meta?.changes || 0) === 1) {
+                  let authJsonText: string | null = null;
+                  const r2KeyForAuth = extractR2KeyFromInput(String(row.r2_url || "").trim(), env.R2_BUCKET_NAME);
+                  if (r2KeyForAuth) {
+                    const authObj = await env.BUCKET.get(r2KeyForAuth);
+                    if (authObj) {
+                      authJsonText = await authObj.text();
+                    }
+                  }
+
                   assigned.push({
                     account_id: String(row.account_id || ""),
                     email: String(row.email || ""),
                     password: String(row.password || ""),
                     r2_url: row.r2_url || null,
+                    auth_json_text: authJsonText,
                   });
                 }
               }
@@ -1324,6 +1725,12 @@ export default {
                   "INSERT OR IGNORE INTO user_keys_v2(key_hash,user_id,role,enabled,created_at,updated_at) VALUES(?,?,?,1,?,?)",
                 )
                 .bind(h, userId, "user", now, now)
+                .run();
+
+              // 兼容 v1 鉴权：普通用户脚本使用 X-User-Key 命中 user_keys
+              await env.DB
+                .prepare("INSERT OR IGNORE INTO user_keys(key_hash,label,enabled,created_at) VALUES(?,?,1,?)")
+                .bind(h, `pkg:${batchId}:${zipName}`, now)
                 .run();
 
               const accountIdList = assigned.map((x) => x.account_id);
@@ -1359,23 +1766,27 @@ export default {
                   `包序号: ${i}`,
                 ].join("\n");
 
-            await zw.add("无限续杯配置.env", new TextReader(envText), { password: k, encryptionStrength: 3 });
-            await zw.add("README.txt", new TextReader(readmeText), { password: k, encryptionStrength: 3 });
+            // 按要求：子包解压密码与包内 USER_KEY 保持一致（即用户 key 明文）
+            const zipPassword = k;
+            const encOpt = useZipCrypto ? { password: zipPassword, zipCrypto: true } : { password: zipPassword, encryptionStrength: 3 as const };
+
+            await zw.add("无限续杯配置.env", new TextReader(envText), encOpt);
+            await zw.add("README.txt", new TextReader(readmeText), encOpt);
 
             if (type === "user") {
               for (let j = 0; j < assigned.length; j++) {
                 const a = assigned[j];
-                const accountObj = {
-                  account_id: a.account_id,
-                  email: a.email,
-                  password: a.password,
-                  r2_url: a.r2_url,
-                };
                 const accountFileName = `accounts/${String(j + 1).padStart(3, "0")}-${a.account_id}.json`;
-                await zw.add(accountFileName, new TextReader(JSON.stringify(accountObj, null, 2)), {
-                  password: k,
-                  encryptionStrength: 3,
-                });
+                if (a.auth_json_text && a.auth_json_text.trim()) {
+                  await zw.add(accountFileName, new TextReader(a.auth_json_text), encOpt);
+                } else {
+                  const fallbackObj = {
+                    account_id: a.account_id,
+                    email: a.email,
+                    password: a.password,
+                  };
+                  await zw.add(accountFileName, new TextReader(JSON.stringify(fallbackObj, null, 2)), encOpt);
+                }
               }
             }
 
@@ -1399,17 +1810,22 @@ export default {
               .bind(batchId, zipName, "zip", r2Key, now)
               .run();
 
+            if (returnBundleZip) {
+              zipArtifacts.push({ name: zipName, blob: zipBlob });
+            }
+
             const downloadUrl = await makePresignedGet(r2Key);
             packages.push({
               name: zipName,
               no: i,
               key: k,
+              password: zipPassword,
               key_hash: h,
               user_id: userId,
               assigned_count: assigned.length,
               download_url: downloadUrl,
             });
-            manifestMap[String(i)] = k;
+            manifestMap[zipName] = zipPassword;
           } catch (e: any) {
             errors.push({ idx: i, error: String(e?.message || e) });
           }
@@ -1437,6 +1853,31 @@ export default {
 
         const manifestUrl = await makePresignedGet(manifestKey);
 
+        let bundle: { name: string; download_url: string } | null = null;
+        if (returnBundleZip && zipArtifacts.length > 0) {
+          const bundleName = "packages.bundle.zip";
+          const bundleKey = `batches/${batchId}/${bundleName}`;
+          const bundleZip = new ZipWriter(new BlobWriter("application/zip"));
+
+          for (const z of zipArtifacts) {
+            await bundleZip.add(z.name, new BlobReader(z.blob));
+          }
+          await bundleZip.add(manifestName, new TextReader(JSON.stringify(manifestPayload, null, 2)));
+
+          const bundleBlob = await bundleZip.close();
+          await env.BUCKET.put(bundleKey, bundleBlob, {
+            httpMetadata: { contentType: "application/zip" },
+            customMetadata: { batch_id: batchId, name: bundleName, kind: "bundle", type },
+          });
+          await env.DB.prepare(
+            "INSERT OR IGNORE INTO package_objects(batch_id,name,kind,r2_key,created_at) VALUES(?,?,?,?,?)",
+          )
+            .bind(batchId, bundleName, "bundle", bundleKey, now)
+            .run();
+
+          bundle = { name: bundleName, download_url: await makePresignedGet(bundleKey) };
+        }
+
         return json({
           ok: true,
           batch_id: batchId,
@@ -1452,12 +1893,15 @@ export default {
           server_url: serverUrl,
           ttl_minutes: ttlMinutes,
           expires_at: expiresAt,
+          zip_encryption: zipEncryption,
           packages,
           manifest: {
             name: manifestName,
             download_url: manifestUrl,
             mapping: manifestMap,
+            lines: Object.entries(manifestMap).map(([pkgName, passwd]) => `${pkgName}：${passwd}`),
           },
+          bundle,
           errors,
         });
       }
@@ -2787,7 +3231,7 @@ export default {
             continue;
           }
 
-          const fileName = `无限续杯-${stamp}-${String(accountsOut.length + 1).padStart(3, "0")}.json`;
+          const fileName = `codex-${String(r.account_id || "").trim()}.json`;
 
           let r2Key = extractR2Key(String(r.r2_url || ""));
           if (!r2Key) {
@@ -2874,6 +3318,203 @@ export default {
           ttl_minutes: ttlMinutes,
           expires_at: expiresAt,
           accounts: accountsOut,
+          received_at: receivedAt,
+        });
+      }
+
+      if (path === "/v1/refill/sync-all" && req.method === "POST") {
+        const receivedAt = utcNowIso();
+        const day = receivedAt.slice(0, 10);
+        const clientIp = (getClientIp(req) || "unknown").trim() || "unknown";
+        const uaRaw = (req.headers.get("user-agent") || req.headers.get("User-Agent") || "").trim();
+        const uaHash = await sha256Hex(uaRaw || "ua:empty");
+        const fingerprint = await sha256Hex(`${clientIp}|${uaHash}`);
+
+        const ipBlk = await isSubjectBlacklisted(env, "ip", clientIp, receivedAt);
+        if (ipBlk.blocked) {
+          return json({ ok: false, error: "ip_blacklisted", reason: ipBlk.reason, received_at: receivedAt }, 403);
+        }
+        const fpBlk = await isSubjectBlacklisted(env, "fingerprint", fingerprint, receivedAt);
+        if (fpBlk.blocked) {
+          return json({ ok: false, error: "fingerprint_blacklisted", reason: fpBlk.reason, received_at: receivedAt }, 403);
+        }
+        const uaBlk = await isSubjectBlacklisted(env, "ua_hash", uaHash, receivedAt);
+        if (uaBlk.blocked) {
+          return json({ ok: false, error: "ua_blacklisted", reason: uaBlk.reason, received_at: receivedAt }, 403);
+        }
+
+        const presentedRaw = (readUserKey(req) || readUploadKey(req) || readBearer(req) || "").trim();
+        const presentedKeyHash = presentedRaw ? await sha256Hex(presentedRaw) : "missing";
+
+        let caller: ClientCtx;
+        try {
+          caller = await requireAtLeastUser(req, env);
+        } catch (e: any) {
+          await recordSyncAllRiskEvent(env, day, clientIp, presentedKeyHash, uaHash, fingerprint, false, receivedAt);
+          const risk = await evaluateSyncAllRiskAndMaybeBlacklist(env, day, clientIp, uaHash, fingerprint, receivedAt);
+          if (risk.blockedNow) {
+            return json({ ok: false, error: risk.reason, received_at: receivedAt }, 429);
+          }
+          if (e instanceof Response) {
+            return json({ ok: false, error: String(await e.text().catch(() => "unauthorized") || "unauthorized"), received_at: receivedAt }, e.status || 403);
+          }
+          return json({ ok: false, error: "unauthorized", received_at: receivedAt }, 403);
+        }
+
+        const ownerKey = (caller.user_key_hash || caller.upload_key_hash || caller.audit_key_hash || "").trim();
+        if (!ownerKey) return json({ ok: false, error: "missing_owner_key" }, 401);
+
+        const effectivePresented = (caller.user_key_hash || caller.upload_key_hash || caller.admin_token_hash || presentedKeyHash || "missing").trim() || "missing";
+        await recordSyncAllRiskEvent(env, day, clientIp, effectivePresented, uaHash, fingerprint, true, receivedAt);
+        const riskAfterOk = await evaluateSyncAllRiskAndMaybeBlacklist(env, day, clientIp, uaHash, fingerprint, receivedAt);
+        if (riskAfterOk.blockedNow) {
+          return json({ ok: false, error: riskAfterOk.reason, received_at: receivedAt }, 429);
+        }
+
+        const roleForKey = caller.role === "admin" ? "super_admin" : caller.role === "upload" ? "uploader" : "user";
+        let userKeyRow = await env.DB
+          .prepare("SELECT user_id, role, enabled FROM user_keys_v2 WHERE key_hash=?")
+          .bind(ownerKey)
+          .first<{ user_id: string; role: string; enabled: number }>();
+
+        if (!userKeyRow) {
+          const userId = `u_${crypto.randomUUID()}`;
+          await env.DB
+            .prepare("INSERT INTO users_v2(id,display_name,roles,current_account_ids,daily_refill_limit,disabled,created_at,updated_at) VALUES(?,?,?,?,200,0,?,?)")
+            .bind(userId, null, roleForKey, "[]", receivedAt, receivedAt)
+            .run();
+          await env.DB
+            .prepare("INSERT INTO user_keys_v2(key_hash,user_id,role,enabled,created_at,updated_at) VALUES(?,?,?,1,?,?)")
+            .bind(ownerKey, userId, roleForKey, receivedAt, receivedAt)
+            .run();
+          userKeyRow = { user_id: userId, role: roleForKey, enabled: 1 };
+        }
+
+        if (Number(userKeyRow.enabled) !== 1) return json({ ok: false, error: "user_key_disabled" }, 403);
+        const userRow = await env.DB
+          .prepare("SELECT disabled FROM users_v2 WHERE id=?")
+          .bind(userKeyRow.user_id)
+          .first<{ disabled: number }>();
+        if (!userRow) return json({ ok: false, error: "user_not_found" }, 403);
+        if (Number(userRow.disabled) === 1) return json({ ok: false, error: "user_disabled" }, 403);
+
+        await env.DB
+          .prepare("INSERT INTO user_daily_sync_all_usage(user_id,day,sync_count,updated_at) VALUES(?,?,1,?) ON CONFLICT(user_id,day) DO UPDATE SET sync_count=sync_count+1, updated_at=excluded.updated_at")
+          .bind(userKeyRow.user_id, day, receivedAt)
+          .run();
+
+        const syncRow = await env.DB
+          .prepare("SELECT sync_count FROM user_daily_sync_all_usage WHERE user_id=? AND day=?")
+          .bind(userKeyRow.user_id, day)
+          .first<{ sync_count: number }>();
+        const syncAllUsedToday = Number(syncRow?.sync_count || 0);
+        const syncAllLimit = 10;
+
+        if (syncAllUsedToday >= syncAllLimit) {
+          await env.DB.prepare("UPDATE users_v2 SET disabled=1, updated_at=? WHERE id=?").bind(receivedAt, userKeyRow.user_id).run();
+          await env.DB.prepare("UPDATE user_keys_v2 SET enabled=0, updated_at=? WHERE user_id=?").bind(receivedAt, userKeyRow.user_id).run();
+          return json({
+            ok: false,
+            error: "sync_all_limit_exceeded",
+            sync_all_used_today: syncAllUsedToday,
+            sync_all_limit: syncAllLimit,
+            auto_disabled: true,
+            received_at: receivedAt,
+          }, 429);
+        }
+
+        const rows = await env.DB
+          .prepare("SELECT account_id,email,password,r2_url,owner FROM accounts_v2 WHERE owner=? AND owner <> '-3' ORDER BY updated_at DESC LIMIT 500")
+          .bind(ownerKey)
+          .all<{ account_id: string; email: string; password: string; r2_url: string | null; owner: string }>();
+
+        if (!env.R2_ACCESS_KEY_ID || !env.R2_SECRET_ACCESS_KEY) {
+          return json({ ok: false, error: "missing_r2_s3_credentials" }, 500);
+        }
+        if (!env.R2_ACCOUNT_ID || env.R2_ACCOUNT_ID === "REPLACE_ME") {
+          return json({ ok: false, error: "missing_r2_account_id" }, 500);
+        }
+
+        const r2 = new AwsClient({
+          service: "s3",
+          region: "auto",
+          accessKeyId: env.R2_ACCESS_KEY_ID,
+          secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+        });
+        const ttlMinutes = 10;
+        const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+
+        const extractR2Key = (raw: string): string | null => {
+          const s = String(raw || "").trim();
+          if (!s) return null;
+          if (s.startsWith("r2://")) {
+            const rest = s.slice(5);
+            const slash = rest.indexOf("/");
+            if (slash < 0) return null;
+            const bucket = rest.slice(0, slash);
+            const key = rest.slice(slash + 1);
+            if (bucket !== env.R2_BUCKET_NAME) return null;
+            return key || null;
+          }
+          if (/^https?:\/\//i.test(s)) {
+            try {
+              const u = new URL(s);
+              const p = u.pathname.replace(/^\/+/, "");
+              if (!p) return null;
+              if (p.startsWith(`${env.R2_BUCKET_NAME}/`)) return p.slice(env.R2_BUCKET_NAME.length + 1);
+              return null;
+            } catch {
+              return null;
+            }
+          }
+          return s;
+        };
+
+        const makePresignedGet = async (r2Key: string): Promise<string> => {
+          const u = new URL(`https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${env.R2_BUCKET_NAME}/${r2Key}`);
+          u.searchParams.set("X-Amz-Expires", String(ttlMinutes * 60));
+          const signed = await r2.sign(new Request(u.toString(), { method: "GET" }), { aws: { signQuery: true } });
+          return signed.url.toString();
+        };
+
+        const accountsOut: Array<{ file_name: string; account_id: string; owner: string; download_url: string }> = [];
+        for (let i = 0; i < (rows.results || []).length; i++) {
+          const r = (rows.results || [])[i];
+          let r2Key = extractR2Key(String(r.r2_url || ""));
+          if (!r2Key) {
+            const stamp = receivedAt.replace(/[-:TZ]/g, "");
+            r2Key = `refill/sync-all-generated/${stamp}/${r.account_id}.json`;
+            const fallbackObj = {
+              account_id: String(r.account_id || ""),
+              email: String(r.email || ""),
+              password: String(r.password || ""),
+              owner: String(r.owner || ownerKey),
+              generated_at: receivedAt,
+              generated_by: "v1/refill/sync-all",
+            };
+            await env.BUCKET.put(r2Key, JSON.stringify(fallbackObj, null, 2), {
+              httpMetadata: { contentType: "application/json; charset=utf-8" },
+            });
+            await env.DB.prepare("UPDATE accounts_v2 SET r2_url=?, updated_at=? WHERE account_id=?").bind(r2Key, receivedAt, r.account_id).run();
+          }
+          const downloadUrl = await makePresignedGet(r2Key);
+          accountsOut.push({
+            file_name: `codex-${String(r.account_id || "").trim()}.json`,
+            account_id: String(r.account_id || ""),
+            owner: String(r.owner || ownerKey),
+            download_url: downloadUrl,
+          });
+        }
+
+        return json({
+          ok: true,
+          mode: "sync_all",
+          sync_all_used_today: syncAllUsedToday,
+          sync_all_limit: syncAllLimit,
+          ttl_minutes: ttlMinutes,
+          expires_at: expiresAt,
+          accounts: accountsOut,
+          issued_count: 0,
           received_at: receivedAt,
         });
       }

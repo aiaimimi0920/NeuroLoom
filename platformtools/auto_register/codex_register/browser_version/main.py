@@ -988,31 +988,44 @@ def _domain_health_score(domain: str) -> int:
 
 
 def _pick_mailcreate_with_health() -> Mailbox:
-    candidates: list[Mailbox] = []
+    # 域名池：MAILCREATE_DOMAIN（若配置）+ MAIL_DOMAIN_HEALTH_ORDER（去重）。
+    # 在自建渠道下按等概率随机抽样，避免长期集中到单域名。
+    domains: list[str] = []
+    seen: set[str] = set()
 
-    # 1) 优先尝试固定高成功率域名
-    if MAILCREATE_DOMAIN:
-        mb = create_mailbox(
+    def _add_domain(raw: str) -> None:
+        d = str(raw or "").strip().lower()
+        if not d or d in seen:
+            return
+        seen.add(d)
+        domains.append(d)
+
+    _add_domain(MAILCREATE_DOMAIN)
+    for dom in _MAIL_DOMAIN_HEALTH_ORDER:
+        _add_domain(dom)
+
+    # 未配置任何显式域名时，让服务端按其 DOMAINS 配置随机。
+    if not domains:
+        return create_mailbox(
             provider="mailcreate",
             mailcreate_base_url=MAILCREATE_BASE_URL,
             mailcreate_custom_auth=MAILCREATE_CUSTOM_AUTH,
-            mailcreate_domain=MAILCREATE_DOMAIN,
+            mailcreate_domain="",
             gptmail_base_url=GPTMAIL_BASE_URL,
             gptmail_api_key=GPTMAIL_API_KEY,
             gptmail_keys_file=GPTMAIL_KEYS_FILE,
             gptmail_prefix=GPTMAIL_PREFIX,
             gptmail_domain=GPTMAIL_DOMAIN,
         )
-        candidates.append(mb)
 
-    # 2) 额外尝试健康域（去重）
-    for dom in _MAIL_DOMAIN_HEALTH_ORDER:
-        if len(candidates) >= _MAILBOX_PICK_TRIES:
-            break
-        if MAILCREATE_DOMAIN and dom == MAILCREATE_DOMAIN.strip().lower():
-            continue
+    tries = max(1, _MAILBOX_PICK_TRIES)
+    tries = min(tries, len(domains))
+    picked_domains = random.sample(domains, k=tries)
+
+    last_err: Exception | None = None
+    for dom in picked_domains:
         try:
-            mb = create_mailbox(
+            return create_mailbox(
                 provider="mailcreate",
                 mailcreate_base_url=MAILCREATE_BASE_URL,
                 mailcreate_custom_auth=MAILCREATE_CUSTOM_AUTH,
@@ -1023,28 +1036,25 @@ def _pick_mailcreate_with_health() -> Mailbox:
                 gptmail_prefix=GPTMAIL_PREFIX,
                 gptmail_domain=GPTMAIL_DOMAIN,
             )
-            candidates.append(mb)
-        except Exception:
+        except Exception as e:
+            last_err = e
             continue
 
-    # 3) 如果上面都没拿到，再兜底走原配置
-    if not candidates:
-        candidates.append(
-            create_mailbox(
-                provider=MAILBOX_PROVIDER,
-                mailcreate_base_url=MAILCREATE_BASE_URL,
-                mailcreate_custom_auth=MAILCREATE_CUSTOM_AUTH,
-                mailcreate_domain=MAILCREATE_DOMAIN,
-                gptmail_base_url=GPTMAIL_BASE_URL,
-                gptmail_api_key=GPTMAIL_API_KEY,
-                gptmail_keys_file=GPTMAIL_KEYS_FILE,
-                gptmail_prefix=GPTMAIL_PREFIX,
-                gptmail_domain=GPTMAIL_DOMAIN,
-            )
+    # 所有随机候选失败后，回退服务端随机分配。
+    if last_err is not None:
+        return create_mailbox(
+            provider="mailcreate",
+            mailcreate_base_url=MAILCREATE_BASE_URL,
+            mailcreate_custom_auth=MAILCREATE_CUSTOM_AUTH,
+            mailcreate_domain="",
+            gptmail_base_url=GPTMAIL_BASE_URL,
+            gptmail_api_key=GPTMAIL_API_KEY,
+            gptmail_keys_file=GPTMAIL_KEYS_FILE,
+            gptmail_prefix=GPTMAIL_PREFIX,
+            gptmail_domain=GPTMAIL_DOMAIN,
         )
 
-    # 不再固定优先某个域名，候选中随机挑选，避免单域被风控后持续命中。
-    return random.choice(candidates)
+    raise RuntimeError("failed to pick mailcreate domain")
 
 
 def create_temp_mailbox() -> tuple[str, str]:

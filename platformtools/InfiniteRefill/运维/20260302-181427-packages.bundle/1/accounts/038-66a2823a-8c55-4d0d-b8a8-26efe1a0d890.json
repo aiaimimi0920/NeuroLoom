@@ -1,0 +1,52 @@
+{
+  "at_hash": "0bgZQzclEpvufZODhZJTwQ",
+  "aud": [
+    "app_EMoamEEZ73f0CkXaXp7hrann"
+  ],
+  "auth_provider": "password",
+  "auth_time": 1772423397,
+  "email": "tmpxc4ywf1s0c@mail.aiaimimi.com",
+  "email_verified": true,
+  "exp": 1772427001,
+  "https://api.openai.com/auth": {
+    "chatgpt_account_id": "66a2823a-8c55-4d0d-b8a8-26efe1a0d890",
+    "chatgpt_plan_type": "free",
+    "chatgpt_subscription_active_start": null,
+    "chatgpt_subscription_active_until": null,
+    "chatgpt_subscription_last_checked": "2026-03-02T03:49:57.163004+00:00",
+    "chatgpt_user_id": "user-j8WDZNIXrXuVyIDrD9XfPfwC",
+    "groups": [],
+    "organizations": [
+      {
+        "id": "org-hSQIQy1KZ5neM286Iza3c3Gm",
+        "is_default": true,
+        "role": "owner",
+        "title": "Personal"
+      }
+    ],
+    "user_id": "user-j8WDZNIXrXuVyIDrD9XfPfwC"
+  },
+  "iat": 1772423401,
+  "iss": "https://auth.openai.com",
+  "jti": "78cbcbe5-80d4-406b-9c1b-0c7e1b426581",
+  "rat": 1772423363,
+  "sid": "e1a5f516-89c7-45d8-a1c0-3524d593eae1",
+  "sub": "auth0|i76TQqz017yWxSlBjjq1o2Ta",
+  "type": "codex",
+  "expired": "2026-03-12T03:50:00Z",
+  "disabled": false,
+  "id_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImIxZGQzZjhmLTlhYWQtNDdmZS1iMGU3LWVkYjAwOTc3N2Q2YiIsInR5cCI6IkpXVCJ9.eyJhdF9oYXNoIjoiMGJnWlF6Y2xFcHZ1ZlpPRGhaSlR3USIsImF1ZCI6WyJhcHBfRU1vYW1FRVo3M2YwQ2tYYVhwN2hyYW5uIl0sImF1dGhfcHJvdmlkZXIiOiJwYXNzd29yZCIsImF1dGhfdGltZSI6MTc3MjQyMzM5NywiZW1haWwiOiJ0bXB4YzR5d2YxczBjQG1haWwuYWlhaW1pbWkuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImV4cCI6MTc3MjQyNzAwMSwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7ImNoYXRncHRfYWNjb3VudF9pZCI6IjY2YTI4MjNhLThjNTUtNGQwZC1iOGE4LTI2ZWZlMWEwZDg5MCIsImNoYXRncHRfcGxhbl90eXBlIjoiZnJlZSIsImNoYXRncHRfc3Vic2NyaXB0aW9uX2FjdGl2ZV9zdGFydCI6bnVsbCwiY2hhdGdwdF9zdWJzY3JpcHRpb25fYWN0aXZlX3VudGlsIjpudWxsLCJjaGF0Z3B0X3N1YnNjcmlwdGlvbl9sYXN0X2NoZWNrZWQiOiIyMDI2LTAzLTAyVDAzOjQ5OjU3LjE2MzAwNCswMDowMCIsImNoYXRncHRfdXNlcl9pZCI6InVzZXItajhXRFpOSVhyWHVWeUlEckQ5WGZQZndDIiwiZ3JvdXBzIjpbXSwib3JnYW5pemF0aW9ucyI6W3siaWQiOiJvcmctaFNRSVF5MUtaNW5lTTI4Nkl6YTNjM0dtIiwiaXNfZGVmYXVsdCI6dHJ1ZSwicm9sZSI6Im93bmVyIiwidGl0bGUiOiJQZXJzb25hbCJ9XSwidXNlcl9pZCI6InVzZXItajhXRFpOSVhyWHVWeUlEckQ5WGZQZndDIn0sImlhdCI6MTc3MjQyMzQwMSwiaXNzIjoiaHR0cHM6Ly9hdXRoLm9wZW5haS5jb20iLCJqdGkiOiI3OGNiY2JlNS04MGQ0LTQwNmItOWMxYi0wYzdlMWI0MjY1ODEiLCJyYXQiOjE3NzI0MjMzNjMsInNpZCI6ImUxYTVmNTE2LTg5YzctNDVkOC1hMWMwLTM1MjRkNTkzZWFlMSIsInN1YiI6ImF1dGgwfGk3NlRRcXowMTd5V3hTbEJqanExbzJUYSJ9.eCs21V8Ja8mcoZLiaI_O19Pj74fAbIqe8fsni7v05Xzuax4TwUghZzWRQNn8-jWUockAYPCM0tU7IdeppJCWu3dx4oKCv_iPANL_ARTM63RW7kjLw0PBgTMuSh8ONdsTsTc9YsZSdMj4MfPt_v9q-enmz3bzMv9W_RZ1521r-pXnAglJu4VgS_M5Mxjmn9OOCwTMXSrQO7A5zRF7XW4PqPELW7eOAQUOKkBF_Q-OWyJzZnUHhv1H73KSMLEFe0uSTwgNje37aMEfbQhpV17e0PSoBGEo--Nqd-9DFAOJLm0lX32vzuB0arjqzMiyl7gT3PynDjiSbQ6euaUnhxucXtCeFLEfEOQ2qZTqiMMhQ1lNEupun_EmvDjJiEsX_sa1jmbwl_TeIex49dNztAQ7svfy720ZbVBHuBn4b2odlC0Pil1_pg0G4b_8BvZP5iXjwXVa2Qj7YMHIqs2z7FtulFaimosfu4p4BZzqCfLANqsD9-g_aalES8PS3zW6tz3FjJREUlLdheBOG8DZS_ag8NCqUr4Qwk88k_Ifys2NU_6eTipugL0NYJ2qk_Gk5Hufmwn4eGvZFpFcPZAH45D-qsbeaj953spQ3lwL4tOwomJnHprhSznbU6smeKj7COkkCXgC7Kpevi12jTRY8t6Qi10Jq-wQYE-27QNUn5TrKUI",
+  "access_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjE5MzQ0ZTY1LWJiYzktNDRkMS1hOWQwLWY5NTdiMDc5YmQwZSIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS92MSJdLCJjbGllbnRfaWQiOiJhcHBfRU1vYW1FRVo3M2YwQ2tYYVhwN2hyYW5uIiwiZXhwIjoxNzczMjg3NDAxLCJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiNjZhMjgyM2EtOGM1NS00ZDBkLWI4YTgtMjZlZmUxYTBkODkwIiwiY2hhdGdwdF9hY2NvdW50X3VzZXJfaWQiOiJ1c2VyLWo4V0RaTklYclh1VnlJRHJEOVhmUGZ3Q19fNjZhMjgyM2EtOGM1NS00ZDBkLWI4YTgtMjZlZmUxYTBkODkwIiwiY2hhdGdwdF9jb21wdXRlX3Jlc2lkZW5jeSI6Im5vX2NvbnN0cmFpbnQiLCJjaGF0Z3B0X3BsYW5fdHlwZSI6ImZyZWUiLCJjaGF0Z3B0X3VzZXJfaWQiOiJ1c2VyLWo4V0RaTklYclh1VnlJRHJEOVhmUGZ3QyIsInVzZXJfaWQiOiJ1c2VyLWo4V0RaTklYclh1VnlJRHJEOVhmUGZ3QyJ9LCJodHRwczovL2FwaS5vcGVuYWkuY29tL3Byb2ZpbGUiOnsiZW1haWwiOiJ0bXB4YzR5d2YxczBjQG1haWwuYWlhaW1pbWkuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWV9LCJpYXQiOjE3NzI0MjM0MDEsImlzcyI6Imh0dHBzOi8vYXV0aC5vcGVuYWkuY29tIiwianRpIjoiZWQwYTUyNjAtMDQ3OS00NWQxLWExYTYtYWMwNWE3YmI4NThjIiwibmJmIjoxNzcyNDIzNDAxLCJwd2RfYXV0aF90aW1lIjoxNzcyNDIzMzk3MTYyLCJzY3AiOlsib3BlbmlkIiwiZW1haWwiLCJwcm9maWxlIiwib2ZmbGluZV9hY2Nlc3MiXSwic2Vzc2lvbl9pZCI6ImF1dGhzZXNzX0xXNUt1bTQ4bDNIOXdEUUxTcm5teHowVSIsInN1YiI6ImF1dGgwfGk3NlRRcXowMTd5V3hTbEJqanExbzJUYSJ9.EvGuwq6ZxIrhA5Jk_3s8V6C1raxvOeSzJ874Hq05Sy-Lma6P9OcMMjslHcjTJQwMJD4UmBvzLtf0Evy-so9TwQSTl2b2t2s0RzDZa23pVtcl4h4plltIryHr9YPoRw8NPr3zCwKC1ux7zRnsk0M5DkLPCCB-LkRIatGzhFxwzC5AK1lQpGO0LLSrwfSA7vQT9H1MXM2eRa7kNW550ZvDnXFtuaCIl5DDED3V3O3A-areWeyz_tTOnm29QlnBVKEjUHO_TLdx9JsC8TubO4okkZ2SJoxhCD_m8sNt99Irm-HuSHR4qaES4FMyOaqMsrHvmaLYKQ3HyJSlS0q-aFwM3IqpoWU6_nPnelTj5EDqgeT7_ChnIDFB4KQFno1ZR-IyvYGIyZawbZJtQ_OzXX73W1WAbNbfhWfRTBRzYasS10znhPX8m5dDbAhypZz6VbioPExTUECi7XYfehBs1HUj3Ga410wzkyWUz94IFHV8lBjeDukNNVOdzRlg3O9swN72l3vvz2zsGU7egYVMSj_EwL3ahjf2ehMbVDDEuIzMD8JZbk-48hIX6WXOre5sMS2dI8MV4pxvCV6RMcfdD9de8NrV2y38lwmcYmSoaiAJt3d7oHl1AfTAl9D-HqS_zNBca__FJakb0gP3WFMNPvO3H1Y4e1pbHfYtkNm99Hscq6c",
+  "refresh_token": "rt_E2BQOiNM72jIctmFpz-C91pQcqKDBU6BvKCFXzfNku8.2-HkALNgT-thqfXvhGO4-ZT7aD6cA_qKVjwu-w131Gc",
+  "password": "CIOlGk1mGCEYA1@",
+  "birthdate": "1995-01-15",
+  "client_id": "app_EMoamEEZ73f0CkXaXp7hrann",
+  "last_name": "Johnson",
+  "account_id": "66a2823a-8c55-4d0d-b8a8-26efe1a0d890",
+  "first_name": "Timothy",
+  "session_id": "",
+  "last_refresh": "2026-03-02T03:50:01Z",
+  "pwd_auth_time": 1772423401438,
+  "https://api.openai.com/profile": {},
+  "mailbox_ref": "mailcreate:eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhZGRyZXNzIjoidG1weGM0eXdmMXMwY0BtYWlsLmFpYWltaW1pLmNvbSIsImFkZHJlc3NfaWQiOjU2MjF9.tSgGPeQpHmZmIyadkDzo_6J4VhBq0sZTZ0ssIQu-fP4"
+}

@@ -555,18 +555,104 @@ class OAuthStart:
     redirect_uri: str
 
 
+_MAIL_DOMAIN_HEALTH_ORDER = [
+    d.strip().lower()
+    for d in (os.environ.get("MAIL_DOMAIN_HEALTH_ORDER") or "mail.aiaimimi.com,aimiaimi.cc.cd,mimiaiai.cc.cd,aiaimimi.cc.cd,aiaiai.cc.cd").split(",")
+    if d.strip()
+]
+_MAILBOX_PICK_TRIES = int(os.environ.get("MAILBOX_PICK_TRIES", "3") or "3")
+if _MAILBOX_PICK_TRIES <= 0:
+    _MAILBOX_PICK_TRIES = 1
+
+
+def _pick_mailcreate_with_health() -> Mailbox:
+    domains: list[str] = []
+    seen: set[str] = set()
+
+    def _add_domain(raw: str) -> None:
+        d = str(raw or "").strip().lower()
+        if not d or d in seen:
+            return
+        seen.add(d)
+        domains.append(d)
+
+    _add_domain(MAILCREATE_DOMAIN)
+    for dom in _MAIL_DOMAIN_HEALTH_ORDER:
+        _add_domain(dom)
+
+    if not domains:
+        return create_mailbox(
+            provider="mailcreate",
+            mailcreate_base_url=MAILCREATE_BASE_URL,
+            mailcreate_custom_auth=MAILCREATE_CUSTOM_AUTH,
+            mailcreate_domain="",
+            gptmail_base_url=GPTMAIL_BASE_URL,
+            gptmail_api_key=GPTMAIL_API_KEY,
+            gptmail_keys_file=GPTMAIL_KEYS_FILE,
+            gptmail_prefix=GPTMAIL_PREFIX,
+            gptmail_domain=GPTMAIL_DOMAIN,
+        )
+
+    tries = max(1, _MAILBOX_PICK_TRIES)
+    tries = min(tries, len(domains))
+    picked_domains = random.sample(domains, k=tries)
+
+    last_err: Exception | None = None
+    for dom in picked_domains:
+        try:
+            return create_mailbox(
+                provider="mailcreate",
+                mailcreate_base_url=MAILCREATE_BASE_URL,
+                mailcreate_custom_auth=MAILCREATE_CUSTOM_AUTH,
+                mailcreate_domain=dom,
+                gptmail_base_url=GPTMAIL_BASE_URL,
+                gptmail_api_key=GPTMAIL_API_KEY,
+                gptmail_keys_file=GPTMAIL_KEYS_FILE,
+                gptmail_prefix=GPTMAIL_PREFIX,
+                gptmail_domain=GPTMAIL_DOMAIN,
+            )
+        except Exception as e:
+            last_err = e
+            continue
+
+    if last_err is not None:
+        return create_mailbox(
+            provider="mailcreate",
+            mailcreate_base_url=MAILCREATE_BASE_URL,
+            mailcreate_custom_auth=MAILCREATE_CUSTOM_AUTH,
+            mailcreate_domain="",
+            gptmail_base_url=GPTMAIL_BASE_URL,
+            gptmail_api_key=GPTMAIL_API_KEY,
+            gptmail_keys_file=GPTMAIL_KEYS_FILE,
+            gptmail_prefix=GPTMAIL_PREFIX,
+            gptmail_domain=GPTMAIL_DOMAIN,
+        )
+
+    raise RuntimeError("failed to pick mailcreate domain")
+
+
 def create_temp_mailbox() -> tuple[str, str]:
-    mb: Mailbox = create_mailbox(
-        provider=MAILBOX_PROVIDER,
-        mailcreate_base_url=MAILCREATE_BASE_URL,
-        mailcreate_custom_auth=MAILCREATE_CUSTOM_AUTH,
-        mailcreate_domain=MAILCREATE_DOMAIN,
-        gptmail_base_url=GPTMAIL_BASE_URL,
-        gptmail_api_key=GPTMAIL_API_KEY,
-        gptmail_keys_file=GPTMAIL_KEYS_FILE,
-        gptmail_prefix=GPTMAIL_PREFIX,
-        gptmail_domain=GPTMAIL_DOMAIN,
-    )
+    provider = (MAILBOX_PROVIDER or "").strip().lower()
+    if provider in ("mailcreate", "self", "local"):
+        mb = _pick_mailcreate_with_health()
+    else:
+        mb: Mailbox = create_mailbox(
+            provider=MAILBOX_PROVIDER,
+            mailcreate_base_url=MAILCREATE_BASE_URL,
+            mailcreate_custom_auth=MAILCREATE_CUSTOM_AUTH,
+            mailcreate_domain=MAILCREATE_DOMAIN,
+            gptmail_base_url=GPTMAIL_BASE_URL,
+            gptmail_api_key=GPTMAIL_API_KEY,
+            gptmail_keys_file=GPTMAIL_KEYS_FILE,
+            gptmail_prefix=GPTMAIL_PREFIX,
+            gptmail_domain=GPTMAIL_DOMAIN,
+        )
+        if getattr(mb, "provider", "") == "mailcreate":
+            try:
+                mb = _pick_mailcreate_with_health()
+            except Exception:
+                pass
+
     return mb.email, mb.ref
 
 
