@@ -18,9 +18,17 @@ import calendar
 import os
 import re
 import time
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
+
+
+# 进程级运行时冷却态（仅 GPTMail 使用）
+# key -> {"level": int, "until": int, "day": int}
+# - day: 记录最后一次更新时的 UTC 日期 (YYYYMMDD)
+_RUNTIME_COOLDOWN_STATE: dict[str, dict[str, int]] = {}
+_RUNTIME_COOLDOWN_LOCK = threading.Lock()
 
 
 @dataclass
@@ -28,6 +36,8 @@ class GPTMailKey:
     key: str
     exhausted: bool = False
     reset_at_epoch: int | None = None
+    cooldown_level: int = 0
+    cooldown_until_epoch: int | None = None
 
 
 class GPTMailKeyManager:
@@ -39,6 +49,17 @@ class GPTMailKeyManager:
     @staticmethod
     def _now_epoch() -> int:
         return int(time.time())
+
+    @staticmethod
+    def _utc_day_token(epoch: int) -> int:
+        t = time.gmtime(int(epoch))
+        return int(f"{t.tm_year:04d}{t.tm_mon:02d}{t.tm_mday:02d}")
+
+    @staticmethod
+    def _next_utc_midnight_epoch(*, now_epoch: int) -> int:
+        t = time.gmtime(int(now_epoch))
+        midnight = calendar.timegm((t.tm_year, t.tm_mon, t.tm_mday, 0, 0, 0, 0, 0, 0))
+        return int(midnight + 86400)
 
     @staticmethod
     def _next_daily_reset_epoch(*, exhausted_at_epoch: int, reset_hour_local: int = 8, tz_offset_hours: int = 8) -> int:
@@ -184,7 +205,9 @@ class GPTMailKeyManager:
         if not keys:
             raise ValueError(f"No keys found in file: {path}")
 
-        return cls(keys=keys, path=path)
+        km = cls(keys=keys, path=path)
+        km._apply_runtime_cooldown_state()
+        return km
 
     def mark_exhausted(
         self,
@@ -229,25 +252,129 @@ class GPTMailKeyManager:
             except Exception:
                 pass
 
-    def next_key(self) -> str:
-        """Return next non-exhausted key, round-robin.
+    @staticmethod
+    def _cooldown_schedule_seconds() -> list[int]:
+        raw = (os.environ.get("GPTMAIL_KEY_COOLDOWN_SCHEDULE") or "300,1800,3600,10800,21600").strip()
+        vals: list[int] = []
+        for p in raw.split(","):
+            p = p.strip()
+            if not p:
+                continue
+            try:
+                v = int(p)
+            except Exception:
+                continue
+            if v > 0:
+                vals.append(v)
+        return vals or [300, 1800, 3600, 10800, 21600]
 
-        Raises:
-          RuntimeError if all keys are exhausted.
-        """
+    @staticmethod
+    def _pick_cooldown_seconds(level: int) -> int:
+        sched = GPTMailKeyManager._cooldown_schedule_seconds()
+        idx = max(1, int(level)) - 1
+        if idx >= len(sched):
+            return int(sched[-1])
+        return int(sched[idx])
+
+    def _apply_runtime_cooldown_state(self) -> None:
+        now = self._now_epoch()
+        now_day = self._utc_day_token(now)
+        with _RUNTIME_COOLDOWN_LOCK:
+            for k in self._keys:
+                st = _RUNTIME_COOLDOWN_STATE.get(k.key)
+                if not st:
+                    continue
+                lvl = int(st.get("level") or 0)
+                until = int(st.get("until") or 0)
+                day = int(st.get("day") or 0)
+
+                # 特例：gpt-test 每天 UTC 0 点刷新额度，冷却与等级按日自动清零
+                if k.key == "gpt-test" and day and day != now_day:
+                    lvl = 0
+                    until = 0
+                    _RUNTIME_COOLDOWN_STATE[k.key] = {"level": 0, "until": 0, "day": now_day}
+
+                if until > 0 and now >= until:
+                    # 冷却时间到，仅允许重试；连续失败等级保留，直到成功才清零
+                    k.cooldown_level = max(0, lvl)
+                    k.cooldown_until_epoch = None
+                else:
+                    k.cooldown_level = max(0, lvl)
+                    k.cooldown_until_epoch = until if until > 0 else None
+
+    @staticmethod
+    def _is_cooling(k: GPTMailKey, now_epoch: int) -> bool:
+        return bool(k.cooldown_until_epoch and now_epoch < int(k.cooldown_until_epoch))
+
+    def mark_failure_cooldown(self, key: str, *, reason: str = "") -> None:
+        """对 GPTMail key 施加阶梯冷却（失败递增，成功清零）。"""
+
+        _ = reason  # 预留：后续可按错误类型做不同冷却策略
+        now = self._now_epoch()
+        now_day = self._utc_day_token(now)
+        with _RUNTIME_COOLDOWN_LOCK:
+            st = _RUNTIME_COOLDOWN_STATE.get(key) or {"level": 0, "until": 0, "day": now_day}
+            lvl = max(0, int(st.get("level") or 0)) + 1
+            cd = self._pick_cooldown_seconds(lvl)
+            until = now + cd
+
+            # 特例：gpt-test 不跨 UTC 日累积冷却，且冷却上限不超过下一个 UTC 0 点
+            if key == "gpt-test":
+                prev_day = int(st.get("day") or 0)
+                if prev_day and prev_day != now_day:
+                    lvl = 1
+                    cd = self._pick_cooldown_seconds(lvl)
+                    until = now + cd
+                next_reset = self._next_utc_midnight_epoch(now_epoch=now)
+                if until > next_reset:
+                    until = next_reset
+
+            _RUNTIME_COOLDOWN_STATE[key] = {"level": lvl, "until": until, "day": now_day}
+
+        for k in self._keys:
+            if k.key == key:
+                k.cooldown_level = lvl
+                k.cooldown_until_epoch = until
+                break
+
+    def mark_success(self, key: str) -> None:
+        """某 key 成功调用一次后，清零冷却等级与冷却时间。"""
+
+        with _RUNTIME_COOLDOWN_LOCK:
+            _RUNTIME_COOLDOWN_STATE[key] = {
+                "level": 0,
+                "until": 0,
+                "day": self._utc_day_token(self._now_epoch()),
+            }
+
+        for k in self._keys:
+            if k.key == key:
+                k.cooldown_level = 0
+                k.cooldown_until_epoch = None
+                break
+
+    def next_key(self) -> str:
+        """Return next non-exhausted and non-cooling key, round-robin."""
 
         if not self._keys:
             raise RuntimeError("No keys loaded")
 
-        # try at most N keys
+        self._apply_runtime_cooldown_state()
+        now = self._now_epoch()
+
         n = len(self._keys)
         for _ in range(n):
             k = self._keys[self._idx % n]
             self._idx = (self._idx + 1) % n
-            if not k.exhausted and k.key:
-                return k.key
+            if not k.key or k.exhausted:
+                continue
+            if self._is_cooling(k, now):
+                continue
+            return k.key
 
-        raise RuntimeError("All GPTMail keys are exhausted")
+        raise RuntimeError("All GPTMail keys are exhausted_or_cooling")
 
     def any_available(self) -> bool:
-        return any((k.key and not k.exhausted) for k in self._keys)
+        self._apply_runtime_cooldown_state()
+        now = self._now_epoch()
+        return any((k.key and not k.exhausted and not self._is_cooling(k, now)) for k in self._keys)

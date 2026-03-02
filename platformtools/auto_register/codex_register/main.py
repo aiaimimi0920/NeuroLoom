@@ -3806,6 +3806,9 @@ def load_proxies() -> list[str]:
     return []
 
 def worker(worker_id: int):
+    fatal_driver_errors = 0
+    fatal_restart_threshold = max(1, int(os.environ.get("FATAL_DRIVER_RESTART_THRESHOLD", "3") or "3"))
+
     while True:
         proxies = load_proxies()
         proxy = random.choice(proxies) if proxies else None
@@ -3871,17 +3874,47 @@ def worker(worker_id: int):
             
         except RuntimeError as e:
             # Expected blocks, no stack trace needed
+            fatal_driver_errors = 0
             print(f"[Worker {worker_id}] [x] {e} (准备换IP重试)")
         except TimeoutException as e:
+            fatal_driver_errors = 0
             print(f"[Worker {worker_id}] [x] 页面加载超时，可能遇到风控盾拦截。 (准备换IP重试)")
         except Exception as e:
             err_str = str(e)
-            if "RemoteDisconnected" in err_str or "Connection aborted" in err_str or "Max retries exceeded" in err_str or "UNEXPECTED_EOF_WHILE_READING" in err_str or "UNEXPECTED_MESSAGE" in err_str:
+            is_proxy_eof = (
+                "RemoteDisconnected" in err_str
+                or "Connection aborted" in err_str
+                or "Max retries exceeded" in err_str
+                or "UNEXPECTED_EOF_WHILE_READING" in err_str
+                or "UNEXPECTED_MESSAGE" in err_str
+            )
+            is_fatal_driver = (
+                "SessionNotCreatedException" in err_str
+                or "failed to start a thread for the new session" in err_str
+                or "chromedriver unexpectedly exited" in err_str
+                or "DevToolsActivePort" in err_str
+                or "Chrome instance exited" in err_str
+            )
+
+            if is_proxy_eof:
+                fatal_driver_errors = 0
                 print(f"[Worker {worker_id}] [x] 代理连接强制中断 (SSL/EOF断流)，准备换IP重试")
             else:
                 import traceback
                 trace_str = traceback.format_exc()
                 print(f"[Worker {worker_id}] [x] 本次注册流程意外中止:\\n{trace_str}")
+
+                if is_fatal_driver:
+                    fatal_driver_errors += 1
+                    print(
+                        f"[Worker {worker_id}] [x] 致命浏览器错误累计={fatal_driver_errors}/"
+                        f"{fatal_restart_threshold}，达到阈值将触发容器重启"
+                    )
+                    if fatal_driver_errors >= fatal_restart_threshold:
+                        print(f"[Worker {worker_id}] [x] 触发进程退出，交给容器 restart=always 自动拉起")
+                        os._exit(66)
+                else:
+                    fatal_driver_errors = 0
             
         finally:
             if driver:

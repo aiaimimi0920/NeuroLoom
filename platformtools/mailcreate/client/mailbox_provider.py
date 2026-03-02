@@ -206,24 +206,30 @@ def _create_mailbox_gptmail(
             client = GPTMailClient(GPTMailConfig(base_url=base_url, api_key=k))
 
             # Retry a few times on "weird but success" emails without burning the key.
+            generated_ok = False
             for _j in range(3):
                 email = client.generate_email(prefix=prefix, domain=domain)
                 if _accept(email):
+                    generated_ok = True
+                    km.mark_success(k)
                     return Mailbox(provider="gptmail", email=email, ref=_encode_ref("gptmail", email))
 
             # Still suspicious => rotate key (but don't mark exhausted).
+            if not generated_ok:
+                km.mark_failure_cooldown(k, reason="suspicious_email")
             continue
         except GPTMailError as e:
             last_err = e
-            # quota or invalid key => mark exhausted
+            # quota/invalid 仍维持原 exhausted 语义，同时施加冷却（避免短时间抖动误判）
             print(f"[gptmail] generate_email failed: key={_mask_key(k)} err={e}")
             km.mark_exhausted(k, persist=True, reason=str(e))
+            km.mark_failure_cooldown(k, reason=str(e))
             continue
         except Exception as e:
             last_err = e
-            # unknown error: don't burn all keys too aggressively; try next key
+            # unknown error: 不直接判死，进入冷却后再试下一个 key
             print(f"[gptmail] generate_email exception: key={_mask_key(k)} err={e}")
-            km.mark_exhausted(k)
+            km.mark_failure_cooldown(k, reason=str(e))
             continue
 
     if last_err:
@@ -438,22 +444,28 @@ def wait_openai_code(
             k = km.next_key()
             try:
                 client = GPTMailClient(GPTMailConfig(base_url=gptmail_base_url, api_key=k))
-                return wait_for_6digit_code_gptmail(
+                code = wait_for_6digit_code_gptmail(
                     client,
                     email=email,
                     from_contains="openai",
                     timeout_seconds=remaining,
                     poll_seconds=3.0,
                 )
+                km.mark_success(k)
+                return code
             except GPTMailError as e:
                 last_err = e
                 if _should_rotate_gptmail_key(e):
                     _mb_log(f"[gptmail] poll failed: key={_mask_key(k)} err={e}")
                     km.mark_exhausted(k, persist=True, reason=str(e))
+                    km.mark_failure_cooldown(k, reason=str(e))
                     continue
+                # 非认证/配额类错误也进入冷却，但不判 exhausted
+                km.mark_failure_cooldown(k, reason=str(e))
                 raise
             except Exception as e:
                 last_err = e
+                km.mark_failure_cooldown(k, reason=str(e))
                 raise
 
         if last_err:

@@ -29,6 +29,7 @@ x-register-common: &register-common
     - SLEEP_MIN=0
     - SLEEP_MAX=2
     - MAILCREATE_POLL_SECONDS=0.8
+    - FATAL_DRIVER_RESTART_THRESHOLD=3
   shm_size: '4gb'
   restart: always
   command: ["python", "main.py"]
@@ -54,6 +55,7 @@ services:
       - SLEEP_MIN=0
       - SLEEP_MAX=2
       - MAILCREATE_POLL_SECONDS=0.8
+      - FATAL_DRIVER_RESTART_THRESHOLD=3
 
   codex_register_2:
     <<: *register-common
@@ -75,6 +77,7 @@ services:
       - SLEEP_MIN=0
       - SLEEP_MAX=2
       - MAILCREATE_POLL_SECONDS=0.8
+      - FATAL_DRIVER_RESTART_THRESHOLD=3
 
   codex_register_3:
     <<: *register-common
@@ -96,6 +99,7 @@ services:
       - SLEEP_MIN=0
       - SLEEP_MAX=2
       - MAILCREATE_POLL_SECONDS=0.8
+      - FATAL_DRIVER_RESTART_THRESHOLD=3
 
   codex_register_4:
     <<: *register-common
@@ -117,6 +121,7 @@ services:
       - SLEEP_MIN=0
       - SLEEP_MAX=2
       - MAILCREATE_POLL_SECONDS=0.8
+      - FATAL_DRIVER_RESTART_THRESHOLD=3
 
   codex_register_5:
     <<: *register-common
@@ -138,6 +143,7 @@ services:
       - SLEEP_MIN=0
       - SLEEP_MAX=2
       - MAILCREATE_POLL_SECONDS=0.8
+      - FATAL_DRIVER_RESTART_THRESHOLD=3
 
   codex_uploader:
     build:

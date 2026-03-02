@@ -676,8 +676,8 @@ def _pick_mailcreate_with_health() -> Mailbox:
             )
         )
 
-    best = max(candidates, key=lambda m: _domain_health_score(_domain_of_email(m.email)))
-    return best
+    # 不再固定优先某个域名，候选中随机挑选，避免单域被风控后持续命中。
+    return random.choice(candidates)
 
 
 def create_temp_mailbox() -> tuple[str, str]:
