@@ -2590,7 +2590,9 @@ export default {
         const rawWant = Math.max(1, Math.min(500, target));
 
         // 4) 服务端二次复核客户端提交的 account_ids：判定是否需要续杯（401/429）
+        // 额外规则：若 note=r2_object_not_found，直接硬删除该“JSON凭证账户”（accounts_v2），并记审计。
         const replacedFromRequested: Array<{ old_account_id: string; reason: string }> = [];
+        const deletedMissingR2FromRequested: Array<{ old_account_id: string; reason: string }> = [];
         if (requestedAccountIds.length > 0) {
           for (const accountId of requestedAccountIds) {
             const owned = await env.DB
@@ -2608,6 +2610,14 @@ export default {
             } catch (e: any) {
               status = null;
               note = `probe_error:${String(e?.message || e)}`;
+            }
+
+            if (note === "r2_object_not_found") {
+              await env.DB.prepare("DELETE FROM accounts_v2 WHERE account_id=?")
+                .bind(owned.account_id)
+                .run();
+              deletedMissingR2FromRequested.push({ old_account_id: owned.account_id, reason: note });
+              continue;
             }
 
             if (status === 401 || status === 429) {
@@ -2732,6 +2742,9 @@ export default {
           download_url: string;
         }> = [];
         const issueErrors: Array<{ account_id: string; error: string }> = [];
+        for (const d of deletedMissingR2FromRequested) {
+          issueErrors.push({ account_id: d.old_account_id, error: `missing_r2_object_deleted:${d.reason}` });
+        }
         const stamp = receivedAt.replace(/[-:TZ]/g, "");
 
         for (let i = 0; i < (rows.results || []).length && accountsOut.length < wantFinal; i++) {
@@ -2755,6 +2768,14 @@ export default {
           } catch (e: any) {
             pickedStatus = null;
             pickedNote = `probe_error:${String(e?.message || e)}`;
+          }
+
+          if (pickedNote === "r2_object_not_found") {
+            await env.DB.prepare("DELETE FROM accounts_v2 WHERE account_id=? AND owner=?")
+              .bind(r.account_id, ownerKey)
+              .run();
+            issueErrors.push({ account_id: r.account_id, error: `missing_r2_object_deleted:${pickedNote}` });
+            continue;
           }
 
           if (pickedStatus === 401 || pickedStatus === 429) {
@@ -2901,15 +2922,21 @@ export default {
         for (let i = 0; i < items.length; i++) {
           const it = items[i] as any;
 
-          // 兼容 v2 与历史 payload：
-          // - v2: account_id/email/password/r2_url/owner
-          // - legacy: email_hash/account_id/seen_at/auth_json
+          // 仅接受 auth_json：禁止客户端直接提交 r2_url，R2 key 由服务端生成。
           const legacyAuth = it?.auth_json && typeof it.auth_json === "object" ? it.auth_json : null;
+          if (!legacyAuth) {
+            errors.push({ idx: i, error: "missing auth_json" });
+            continue;
+          }
+          if (it?.r2_url !== null && it?.r2_url !== undefined && String(it.r2_url).trim()) {
+            errors.push({ idx: i, error: "r2_url_not_allowed" });
+            continue;
+          }
 
           const accountId = String(it?.account_id || legacyAuth?.account_id || "").trim();
           const email = String(it?.email || legacyAuth?.email || "").trim();
           const password = String(it?.password || legacyAuth?.password || "").trim();
-          let r2Url = it?.r2_url ? String(it.r2_url).trim() : legacyAuth?.r2_url ? String(legacyAuth.r2_url).trim() : null;
+          let r2Url: string | null = null;
 
           let owner = "-1";
           if (it?.owner !== null && it?.owner !== undefined) {
@@ -2942,21 +2969,17 @@ export default {
             errors.push({ idx: i, error: "missing password" });
             continue;
           }
-          if (r2Url && r2Url.length > 2000) {
-            errors.push({ idx: i, error: "r2_url too long" });
-            continue;
-          }
-
           const now = utcNowIso();
 
-          if (!r2Url && legacyAuth) {
-            const seed = crypto.randomUUID().replace(/-/g, "");
-            const key = `auth-json/${accountId}-${now.replace(/[-:TZ]/g, "")}-${seed.slice(0, 12)}.json`;
-            await env.BUCKET.put(key, JSON.stringify(legacyAuth, null, 2), {
-              httpMetadata: { contentType: "application/json; charset=utf-8" },
-            });
-            r2Url = key;
-          }
+          // 服务端统一生成并写入 R2 key，避免 DB 出现“客户端伪造/失效 r2_url 引用”。
+          const seed = crypto.randomUUID().replace(/-/g, "");
+          const key = `auth-json/${accountId}-${now.replace(/[-:TZ]/g, "")}-${seed.slice(0, 12)}.json`;
+          const authToStore = { ...(legacyAuth as Record<string, unknown>) };
+          delete (authToStore as Record<string, unknown>).r2_url;
+          await env.BUCKET.put(key, JSON.stringify(authToStore, null, 2), {
+            httpMetadata: { contentType: "application/json; charset=utf-8" },
+          });
+          r2Url = key;
           const existing = await env.DB
             .prepare("SELECT id,r2_url FROM accounts_v2 WHERE account_id=?")
             .bind(accountId)

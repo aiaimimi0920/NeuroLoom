@@ -86,6 +86,13 @@ def _post_json(*, url: str, headers: dict[str, str], payload: Any, timeout: int 
         return int(getattr(e, "code", 0) or 0), body
     except urllib.error.URLError as e:
         return 0, str(e)
+    except TimeoutError as e:
+        return 0, f"timeout: {e}"
+    except OSError as e:
+        # 覆盖底层 socket/ssl 抖动，避免异常穿透导致 worker 线程退出
+        return 0, f"os_error: {e}"
+    except Exception as e:
+        return 0, f"unexpected_error: {e}"
 
 
 def _worker_base_url() -> str:
@@ -118,7 +125,6 @@ def _build_register_account(*, auth_obj: Any, account_id: str) -> dict[str, Any]
 
     email = str(auth_obj.get("email") or "").strip()
     password = str(auth_obj.get("password") or "").strip()
-    r2_url = str(auth_obj.get("r2_url") or "").strip() or None
 
     if not email:
         raise RuntimeError("missing email in auth json")
@@ -135,9 +141,6 @@ def _build_register_account(*, auth_obj: Any, account_id: str) -> dict[str, Any]
         # 按要求上传完整 auth_json，由 Worker 转存 R2
         "auth_json": auth_obj,
     }
-    if r2_url:
-        account["r2_url"] = r2_url
-
     return account
 
 
@@ -195,6 +198,13 @@ def _claim_one_file() -> tuple[str, str] | None:
             dst = os.path.join(pdir, name)
             try:
                 os.replace(src, dst)
+                # 关键：文件从 wait_update 搬来时会保留旧 mtime。
+                # 若旧文件已“年龄很大”，stale reaper 可能立刻把它当过期件搬回，
+                # 导致 worker 读文件时出现 No such file。
+                try:
+                    os.utime(dst, None)
+                except Exception:
+                    pass
                 return dst, src_dir
             except FileNotFoundError:
                 continue
@@ -420,7 +430,18 @@ def _worker_loop(*, worker_id: int, poll_seconds: int, sleep_on_error: int, batc
             time.sleep(poll_seconds)
             continue
 
-        ok_flags, m = _upload_batch(claimed, timeout=timeout)
+        try:
+            ok_flags, m = _upload_batch(claimed, timeout=timeout)
+        except Exception as e:
+            # 双保险：即使上传层出现未预期异常，也不允许 worker 线程退出
+            sys.stderr.write(f"[uploader] worker-{worker_id} upload exception: {e}\n")
+            ok_flags = [False] * len(claimed)
+            m = {
+                "prepare_ms": 0.0,
+                "http_ms": 0.0,
+                "http_calls": 0.0,
+                "sent": 0.0,
+            }
 
         ok_count = 0
         fail_count = 0
