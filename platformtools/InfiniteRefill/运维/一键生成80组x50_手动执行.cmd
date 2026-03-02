@@ -2,13 +2,14 @@
 setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
 
-REM 可直接双击运行；支持命令行覆盖；默认从 platformtools/.dev.vars 读取。
-REM 用法（可选覆盖）：
+REM 可直接双击一键运行；默认从 platformtools/.dev.vars 读取。
+REM 也支持命令行覆盖：
 REM   一键生成80组x50_手动执行.cmd [SERVER_URL] [ADMIN_TOKEN] [ADMIN_GUARD]
-REM .dev.vars 支持以下键（任一命中即可）：
-REM   SERVER_URL / INFINITE_REFILL_SERVER_URL / REFILL_SERVER_URL
-REM   ADMIN_TOKEN / INFINITE_REFILL_ADMIN_TOKEN / REFILL_ADMIN_TOKEN
-REM   ADMIN_GUARD / INFINITE_REFILL_ADMIN_GUARD / REFILL_ADMIN_GUARD
+REM .dev.vars 建议配置以下键：
+REM   INFINITE_REFILL_SERVER_URL
+REM   INFINITE_REFILL_ADMIN_TOKEN
+REM   INFINITE_REFILL_ADMIN_GUARD
+REM 兼容读取：SERVER_URL / REFILL_SERVER_URL / ADMIN_TOKEN / REFILL_ADMIN_TOKEN / ADMIN_GUARD / REFILL_ADMIN_GUARD
 
 set "SERVER_URL=%~1"
 set "ADMIN_TOKEN=%~2"
@@ -34,6 +35,9 @@ if exist "%DEV_VARS%" (
 if "%SERVER_URL%"=="" set "SERVER_URL=https://refill.aiaimimi.com"
 if "%ADMIN_TOKEN%"=="" goto :USAGE
 if "%ADMIN_GUARD%"=="" goto :USAGE
+
+echo [INFO] SERVER_URL=%SERVER_URL%
+echo [INFO] 已从命令行/.dev.vars 加载管理员密钥
 
 set "OUT_JSON=issue_80x50_response.json"
 set "OUT_ZIP=80x50-packages.bundle.zip"
@@ -61,6 +65,8 @@ echo [OK] 已下载总包：%OUT_ZIP%
 exit /b 0
 
 :USAGE
+echo [ERROR] 缺少管理员密钥，请在 platformtools/.dev.vars 配置：
+echo         INFINITE_REFILL_ADMIN_TOKEN=...
+echo         INFINITE_REFILL_ADMIN_GUARD=...
 echo 用法：%~nx0 [服务器地址] [管理员令牌] [管理员护卫码]
-echo 示例：%~nx0 https://refill.aiaimimi.com adm_xxx guard_xxx
 exit /b 1
