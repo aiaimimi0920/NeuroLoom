@@ -17,3 +17,6 @@
 [submodule "references/cherry-studio"]
 	path = references/cherry-studio
 	url = https://github.com/CherryHQ/cherry-studio
+[submodule "references/CLIProxyAPI"]
+	path = references/CLIProxyAPI
+	url = https://github.com/router-for-me/CLIProxyAPI.git
