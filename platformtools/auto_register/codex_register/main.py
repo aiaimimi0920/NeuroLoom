@@ -140,6 +140,12 @@ if CODEX_AUTH_SYNC_DIR:
 REFILL_SERVER_URL = (os.environ.get("REFILL_SERVER_URL") or os.environ.get("INFINITE_REFILL_SERVER_URL") or "").strip().rstrip("/")
 REFILL_UPLOAD_KEY = (os.environ.get("REFILL_UPLOAD_KEY") or os.environ.get("INFINITE_REFILL_UPLOAD_KEY") or "").strip()
 
+# Debug behavior (local Windows interactive debugging)
+# - DEBUG_KEEP_BROWSER_ON_FAIL=1: on register failure, do not auto-close Chrome
+# - DEBUG_WAIT_ON_FAIL=1: block and wait after failure (for现场观察)
+DEBUG_KEEP_BROWSER_ON_FAIL = int(os.environ.get("DEBUG_KEEP_BROWSER_ON_FAIL", "0") or "0")
+DEBUG_WAIT_ON_FAIL = int(os.environ.get("DEBUG_WAIT_ON_FAIL", "0") or "0")
+
 # Results sharding: also write results into DATA_DIR/results/ as jsonl shards.
 # Default shard size: 200 lines/file.
 RESULTS_SHARD_SIZE = int(os.environ.get("RESULTS_SHARD_SIZE", "200"))
@@ -2145,6 +2151,11 @@ from selenium.webdriver.chrome.options import Options
 def new_driver(proxy: str | None = None):
     options = Options()
 
+    # 匿名模式：开启后使用无痕窗口，减少本地会话残留。
+    anonymous_mode = int(os.environ.get("ANONYMOUS_MODE", "0") or "0")
+    if anonymous_mode == 1:
+        options.add_argument('--incognito')
+
     # Headless defaults to ON for servers/containers.
     # Set HEADLESS=0 to show the browser window for debugging/observing repair flow.
     headless = int(os.environ.get("HEADLESS", "1"))
@@ -3918,6 +3929,9 @@ def worker(worker_id: int):
 
         driver = None
         proxy_dir = None
+        keep_browser_for_debug = False
+        need_wait_for_debug = False
+
         try:
             if REGISTER_FLOW_MODE == "protocol":
                 print(f"[Worker {worker_id}] ---> 协议流模式（REGISTER_FLOW_MODE=protocol） <---")
@@ -3926,7 +3940,7 @@ def worker(worker_id: int):
                 with driver_init_lock:
                     driver, proxy_dir = new_driver(proxy)
                 reg_email, res = register(driver, proxy)
-            
+
             # Write outputs (sharded results + per-account json)
             with write_lock:
                 _append_result_line(res)
@@ -3958,17 +3972,21 @@ def worker(worker_id: int):
                     shutil.copy2(auth_path, os.path.join(wait_update_dir, os.path.basename(auth_path)))
                 except Exception:
                     pass
-                    
+
             print(
                 f"[Worker {worker_id}] [✓] 注册成功，Token 已保存在 {CODEX_AUTH_DIRNAME} 并复制到 {WAIT_UPDATE_DIRNAME}，并追加到 results 分片！"
             )
-            
+
         except RuntimeError as e:
             # Expected blocks, no stack trace needed
             fatal_driver_errors = 0
+            keep_browser_for_debug = (DEBUG_KEEP_BROWSER_ON_FAIL == 1 and driver is not None)
+            need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1 and driver is not None)
             print(f"[Worker {worker_id}] [x] {e} (准备换IP重试)")
         except TimeoutException as e:
             fatal_driver_errors = 0
+            keep_browser_for_debug = (DEBUG_KEEP_BROWSER_ON_FAIL == 1 and driver is not None)
+            need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1 and driver is not None)
             print(f"[Worker {worker_id}] [x] 页面加载超时，可能遇到风控盾拦截。 (准备换IP重试)")
         except Exception as e:
             err_str = str(e)
@@ -3989,10 +4007,14 @@ def worker(worker_id: int):
 
             if is_proxy_eof:
                 fatal_driver_errors = 0
+                keep_browser_for_debug = (DEBUG_KEEP_BROWSER_ON_FAIL == 1 and driver is not None)
+                need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1 and driver is not None)
                 print(f"[Worker {worker_id}] [x] 代理连接强制中断 (SSL/EOF断流)，准备换IP重试")
             else:
                 import traceback
                 trace_str = traceback.format_exc()
+                keep_browser_for_debug = (DEBUG_KEEP_BROWSER_ON_FAIL == 1 and driver is not None)
+                need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1 and driver is not None)
                 print(f"[Worker {worker_id}] [x] 本次注册流程意外中止:\\n{trace_str}")
 
                 if is_fatal_driver:
@@ -4006,16 +4028,27 @@ def worker(worker_id: int):
                         os._exit(66)
                 else:
                     fatal_driver_errors = 0
-            
+
         finally:
-            if driver:
+            if need_wait_for_debug and driver is not None:
+                print(
+                    f"[Worker {worker_id}] [debug] 检测到失败，按 DEBUG_WAIT_ON_FAIL=1 进入现场等待。"
+                    f" 浏览器将保持打开，按 Ctrl+C 继续。"
+                )
+                try:
+                    while True:
+                        time.sleep(1.0)
+                except KeyboardInterrupt:
+                    print(f"[Worker {worker_id}] [debug] 收到 Ctrl+C，结束现场等待。")
+
+            if driver and not keep_browser_for_debug:
                 try:
                     driver.quit()
                 except Exception:
                     pass
             if proxy_dir and os.path.exists(proxy_dir):
                 shutil.rmtree(proxy_dir, ignore_errors=True)
-        
+
         # 自由调整休眠时间
         sleep_min = int(os.environ.get("SLEEP_MIN", "5"))
         sleep_max = int(os.environ.get("SLEEP_MAX", "20"))

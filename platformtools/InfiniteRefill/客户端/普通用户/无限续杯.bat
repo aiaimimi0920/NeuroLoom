@@ -17,20 +17,14 @@ if exist "%CFG%" set "ACTIVE_CFG=%CFG%"
 if "%ACTIVE_CFG%"=="" if exist "%ROOT_CFG%" set "ACTIVE_CFG=%ROOT_CFG%"
 if "%ACTIVE_CFG%"=="" (
   >"%CFG%" (
-    echo # 无限续杯配置（本地文件）
-    echo # 注意：请勿分享/上传此文件。
+    echo # 无限续杯配置（简化模板）
+    echo # 注意：请勿分享/上传此文件（含密钥）。
     echo SERVER_URL=
     echo USER_KEY=
     echo ACCOUNTS_DIR=%ROOT_DIR%\accounts
     echo TARGET_POOL_SIZE=10
-    echo TRIGGER_REMAINING=2
+    echo TOTAL_HOLD_LIMIT=50
     echo INTERVAL_MINUTES=30
-    echo AUTO_REFILL_AFTER_CLEAN=1
-    echo AUTO_CLEAN_INTERVAL_MINUTES=30
-    echo AUTO_CLEAN_APPLY=1
-    echo CLEAN_DELETE_STATUSES=401,429
-    echo CLEAN_EXPIRED_DAYS=30
-    echo SYNC_MODE=none
     echo SYNC_TARGET_DIR=
   )
   set "ACTIVE_CFG=%CFG%"
@@ -53,7 +47,7 @@ echo 配置文件："%ACTIVE_CFG%"
 echo.
 echo 1) 立即执行一次【单次续杯】（使用已保存配置）
 echo 2) 设置/更新【无限续杯配置】（服务器地址/用户密钥/间隔）
-echo 3) 开启/更新【定时续杯】计划任务（从配置读取，不在任务里保存密钥）
+echo 3) 开启/更新【定时续杯】计划任务（单任务串行：先清理后续杯）
 echo 4) 关闭【定时续杯】计划任务
 echo.
 echo 5) 同步所有账号（谨慎：高频调用会触发风控）
@@ -78,12 +72,10 @@ set "RUN_EC=%ERRORLEVEL%"
 if "%RUN_EC%"=="0" (
   call :RESET_TASK_AFTER_MANUAL
 )
-pause
 goto :MENU
 
 :SYNC_ALL
 call "%SCRIPT_DIR%单次续杯.bat" --sync-all
-pause
 goto :MENU
 
 :CONFIG
@@ -91,10 +83,12 @@ echo.
 echo ====== 设置无限续杯配置 ======
 set "默认服务器地址="
 set "默认用户密钥="
-set "默认账户目录=%SCRIPT_DIR%accounts"
+set "默认账户目录=%ROOT_DIR%\accounts"
+set "默认总持有上限=50"
 for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%ACTIVE_CFG%") do (
   if /I "%%A"=="SERVER_URL" set "默认服务器地址=%%B"
   if /I "%%A"=="USER_KEY" set "默认用户密钥=%%B"
+  if /I "%%A"=="TOTAL_HOLD_LIMIT" set "默认总持有上限=%%B"
 )
 if not exist "!默认账户目录!" (
   for /d %%D in ("%SCRIPT_DIR%*") do (
@@ -116,15 +110,7 @@ if exist "%USERPROFILE%\.cli-proxy-api" set "检测同步目录=%USERPROFILE%\.c
 if "!检测同步目录!"=="" if exist "%USERPROFILE%\cli-proxy-api" set "检测同步目录=%USERPROFILE%\cli-proxy-api"
 if "!检测同步目录!"=="" set "检测同步目录=%USERPROFILE%\.cli-proxy-api"
 echo [INFO] 检测到默认同步目录：!检测同步目录!
-set /p 是否同步=是否同步到CLI目录（y/N）:
-if /I "!是否同步!"=="y" (
-  set "同步模式=symlink"
-  set /p 同步目录=请选择同步目录（填空则使用默认值：!检测同步目录!）:
-  if "!同步目录!"=="" set "同步目录=!检测同步目录!"
-) else (
-  set "同步模式=none"
-  set "同步目录="
-)
+set /p 同步目录=请输入同步目录（留空则不同步；默认建议：!检测同步目录!）:
 set /p 间隔分钟=请输入续杯间隔（分钟，最低 10，默认 30）:
 if "!间隔分钟!"=="" set "间隔分钟=30"
 for /f "delims=0123456789" %%I in ("!间隔分钟!") do set "间隔分钟=30"
@@ -133,8 +119,9 @@ if !间隔分钟! LSS 10 (
   echo [WARN] 续杯间隔过低，已强制调整为 10 分钟。
   set "间隔分钟=10"
 )
-set "清理间隔分钟=!间隔分钟!"
-
+set "总持有上限=!默认总持有上限!"
+for /f "delims=0123456789" %%I in ("!总持有上限!") do set "总持有上限=50"
+if !总持有上限! LSS 1 set "总持有上限=50"
 if "!服务器地址!"=="" (
   echo [ERROR] 服务器地址不能为空
   pause
@@ -148,39 +135,31 @@ if "!用户密钥!"=="" (
 
 if "%ACTIVE_CFG%"=="" set "ACTIVE_CFG=%CFG%"
 >"%ACTIVE_CFG%" (
-  echo # 无限续杯配置（本地文件）
-  echo # 注意：请勿分享/上传此文件。
+  echo # 无限续杯配置（简化模板）
+  echo # 注意：请勿分享/上传此文件（含密钥）。
   echo SERVER_URL=!服务器地址!
   echo USER_KEY=!用户密钥!
   echo ACCOUNTS_DIR=!默认账户目录!
   echo TARGET_POOL_SIZE=10
-  echo TRIGGER_REMAINING=2
+  echo TOTAL_HOLD_LIMIT=!总持有上限!
   echo INTERVAL_MINUTES=!间隔分钟!
-  echo AUTO_REFILL_AFTER_CLEAN=1
-  echo AUTO_CLEAN_INTERVAL_MINUTES=!清理间隔分钟!
-  echo AUTO_CLEAN_APPLY=1
-  echo CLEAN_DELETE_STATUSES=401,429
-  echo CLEAN_EXPIRED_DAYS=30
-  echo SYNC_MODE=!同步模式!
   echo SYNC_TARGET_DIR=!同步目录!
 )
 
 echo [OK] 已保存："%ACTIVE_CFG%"
-call :ENSURE_SYNC_LINKS "!同步模式!" "!同步目录!" "!默认账户目录!"
+call :ENSURE_SYNC_LINKS "!同步目录!" "!默认账户目录!"
 pause
 goto :MENU
 
 :ENABLE_TASK
 echo [INFO] 清理历史/遗漏定时任务（仅保留当前任务名）...
 call :CLEANUP_OLD_TASKS
-REM 从配置中读取间隔与清理策略（无限续杯依赖自动清理，固定 apply 删除）
+REM 从配置中读取间隔与清理策略（单任务串行：先清理后续杯）
 set "间隔分钟="
-set "同步模式=none"
 set "同步目录="
 set "账户目录=%SCRIPT_DIR%accounts"
 for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%ACTIVE_CFG%") do (
   if /I "%%A"=="INTERVAL_MINUTES" set "间隔分钟=%%B"
-  if /I "%%A"=="SYNC_MODE" set "同步模式=%%B"
   if /I "%%A"=="SYNC_TARGET_DIR" set "同步目录=%%B"
   if /I "%%A"=="ACCOUNTS_DIR" set "账户目录=%%B"
 )
@@ -191,13 +170,12 @@ if !间隔分钟! LSS 10 (
   echo [WARN] 配置中的续杯间隔过低，已强制调整为 10 分钟。
   set "间隔分钟=10"
 )
-set "清理间隔分钟=!间隔分钟!"
 
 call :CALC_START_TIME !间隔分钟!
-set "TR=powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command ""& '%SCRIPT_DIR%单次续杯.bat' --from-task"""
+set "TR=powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command ""& '%SCRIPT_DIR%_内部_自动清理.bat' apply nopause; & '%SCRIPT_DIR%单次续杯.bat' --from-task"""
 
 echo.
-echo [INFO] 正在创建/更新计划任务：%REFILL_TASK%
+echo [INFO] 正在创建/更新计划任务（串行：先清理后续杯）：%REFILL_TASK%
 schtasks /Create /F /TN "%REFILL_TASK%" /SC MINUTE /MO !间隔分钟! /ST !TASK_START! /TR "!TR!" /RL HIGHEST >nul 2>nul
 if errorlevel 1 (
   echo [WARN] 创建失败（可能需要管理员权限）。
@@ -205,18 +183,11 @@ if errorlevel 1 (
   goto :MENU
 )
 
-set "CLEAN_TR=powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command ""& '%SCRIPT_DIR%_内部_自动清理.bat' apply nopause"""
+REM 清理旧的独立自动清理任务（若存在）
+schtasks /Delete /F /TN "%CLEAN_TASK%" >nul 2>nul
 
-schtasks /Create /F /TN "%CLEAN_TASK%" /SC MINUTE /MO !清理间隔分钟! /ST !TASK_START! /TR "!CLEAN_TR!" /RL HIGHEST >nul 2>nul
-if errorlevel 1 (
-  echo [WARN] 自动清理任务创建失败：无限续杯依赖自动清理，请以管理员权限重试。
-  pause
-  goto :MENU
-)
-
-echo [OK] 已创建/更新：%REFILL_TASK%（每 !间隔分钟! 分钟执行一次）
-echo [OK] 已创建/更新：%CLEAN_TASK%（每 !清理间隔分钟! 分钟执行一次，固定 apply 删除）
-call :ENSURE_SYNC_LINKS "!同步模式!" "!同步目录!" "!账户目录!"
+echo [OK] 已创建/更新：%REFILL_TASK%（每 !间隔分钟! 分钟执行一次，后台串行先清理后续杯）
+call :ENSURE_SYNC_LINKS "!同步目录!" "!账户目录!"
 echo [INFO] 再次清理历史/遗漏定时任务...
 call :CLEANUP_OLD_TASKS
 pause
@@ -224,39 +195,38 @@ goto :MENU
 
 :ENSURE_SYNC_LINKS
 setlocal EnableDelayedExpansion
-set "_MODE=%~1"
-set "_TARGET=%~2"
-set "_ACCOUNTS=%~3"
-if /I not "!_MODE!"=="symlink" exit /b 0
+set "_TARGET=%~1"
+set "_ACCOUNTS=%~2"
 if "!_TARGET!"=="" exit /b 0
 if "!_ACCOUNTS!"=="" set "_ACCOUNTS=%SCRIPT_DIR%accounts"
 if not exist "!_TARGET!" mkdir "!_TARGET!" >nul 2>nul
 if not exist "!_ACCOUNTS!" mkdir "!_ACCOUNTS!" >nul 2>nul
 
 for /f "usebackq delims=" %%L in (`powershell -NoProfile -Command ^
-  "$ErrorActionPreference='Stop'; $accounts='%_ACCOUNTS%'; $target='%_TARGET%'; $manifest=Join-Path $target '.infinite_refill_sync_manifest.txt';" ^
+  "$ErrorActionPreference='Stop'; $accounts='%_ACCOUNTS%'; $targetRaw='%_TARGET%'; $fallback=Join-Path $env:USERPROFILE '.cli-proxy-api';" ^
+  "$canWrite={ param($p) try{ if(-not (Test-Path -LiteralPath $p)){ New-Item -ItemType Directory -Path $p -Force | Out-Null }; $t=Join-Path $p '.write_test.tmp'; Set-Content -LiteralPath $t -Value 'ok' -Encoding ASCII; Remove-Item -LiteralPath $t -Force -ErrorAction SilentlyContinue; $true } catch { $false } };" ^
+  "$target=$targetRaw; if(-not (& $canWrite $target)){ if(& $canWrite $fallback){ Write-Output ('[WARN] sync target 不可写，已回退到: ' + $fallback); $target=$fallback } else { Write-Output ('[WARN] sync target 不可写，已跳过同步: ' + $targetRaw); exit 0 } };" ^
+  "$manifest=Join-Path $target '.infinite_refill_sync_manifest.txt';" ^
   "$src=@(Get-ChildItem -LiteralPath $accounts -Filter '无限续杯-*.json' -File -ErrorAction SilentlyContinue); if($src.Count -eq 0){$src=@(Get-ChildItem -LiteralPath $accounts -Filter '*.json' -File -ErrorAction SilentlyContinue)};" ^
   "$names=@(); foreach($f in $src){ $names += $f.Name };" ^
   "$old=@(); if(Test-Path -LiteralPath $manifest){ $old=@(Get-Content -LiteralPath $manifest -ErrorAction SilentlyContinue | Where-Object { $_ -and $_.Trim() -ne '' }) };" ^
   "$removed=0; foreach($n in $old){ if($names -notcontains $n){ $tp=Join-Path $target $n; if(Test-Path -LiteralPath $tp){ $it=Get-Item -LiteralPath $tp -Force -ErrorAction SilentlyContinue; if($it -and (($it.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)){ Remove-Item -LiteralPath $tp -Force -ErrorAction SilentlyContinue; $removed++ } } } };" ^
   "$linked=0; foreach($f in $src){ $tp=Join-Path $target $f.Name; if(Test-Path -LiteralPath $tp){ $it=Get-Item -LiteralPath $tp -Force -ErrorAction SilentlyContinue; if($it -and (($it.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)){ Remove-Item -LiteralPath $tp -Force -ErrorAction SilentlyContinue }; if(Test-Path -LiteralPath $tp){ continue } }; New-Item -ItemType SymbolicLink -Path $tp -Target $f.FullName -Force -ErrorAction SilentlyContinue | Out-Null; if(Test-Path -LiteralPath $tp){ $linked++ } };" ^
-  "Set-Content -LiteralPath $manifest -Value $names -Encoding UTF8;" ^
-  "if($linked -gt 0){ 'OK: linked=' + $linked + '; removed=' + $removed } else { 'WARN: linked=0; removed=' + $removed + '; source=' + $accounts }"`) do echo %%L
+  "try{ Set-Content -LiteralPath $manifest -Value $names -Encoding UTF8 } catch { Write-Output ('[WARN] manifest 写入失败: ' + $manifest) };" ^
+  "if($linked -gt 0){ 'OK: linked=' + $linked + '; removed=' + $removed + '; target=' + $target } else { 'WARN: linked=0; removed=' + $removed + '; source=' + $accounts + '; target=' + $target }"`) do if not "%%L"=="" echo %%L
 exit /b 0
 
 :AUTO_SYNC_HEAL_FROM_CFG
 setlocal EnableDelayedExpansion
-set "_M=none"
 set "_T="
 set "_A=%SCRIPT_DIR%accounts"
 if not "%ACTIVE_CFG%"=="" if exist "%ACTIVE_CFG%" (
   for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%ACTIVE_CFG%") do (
-    if /I "%%A"=="SYNC_MODE" set "_M=%%B"
     if /I "%%A"=="SYNC_TARGET_DIR" set "_T=%%B"
     if /I "%%A"=="ACCOUNTS_DIR" set "_A=%%B"
   )
 )
-endlocal & call :ENSURE_SYNC_LINKS "%_M%" "%_T%" "%_A%" >nul 2>nul
+endlocal & call :ENSURE_SYNC_LINKS "%_T%" "%_A%" >nul 2>nul
 exit /b 0
 
 :DISABLE_TASK
@@ -269,13 +239,8 @@ if errorlevel 1 (
   echo [OK] 已关闭：%REFILL_TASK%
 )
 
-echo [INFO] 正在关闭计划任务：%CLEAN_TASK%
+echo [INFO] 清理遗留任务：%CLEAN_TASK%
 schtasks /Delete /F /TN "%CLEAN_TASK%" >nul 2>nul
-if errorlevel 1 (
-  echo [WARN] 关闭失败（可能任务不存在或需要管理员权限）。
-) else (
-  echo [OK] 已关闭：%CLEAN_TASK%
-)
 
 echo [INFO] 再次清理历史/遗漏定时任务...
 call :CLEANUP_OLD_TASKS
@@ -286,9 +251,9 @@ goto :MENU
 setlocal EnableDelayedExpansion
 for /f "usebackq delims=" %%L in (`powershell -NoProfile -Command ^
   "$ErrorActionPreference='SilentlyContinue';" ^
-  "$keepRef='\' + '%REFILL_TASK%'; $keepClean='\' + '%CLEAN_TASK%';" ^
+  "$keepRef='\' + '%REFILL_TASK%';" ^
   "$cand=Get-ScheduledTask | Where-Object { $_.TaskName -like '*无限续杯*' -or $_.TaskName -like '*自动清理*' -or (($_.Actions | Out-String) -match '单次续杯\.bat|_内部_自动清理\.bat') };" ^
-  "$del=0; foreach($t in $cand){ $full=($t.TaskPath + $t.TaskName); if($full -ieq $keepRef -or $full -ieq $keepClean){ continue }; try{ Unregister-ScheduledTask -TaskName $t.TaskName -TaskPath $t.TaskPath -Confirm:$false -ErrorAction Stop | Out-Null; $del++ } catch {} };" ^
+  "$del=0; foreach($t in $cand){ $full=($t.TaskPath + $t.TaskName); if($full -ieq $keepRef){ continue }; try{ Unregister-ScheduledTask -TaskName $t.TaskName -TaskPath $t.TaskPath -Confirm:$false -ErrorAction Stop | Out-Null; $del++ } catch {} };" ^
   "'INFO: cleaned_old_tasks=' + $del"`) do echo %%L
 endlocal & exit /b 0
 
@@ -314,12 +279,10 @@ if not "%ACTIVE_CFG%"=="" if exist "%ACTIVE_CFG%" (
 )
 for /f "delims=0123456789" %%I in ("!间隔分钟!") do set "间隔分钟=30"
 if !间隔分钟! LSS 10 set "间隔分钟=10"
-set "清理间隔分钟=!间隔分钟!"
 call :CALC_START_TIME !间隔分钟!
-set "TR=powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command ""& '%SCRIPT_DIR%单次续杯.bat' --from-task"""
-set "CLEAN_TR=powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command ""& '%SCRIPT_DIR%_内部_自动清理.bat' apply nopause"""
+set "TR=powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command ""& '%SCRIPT_DIR%_内部_自动清理.bat' apply nopause; & '%SCRIPT_DIR%单次续杯.bat' --from-task"""
 schtasks /Create /F /TN "%REFILL_TASK%" /SC MINUTE /MO !间隔分钟! /ST !TASK_START! /TR "!TR!" /RL HIGHEST >nul 2>nul
-schtasks /Create /F /TN "%CLEAN_TASK%" /SC MINUTE /MO !清理间隔分钟! /ST !TASK_START! /TR "!CLEAN_TR!" /RL HIGHEST >nul 2>nul
-echo [INFO] 已按手动续杯时间重置下次自动续杯时间：!TASK_START!
+schtasks /Delete /F /TN "%CLEAN_TASK%" >nul 2>nul
+echo [INFO] 已按手动续杯时间重置下次自动续杯时间：!TASK_START!（后台串行：先清理后续杯）
 call :CLEANUP_OLD_TASKS
 endlocal & exit /b 0

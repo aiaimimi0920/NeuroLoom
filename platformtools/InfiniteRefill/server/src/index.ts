@@ -1748,8 +1748,11 @@ export default {
             const envText = [
               `SERVER_URL=${serverUrl}`,
               type === "user" ? `USER_KEY=${k}` : `UPLOAD_KEY=${k}`,
-              `BATCH_ID=${batchId}`,
-              `PACKAGE_NO=${i}`,
+              "ACCOUNTS_DIR=",
+              "TARGET_POOL_SIZE=10",
+              "TOTAL_HOLD_LIMIT=50",
+              "INTERVAL_MINUTES=30",
+              "SYNC_TARGET_DIR=",
             ].join("\n") + "\n";
 
             const readmeText = type === "user"
@@ -2861,8 +2864,11 @@ export default {
             const envText = [
               `SERVER_URL=${serverUrl}`,
               `USER_KEY=${k}`,
+              "ACCOUNTS_DIR=",
               "TARGET_POOL_SIZE=10",
-              "TRIGGER_REMAINING=2",
+              "TOTAL_HOLD_LIMIT=50",
+              "INTERVAL_MINUTES=30",
+              "SYNC_TARGET_DIR=",
             ].join("\n") + "\n";
 
             const readmeText = [
@@ -3091,6 +3097,7 @@ export default {
           return json({
             ok: true,
             target_pool_size: target,
+            total_hold_limit: effectiveAccountLimit,
             accepted_reports: acceptedReports,
             requested_account_ids: requestedAccountIds,
             replaced_from_requested: replacedFromRequested,
@@ -3297,6 +3304,7 @@ export default {
         return json({
           ok: true,
           target_pool_size: target,
+          total_hold_limit: effectiveAccountLimit,
           accepted_reports: acceptedReports,
           requested_account_ids: requestedAccountIds,
           replaced_from_requested: replacedFromRequested,
