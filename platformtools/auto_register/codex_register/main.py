@@ -33,9 +33,11 @@ from urllib.parse import urlparse, parse_qs
 from urllib import request
 import tempfile
 import shutil
+import subprocess
 import concurrent.futures
 import threading
 import socket
+import subprocess
 
 write_lock = threading.Lock()
 driver_init_lock = threading.Lock()
@@ -493,8 +495,66 @@ def _dump_page_body(*, driver, kind: str, message: str = "") -> None:
             print("[dump] body.innerText (first 4000 chars):\n" + body_text_snippet)
 
 
+def _checkpoint_screenshot(driver, step: str) -> None:
+    """Save a checkpoint screenshot at the current registration step.
+
+    This captures the browser state while the driver is still alive.
+    Files saved:
+    - checkpoint_latest.png  (always overwritten = last known state)
+    - checkpoint_{step}_{ts}.png  (per-step timestamped copy)
+    """
+    err_dir = _data_path(ERROR_DIRNAME, INSTANCE_ID)
+    try:
+        os.makedirs(err_dir, exist_ok=True)
+    except Exception:
+        pass
+
+    latest = os.path.join(err_dir, "checkpoint_latest.png")
+    ts = int(time.time())
+    safe_step = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(step or "step"))[:64] or "step"
+    named = os.path.join(err_dir, f"checkpoint_{safe_step}_{ts}.png")
+
+    # Short delay to let page render (prevents blank/white screenshots in headless mode)
+    time.sleep(1.0)
+
+    ok = False
+    for method_name, method_fn in [
+        ("save_screenshot", lambda p: driver.save_screenshot(p)),
+        ("get_screenshot_as_png", lambda p: _write_bytes(p, driver.get_screenshot_as_png())),
+        ("get_screenshot_as_base64", lambda p: _write_bytes(p, base64.b64decode(driver.get_screenshot_as_base64()))),
+    ]:
+        try:
+            method_fn(named)
+            if os.path.exists(named) and os.path.getsize(named) > 0:
+                ok = True
+                break
+        except Exception:
+            continue
+
+    if ok:
+        try:
+            shutil.copy2(named, latest)
+        except Exception:
+            pass
+        _keep_last_n_files(os.path.join(err_dir, f"checkpoint_{safe_step}_*.png"), keep=3)
+    else:
+        # Fallback: save page source HTML as a visual reference
+        try:
+            html_path = os.path.join(err_dir, f"checkpoint_{safe_step}_{ts}.html")
+            with open(html_path, "w", encoding="utf-8") as f:
+                f.write(str(getattr(driver, "page_source", "") or ""))
+            _keep_last_n_files(os.path.join(err_dir, f"checkpoint_{safe_step}_*.html"), keep=3)
+        except Exception:
+            pass
+
+
+def _write_bytes(path: str, data: bytes) -> None:
+    with open(path, "wb") as f:
+        f.write(data)
+
+
 def _save_error_artifacts(*, driver, kind: str, message: str = "") -> None:
-    """Save screenshot + a tiny text log, and keep only last 10 of each kind."""
+    """Save screenshot + page source + text log, and keep only last 10 of each kind."""
     ts = int(time.time())
 
     # Per-instance error dir to avoid cross-container clobbering + retention races.
@@ -505,16 +565,56 @@ def _save_error_artifacts(*, driver, kind: str, message: str = "") -> None:
     except Exception:
         pass
 
+    # --- Screenshot (multiple fallback methods) ---
+    png_path = os.path.join(err_dir, f"error_{kind}_{ts}.png")
+    screenshot_ok = False
+    # Method 1: save_screenshot
     try:
-        # screenshot
-        png = os.path.join(err_dir, f"error_{kind}_{ts}.png")
-        driver.save_screenshot(png)
+        driver.save_screenshot(png_path)
+        if os.path.exists(png_path) and os.path.getsize(png_path) > 0:
+            screenshot_ok = True
+    except Exception as e:
+        print(f"[screenshot] save_screenshot failed: {e}")
+    # Method 2: get_screenshot_as_png -> write bytes
+    if not screenshot_ok:
+        try:
+            png_bytes = driver.get_screenshot_as_png()
+            if png_bytes:
+                with open(png_path, "wb") as f:
+                    f.write(png_bytes)
+                screenshot_ok = True
+        except Exception as e:
+            print(f"[screenshot] get_screenshot_as_png failed: {e}")
+    # Method 3: get_screenshot_as_base64 -> decode -> write
+    if not screenshot_ok:
+        try:
+            b64 = driver.get_screenshot_as_base64()
+            if b64:
+                with open(png_path, "wb") as f:
+                    f.write(base64.b64decode(b64))
+                screenshot_ok = True
+        except Exception as e:
+            print(f"[screenshot] get_screenshot_as_base64 failed: {e}")
+
+    if screenshot_ok:
         _keep_last_n_files(os.path.join(err_dir, f"error_{kind}_*.png"), keep=10)
+        print(f"[screenshot] saved: {png_path}")
+    else:
+        print(f"[screenshot] WARNING: all screenshot methods failed for kind={kind}")
+
+    # --- Page source HTML (always try, useful when screenshot fails) ---
+    try:
+        html_path = os.path.join(err_dir, f"error_{kind}_{ts}.html")
+        page_src = str(getattr(driver, "page_source", "") or "")
+        if page_src:
+            with open(html_path, "w", encoding="utf-8") as f:
+                f.write(page_src)
+            _keep_last_n_files(os.path.join(err_dir, f"error_{kind}_*.html"), keep=10)
     except Exception:
         pass
 
+    # --- Text log (url + msg) ---
     try:
-        # text log (url + msg)
         txt = os.path.join(err_dir, f"error_{kind}_{ts}.txt")
         url = ""
         try:
@@ -632,6 +732,15 @@ REGISTER_PROXY_REQUIRED = (os.environ.get("REGISTER_PROXY_REQUIRED", "1") or "1"
     "false",
     "no",
 )
+
+# 显式关闭应用内代理池（用于改走容器默认网络路径）。
+DISABLE_PROXY = (os.environ.get("DISABLE_PROXY", "0") or "0").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+REQUIRE_PROXY = REGISTER_PROXY_REQUIRED and (not DISABLE_PROXY)
 
 # Protocol-flow knobs
 PROTOCOL_IMPERSONATE = (os.environ.get("PROTOCOL_IMPERSONATE", "chrome") or "chrome").strip() or "chrome"
@@ -1897,24 +2006,68 @@ def get_opener(proxy: str | None = None):
     return urllib.request.build_opener(proxy_handler)
 
 def _post_form(url: str, data: Dict[str, str], timeout: int = 30, proxy: str | None = None) -> Dict[str, Any]:
-    body = urllib.parse.urlencode(data).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=body,
-        method="POST",
-        headers={
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Accept": "application/json",
-        },
-    )
-    for _ in range(4):
+    """POST form data with Chrome TLS/HTTP2 fingerprint via curl_cffi.
+
+    Strategy: try direct (no proxy) first, then with proxy, then urllib fallback.
+    The token exchange endpoint doesn't need residential IP masking;
+    the proxy is mainly for browser navigation to bypass Cloudflare.
+    """
+    # Build list of (label, proxies_dict) attempts
+    proxy_configs = [("direct", None)]
+    if proxy:
+        proxy_configs.append(("proxy", {"https": proxy, "http": proxy}))
+
+    for attempt in range(4):
+        for label, proxies in proxy_configs:
+            # --- curl_cffi with Chrome impersonation ---
+            try:
+                from curl_cffi import requests as cffi_requests
+                resp = cffi_requests.post(
+                    url,
+                    data=data,
+                    headers={
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        "Accept": "application/json",
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+                    },
+                    impersonate="chrome",
+                    timeout=timeout,
+                    proxies=proxies,
+                    verify=False,
+                )
+                if resp.status_code != 200:
+                    raise RuntimeError(
+                        f"token exchange failed: {resp.status_code}: {resp.text[:500]}"
+                    )
+                print(f"POST token exchange ok via {label} (curl_cffi)")
+                return resp.json()
+            except ImportError:
+                break  # curl_cffi not installed, skip to urllib
+            except RuntimeError:
+                raise
+            except Exception as e:
+                print(f"POST Request error (curl_cffi/{label}, attempt {attempt+1}): {e}")
+                continue  # try next proxy config
+
+        # --- Fallback: urllib (direct only, proxy already failed above) ---
         try:
-            with get_opener(proxy).open(req, timeout=timeout) as resp:
+            body = urllib.parse.urlencode(data).encode("utf-8")
+            req = urllib.request.Request(
+                url,
+                data=body,
+                method="POST",
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Accept": "application/json",
+                },
+            )
+            with urllib.request.build_opener().open(req, timeout=timeout) as resp:
                 raw = resp.read()
                 if resp.status != 200:
                     raise RuntimeError(
                         f"token exchange failed: {resp.status}: {raw.decode('utf-8', 'replace')}"
                     )
+                print("POST token exchange ok via urllib (direct)")
                 return json.loads(raw.decode("utf-8"))
         except urllib.error.HTTPError as exc:
             raw = exc.read()
@@ -1922,9 +2075,10 @@ def _post_form(url: str, data: Dict[str, str], timeout: int = 30, proxy: str | N
                 f"token exchange failed: {exc.code}: {raw.decode('utf-8', 'replace')}"
             ) from exc
         except Exception as e:
-            print(f"POST Request error: {e}")
-            time.sleep(2)
-            
+            print(f"POST Request error (urllib, attempt {attempt+1}): {e}")
+
+        time.sleep(2)
+
     raise RuntimeError("Failed to post form after max retries")
 
 
@@ -2147,9 +2301,133 @@ def create_proxy_extension(proxy: str) -> str | None:
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
+from pathlib import Path
+
+# Updated User-Agent: Chrome 134 (March 2026 stable)
+_CHROME_UA = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+)
+
+# ---------------------------------------------------------------------------
+# Stealth evasion scripts (ported from puppeteer-extra-plugin-stealth)
+# ---------------------------------------------------------------------------
+_STEALTH_SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "stealth_scripts")
+_STEALTH_EVASIONS = [
+    "chrome.app",
+    "chrome.csi",
+    "chrome.loadTimes",
+    "chrome.runtime",
+    "iframe.contentWindow",
+    "media.codecs",
+    "navigator.hardwareConcurrency",
+    "navigator.languages",
+    "navigator.permissions",
+    "navigator.plugins",
+    "navigator.webdriver",
+    "sourceurl",
+    "webgl.vendor",
+    "window.outerdimensions",
+]
+
+
+def _load_stealth_scripts() -> list[str]:
+    """Load all stealth evasion JS scripts from stealth_scripts/ directory."""
+    scripts: list[str] = []
+    for name in _STEALTH_EVASIONS:
+        js_path = os.path.join(_STEALTH_SCRIPTS_DIR, name, "index.js")
+        if os.path.isfile(js_path):
+            try:
+                with open(js_path, "r", encoding="utf-8") as f:
+                    scripts.append(f.read())
+            except Exception:
+                pass
+    return scripts
+
+
+# Pre-load stealth scripts at import time so we don't re-read from disk per driver.
+_STEALTH_JS_SOURCES = _load_stealth_scripts()
+if _STEALTH_JS_SOURCES:
+    print(f"[stealth] loaded {len(_STEALTH_JS_SOURCES)} evasion scripts from {_STEALTH_SCRIPTS_DIR}")
+else:
+    print(f"[stealth] WARNING: no evasion scripts found in {_STEALTH_SCRIPTS_DIR}")
+
+
+# ---------------------------------------------------------------------------
+# Human-like behavior simulation helpers
+# ---------------------------------------------------------------------------
+def _human_delay(min_s: float = 0.3, max_s: float = 1.5) -> None:
+    """Random sleep to simulate human reaction time."""
+    time.sleep(random.uniform(min_s, max_s))
+
+
+def _human_mouse_jitter(driver, *, attempts: int = 3) -> None:
+    """Perform small random mouse movements to simulate human presence."""
+    try:
+        actions = ActionChains(driver)
+        for _ in range(attempts):
+            x_off = random.randint(-80, 80)
+            y_off = random.randint(-40, 40)
+            actions.move_by_offset(x_off, y_off)
+            actions.pause(random.uniform(0.05, 0.15))
+        actions.perform()
+    except Exception:
+        pass
+
+
+def _human_type(element, text: str, *, per_char_delay: tuple[float, float] = (0.03, 0.10)) -> None:
+    """Type text character by character with human-like delays.
+
+    Only used for short inputs (email, password, verification code).
+    For long inputs (>60 chars), falls back to send_keys.
+    """
+    if len(text) > 60:
+        element.send_keys(text)
+        return
+    for ch in text:
+        element.send_keys(ch)
+        time.sleep(random.uniform(*per_char_delay))
+
+
+def _resolve_chrome_version_main() -> int | None:
+    """Resolve Chrome major version for undetected-chromedriver.
+
+    Priority:
+    1) CHROME_VERSION_MAIN env (manual override)
+    2) Runtime detection from local chrome binary
+    3) None (let uc decide)
+    """
+
+    raw = (os.environ.get("CHROME_VERSION_MAIN") or "").strip()
+    if raw.isdigit():
+        try:
+            v = int(raw)
+            if v > 0:
+                return v
+        except Exception:
+            pass
+
+    for cmd in (
+        ["google-chrome", "--product-version"],
+        ["google-chrome-stable", "--product-version"],
+        ["chromium", "--product-version"],
+    ):
+        try:
+            out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=3)
+            ver = out.decode("utf-8", errors="ignore").strip()
+            m = re.match(r"^(\d+)\.", ver)
+            if m:
+                major = int(m.group(1))
+                if major > 0:
+                    return major
+        except Exception:
+            continue
+
+    return None
+
 
 def new_driver(proxy: str | None = None):
-    options = Options()
+    options = uc.ChromeOptions()
 
     # 匿名模式：开启后使用无痕窗口，减少本地会话残留。
     anonymous_mode = int(os.environ.get("ANONYMOUS_MODE", "0") or "0")
@@ -2159,14 +2437,13 @@ def new_driver(proxy: str | None = None):
     # Headless defaults to ON for servers/containers.
     # Set HEADLESS=0 to show the browser window for debugging/observing repair flow.
     headless = int(os.environ.get("HEADLESS", "1"))
-    if headless != 0:
-        options.add_argument('--headless')
+    headless_mode = (headless != 0)
 
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1920,1080')
-    options.add_argument('--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+    options.add_argument(f'--user-agent={_CHROME_UA}')
     options.add_argument('--enable-features=NetworkService,NetworkServiceInProcess')
     
     # Disable background telemetry and optimization guide to save proxy traffic
@@ -2212,10 +2489,8 @@ def new_driver(proxy: str | None = None):
     if host_rule_entries:
         options.add_argument(f"--host-resolver-rules={', '.join(host_rule_entries)}")
 
-    # Anti-detect features for standard selenium
-    options.add_argument('--disable-blink-features=AutomationControlled')
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option('useAutomationExtension', False)
+    # NOTE: uc.Chrome already handles anti-detect (AutomationControlled, excludeSwitches,
+    # useAutomationExtension, navigator.webdriver) so we do NOT set those manually.
     
     # Traffic saver defaults to ON (2) unless explicitly disabled.
     # 2 = block, 1 = allow
@@ -2254,8 +2529,18 @@ def new_driver(proxy: str | None = None):
     options.add_argument('--disable-in-process-stack-traces')
     options.page_load_strategy = 'eager' # Don't wait for all resources to download
     
-    service = Service()
-    driver = webdriver.Chrome(service=service, options=options)
+    # --- Use undetected-chromedriver instead of standard webdriver.Chrome ---
+    _chrome_major = _resolve_chrome_version_main()
+    _uc_kwargs = {
+        "options": options,
+        "headless": headless_mode,
+        "use_subprocess": True,
+    }
+    if _chrome_major:
+        _uc_kwargs["version_main"] = _chrome_major
+        print(f"[driver] use version_main={_chrome_major}")
+
+    driver = uc.Chrome(**_uc_kwargs)
 
     # Aggressive network blocking (CDP). This is more reliable than prefs alone.
     try:
@@ -2288,14 +2573,14 @@ def new_driver(proxy: str | None = None):
         # CDP may fail on some driver builds; prefs still apply.
         pass
 
-    # Execute CDP command to hide webdriver property
-    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
-        "source": """
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined
+    # Inject stealth evasion scripts (puppeteer-extra-plugin-stealth)
+    for js_src in _STEALTH_JS_SOURCES:
+        try:
+            driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+                "source": js_src
             })
-        """
-    })
+        except Exception:
+            pass
 
     return driver, proxy_dir
 
@@ -2341,9 +2626,29 @@ def smart_wait(driver, by, value, timeout=20, *, debug_kind: str = "", debug_mes
     if debug_kind:
         _dbg("wait", f"{debug_kind} by={by} value={value!r} timeout={timeout}s", driver=driver)
 
+    challenge_hints = [
+        "verify you are human",
+        "performing security verification",
+        "just a moment",
+        "cloudflare",
+    ]
+
     end_time = time.time() + timeout
     while time.time() < end_time:
         try:
+            # Fail-fast on Cloudflare/verification challenge pages.
+            title_text = str(driver.execute_script("return (document && document.title) ? document.title : '';") or "").lower()
+            body_text = str(
+                driver.execute_script("return (document && document.body) ? (document.body.innerText || '') : '';")
+                or ""
+            ).lower()
+            cur_url = str(getattr(driver, "current_url", "") or "").lower()
+            joined = "\n".join([title_text, body_text, cur_url])
+            if any(h in joined for h in challenge_hints):
+                if debug_kind and "password" in debug_kind.lower():
+                    raise RuntimeError("blocked challenge page before password step")
+                raise RuntimeError("blocked challenge page")
+
             # Check for the "Try again" button and click it if it appears
             try_again_btns = driver.find_elements(
                 By.XPATH,
@@ -2361,8 +2666,19 @@ def smart_wait(driver, by, value, timeout=20, *, debug_kind: str = "", debug_mes
                 if debug_kind:
                     _dbg("wait", f"{debug_kind} ok", driver=driver)
                 return el
-        except Exception:
-            pass
+        except Exception as e:
+            if isinstance(e, RuntimeError):
+                if debug_kind:
+                    msg = debug_message or f"wait aborted by fatal ui error for {by}={value}"
+                    try:
+                        _dump_page_body(driver=driver, kind=debug_kind, message=msg)
+                    except Exception:
+                        pass
+                    try:
+                        _save_error_artifacts(driver=driver, kind=debug_kind, message=msg)
+                    except Exception:
+                        pass
+                raise
         time.sleep(0.5)
 
     if debug_kind:
@@ -2398,7 +2714,9 @@ def register(driver, proxy=None) -> tuple[str, str]:
         WebDriverWait(driver, 60).until(EC.url_contains("auth.openai.com"))
         _dbg("page", "reach oai sign up page", driver=driver)
         print("Reach oai sign up page")
+        _checkpoint_screenshot(driver, "01_reach_auth_page")
     except TimeoutException:
+        _save_error_artifacts(driver=driver, kind="wait_auth_openai", message="URL did not contain auth.openai.com")
         _dump_page_body(driver=driver, kind="wait_auth_openai", message="URL did not contain auth.openai.com")
         raise RuntimeError("did not reach auth.openai.com; page dumped")
 
@@ -2412,9 +2730,12 @@ def register(driver, proxy=None) -> tuple[str, str]:
         debug_message="sign up button not found",
     )
     _dbg("ui", "click sign up", driver=driver)
+    _human_delay(0.5, 1.5)  # human-like pause before clicking
+    _human_mouse_jitter(driver)
     _click_with_debug(driver, sign_up_button, tag="signup_button", note="register click sign up")
     _dbg("ui", "sign up clicked", driver=driver)
     print("Sign up clicked")
+    _checkpoint_screenshot(driver, "02_signup_clicked")
 
     # fill email
     email_input = smart_wait(
@@ -2429,27 +2750,111 @@ def register(driver, proxy=None) -> tuple[str, str]:
     email_input.clear()
     _dbg("ui", f"fill email={email}", driver=driver)
     print("Reach email input")
-    # Speed: send full string instead of per-char typing.
-    email_input.send_keys(email)
+    # Human-like: jitter mouse, then type char-by-char with random delays.
+    _human_delay(0.3, 0.8)
+    _human_mouse_jitter(driver)
+    _human_type(email_input, email)
+    _human_delay(0.2, 0.5)
     email_input.send_keys(Keys.ENTER)
     _dbg("ui", "email ENTER pressed", driver=driver)
     print("Enter pressed")
+    _checkpoint_screenshot(driver, "03_email_entered")
 
     # fill password
-    pwd_input = smart_wait(
-        driver,
-        By.ID,
-        "_r_u_-new-password",
-        timeout=30,
-        debug_kind="password_input",
-        debug_message=f"password input not found; email={email}",
-    )
+    def _is_human_verify_page() -> bool:
+        try:
+            body_text = str(
+                driver.execute_script(
+                    "return (document && document.body && document.body.innerText) ? document.body.innerText : '';"
+                )
+                or ""
+            ).lower()
+            title_text = str(driver.execute_script("return (document && document.title) ? document.title : '';") or "").lower()
+            cur_url = str(getattr(driver, "current_url", "") or "").lower()
+            joined = "\n".join([title_text, body_text, cur_url])
+            return (
+                "verify you are human" in joined
+                or "performing security verification" in joined
+                or "just a moment" in joined
+                or "cloudflare" in joined
+            )
+        except Exception:
+            return False
+
+    def _wait_for_challenge_pass(*, max_wait: int = 30, poll: float = 2.0) -> bool:
+        """Wait up to max_wait seconds for Cloudflare challenge to auto-resolve.
+
+        Returns True if challenge passed, False if still blocked.
+        """
+        if not _is_human_verify_page():
+            return True
+        _dbg("cf", f"Cloudflare challenge detected, waiting up to {max_wait}s for auto-pass", driver=driver)
+        deadline = time.time() + max_wait
+        while time.time() < deadline:
+            time.sleep(poll)
+            if not _is_human_verify_page():
+                _dbg("cf", "Cloudflare challenge passed!", driver=driver)
+                return True
+        _dbg("cf", "Cloudflare challenge did NOT pass within timeout", driver=driver)
+        _save_error_artifacts(driver=driver, kind="cf_challenge_timeout", message="Cloudflare challenge did not auto-pass")
+        return False
+
+    try:
+        pwd_input = smart_wait(
+            driver,
+            By.ID,
+            "_r_u_-new-password",
+            timeout=30,
+            debug_kind="password_input",
+            debug_message=f"password input not found; email={email}",
+        )
+    except Exception:
+        if _is_human_verify_page():
+            if not _wait_for_challenge_pass(max_wait=30):
+                raise RuntimeError("blocked challenge page before password step")
+            # Challenge passed; retry finding the password input.
+            pwd_input = smart_wait(
+                driver,
+                By.ID,
+                "_r_u_-new-password",
+                timeout=15,
+                debug_kind="password_input_after_cf",
+                debug_message=f"password input not found after CF pass; email={email}",
+            )
+        else:
+            try:
+                pwd_input = smart_wait(
+                    driver,
+                    By.CSS_SELECTOR,
+                    'input[type="password"], input[name*="password" i], input[id*="password" i]',
+                    timeout=15,
+                    debug_kind="password_input_fallback",
+                    debug_message=f"password input fallback not found; email={email}",
+                )
+            except Exception:
+                if _is_human_verify_page():
+                    if not _wait_for_challenge_pass(max_wait=30):
+                        raise RuntimeError("blocked challenge page before password step")
+                    pwd_input = smart_wait(
+                        driver,
+                        By.CSS_SELECTOR,
+                        'input[type="password"], input[name*="password" i], input[id*="password" i]',
+                        timeout=15,
+                        debug_kind="password_input_fallback_after_cf",
+                        debug_message=f"password fallback not found after CF pass; email={email}",
+                    )
+                else:
+                    raise
+
     _dbg("ui", "reach password input", driver=driver)
     print("Reach password input")
     pwd = generate_pwd()
     _dbg("ui", "fill password", driver=driver)
-    # Speed: send full string instead of per-char typing.
-    pwd_input.send_keys(pwd)
+    # Human-like: jitter mouse, then type char-by-char with random delays.
+    _human_delay(0.3, 0.8)
+    _human_mouse_jitter(driver)
+    _human_type(pwd_input, pwd)
+    _human_delay(0.2, 0.5)
     pwd_input.send_keys(Keys.ENTER)
     _dbg("ui", "password ENTER pressed", driver=driver)
     print("Enter pressed")
@@ -3898,8 +4303,9 @@ def _repairer_loop() -> None:
 
         time.sleep(0.2)
 
-
 def load_proxies() -> list[str]:
+    if DISABLE_PROXY:
+        return []
     proxy_file = _data_path("proxies.txt")
     if os.path.exists(proxy_file):
         with open(proxy_file, "r", encoding="utf-8") as f:
@@ -3907,17 +4313,118 @@ def load_proxies() -> list[str]:
         return proxies
     return []
 
+
+class ProxyPool:
+    """Thread-safe + cross-instance mutex proxy allocator.
+
+    Ensures no two workers (within or across container instances) use the
+    same proxy entry simultaneously.
+
+    Intra-instance:  threading.Lock protects the in-memory set.
+    Inter-instance:  file-based locks in /data/.proxy_locks/ (shared volume).
+    Lock files auto-expire after LOCK_TTL_SECONDS to handle crashes.
+    """
+
+    LOCK_TTL_SECONDS = 600  # 10 min auto-expire for stale locks
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._in_use: set[str] = set()  # proxies checked out by THIS instance
+        self._lock_dir = _data_path(".proxy_locks")
+        os.makedirs(self._lock_dir, exist_ok=True)
+
+    def _lock_path(self, proxy: str) -> str:
+        """Deterministic lock file path for a proxy string."""
+        import hashlib
+        h = hashlib.md5(proxy.encode()).hexdigest()[:12]
+        return os.path.join(self._lock_dir, f"proxy_{h}.lock")
+
+    def _is_locked_by_other(self, proxy: str) -> bool:
+        """Check if another instance holds the lock (via file)."""
+        lp = self._lock_path(proxy)
+        if not os.path.exists(lp):
+            return False
+        try:
+            mtime = os.path.getmtime(lp)
+            if time.time() - mtime > self.LOCK_TTL_SECONDS:
+                # Stale lock — remove it
+                try:
+                    os.remove(lp)
+                except OSError:
+                    pass
+                return False
+            with open(lp, "r") as f:
+                owner = f.read().strip()
+            # If we own it, it's not "locked by other"
+            return owner != INSTANCE_ID
+        except Exception:
+            return False
+
+    def _write_lock_file(self, proxy: str):
+        lp = self._lock_path(proxy)
+        try:
+            with open(lp, "w") as f:
+                f.write(INSTANCE_ID)
+        except Exception:
+            pass
+
+    def _remove_lock_file(self, proxy: str):
+        lp = self._lock_path(proxy)
+        try:
+            if os.path.exists(lp):
+                with open(lp, "r") as f:
+                    owner = f.read().strip()
+                if owner == INSTANCE_ID:
+                    os.remove(lp)
+        except Exception:
+            pass
+
+    def acquire(self, worker_id: int, timeout: float = 60) -> str | None:
+        """Acquire an exclusive proxy. Returns proxy string or None if timed out."""
+        deadline = time.time() + timeout
+        attempt = 0
+        while time.time() < deadline:
+            proxies = load_proxies()
+            if not proxies:
+                return None
+            random.shuffle(proxies)
+
+            with self._lock:
+                for p in proxies:
+                    if p not in self._in_use and not self._is_locked_by_other(p):
+                        self._in_use.add(p)
+                        self._write_lock_file(p)
+                        return p
+
+            # All proxies busy — wait with backoff
+            attempt += 1
+            wait = min(2.0 * attempt, 10.0)
+            print(f"[Worker {worker_id}] 所有代理占用中，等待 {wait:.0f}s...")
+            time.sleep(wait)
+
+        print(f"[Worker {worker_id}] 获取代理超时")
+        return None
+
+    def release(self, proxy: str):
+        """Release a proxy back to the pool."""
+        with self._lock:
+            self._in_use.discard(proxy)
+            self._remove_lock_file(proxy)
+
+
+# Global proxy pool (one per container instance)
+_proxy_pool = ProxyPool()
+
 def worker(worker_id: int):
     fatal_driver_errors = 0
     fatal_restart_threshold = max(1, int(os.environ.get("FATAL_DRIVER_RESTART_THRESHOLD", "3") or "3"))
 
     while True:
-        proxies = load_proxies()
-        proxy = random.choice(proxies) if proxies else None
+        proxy = _proxy_pool.acquire(worker_id)
 
         if proxy:
             print(f"[Worker {worker_id}] ---> 使用代理: {proxy} <---")
-        elif REGISTER_PROXY_REQUIRED:
+        elif REQUIRE_PROXY:
             print(
                 f"[Worker {worker_id}] [x] register_proxy_required no_proxy_available "
                 f"flow={REGISTER_FLOW_MODE} headless={int(os.environ.get('HEADLESS', '1') or '1')}"
@@ -3982,11 +4489,23 @@ def worker(worker_id: int):
             fatal_driver_errors = 0
             keep_browser_for_debug = (DEBUG_KEEP_BROWSER_ON_FAIL == 1 and driver is not None)
             need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1 and driver is not None)
+            # Capture screenshot for debugging
+            if driver is not None:
+                try:
+                    _save_error_artifacts(driver=driver, kind="runtime_error", message=f"Worker {worker_id}: {e}")
+                except Exception:
+                    pass
             print(f"[Worker {worker_id}] [x] {e} (准备换IP重试)")
         except TimeoutException as e:
             fatal_driver_errors = 0
             keep_browser_for_debug = (DEBUG_KEEP_BROWSER_ON_FAIL == 1 and driver is not None)
             need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1 and driver is not None)
+            # Capture screenshot for debugging
+            if driver is not None:
+                try:
+                    _save_error_artifacts(driver=driver, kind="timeout", message=f"Worker {worker_id}: {e}")
+                except Exception:
+                    pass
             print(f"[Worker {worker_id}] [x] 页面加载超时，可能遇到风控盾拦截。 (准备换IP重试)")
         except Exception as e:
             err_str = str(e)
@@ -4009,12 +4528,24 @@ def worker(worker_id: int):
                 fatal_driver_errors = 0
                 keep_browser_for_debug = (DEBUG_KEEP_BROWSER_ON_FAIL == 1 and driver is not None)
                 need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1 and driver is not None)
+                # Capture screenshot for proxy EOF errors too
+                if driver is not None:
+                    try:
+                        _save_error_artifacts(driver=driver, kind="proxy_eof", message=f"Worker {worker_id}: {err_str}")
+                    except Exception:
+                        pass
                 print(f"[Worker {worker_id}] [x] 代理连接强制中断 (SSL/EOF断流)，准备换IP重试")
             else:
                 import traceback
                 trace_str = traceback.format_exc()
                 keep_browser_for_debug = (DEBUG_KEEP_BROWSER_ON_FAIL == 1 and driver is not None)
                 need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1 and driver is not None)
+                # Capture screenshot for unexpected errors
+                if driver is not None:
+                    try:
+                        _save_error_artifacts(driver=driver, kind="unexpected_error", message=f"Worker {worker_id}: {trace_str[-500:]}")
+                    except Exception:
+                        pass
                 print(f"[Worker {worker_id}] [x] 本次注册流程意外中止:\\n{trace_str}")
 
                 if is_fatal_driver:
@@ -4048,6 +4579,9 @@ def worker(worker_id: int):
                     pass
             if proxy_dir and os.path.exists(proxy_dir):
                 shutil.rmtree(proxy_dir, ignore_errors=True)
+            # Release proxy back to pool
+            if proxy:
+                _proxy_pool.release(proxy)
 
         # 自由调整休眠时间
         sleep_min = int(os.environ.get("SLEEP_MIN", "5"))

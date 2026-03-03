@@ -16,14 +16,15 @@ x-register-common: &register-common
   environment:
     - DATA_DIR=/data
     - DEBUG_TRACE=0
-    - DUMP_PAGE_BODY=0
-    - KEEP_ERROR_ARTIFACTS=0
-    - BLOCK_IMAGES=2
-    - BLOCK_CSS=2
-    - BLOCK_FONTS=2
+    - DUMP_PAGE_BODY=1
+    - KEEP_ERROR_ARTIFACTS=1
+    - DISABLE_PROXY=0
+    - BLOCK_IMAGES=0
+    - BLOCK_CSS=0
+    - BLOCK_FONTS=0
     - BLOCK_GOOGLE_OPT_GUIDE=2
     - BLOCK_NOISY_HOSTS=2
-    - CONCURRENCY=4
+    - CONCURRENCY=1
     - HEADLESS=1
     - ENABLE_REPAIRER=0
     - SLEEP_MIN=0
@@ -42,14 +43,15 @@ services:
       - DATA_DIR=/data
       - INSTANCE_ID=codex_register_1
       - DEBUG_TRACE=0
-      - DUMP_PAGE_BODY=0
-      - KEEP_ERROR_ARTIFACTS=0
-      - BLOCK_IMAGES=2
-      - BLOCK_CSS=2
-      - BLOCK_FONTS=2
+      - DUMP_PAGE_BODY=1
+      - KEEP_ERROR_ARTIFACTS=1
+      - DISABLE_PROXY=0
+      - BLOCK_IMAGES=0
+      - BLOCK_CSS=0
+      - BLOCK_FONTS=0
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
-      - CONCURRENCY=4
+      - CONCURRENCY=1
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
@@ -64,14 +66,15 @@ services:
       - DATA_DIR=/data
       - INSTANCE_ID=codex_register_2
       - DEBUG_TRACE=0
-      - DUMP_PAGE_BODY=0
-      - KEEP_ERROR_ARTIFACTS=0
-      - BLOCK_IMAGES=2
-      - BLOCK_CSS=2
-      - BLOCK_FONTS=2
+      - DUMP_PAGE_BODY=1
+      - KEEP_ERROR_ARTIFACTS=1
+      - DISABLE_PROXY=0
+      - BLOCK_IMAGES=0
+      - BLOCK_CSS=0
+      - BLOCK_FONTS=0
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
-      - CONCURRENCY=4
+      - CONCURRENCY=1
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
@@ -86,14 +89,15 @@ services:
       - DATA_DIR=/data
       - INSTANCE_ID=codex_register_3
       - DEBUG_TRACE=0
-      - DUMP_PAGE_BODY=0
-      - KEEP_ERROR_ARTIFACTS=0
-      - BLOCK_IMAGES=2
-      - BLOCK_CSS=2
-      - BLOCK_FONTS=2
+      - DUMP_PAGE_BODY=1
+      - KEEP_ERROR_ARTIFACTS=1
+      - DISABLE_PROXY=0
+      - BLOCK_IMAGES=0
+      - BLOCK_CSS=0
+      - BLOCK_FONTS=0
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
-      - CONCURRENCY=4
+      - CONCURRENCY=1
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
@@ -108,14 +112,15 @@ services:
       - DATA_DIR=/data
       - INSTANCE_ID=codex_register_4
       - DEBUG_TRACE=0
-      - DUMP_PAGE_BODY=0
-      - KEEP_ERROR_ARTIFACTS=0
-      - BLOCK_IMAGES=2
-      - BLOCK_CSS=2
-      - BLOCK_FONTS=2
+      - DUMP_PAGE_BODY=1
+      - KEEP_ERROR_ARTIFACTS=1
+      - DISABLE_PROXY=0
+      - BLOCK_IMAGES=0
+      - BLOCK_CSS=0
+      - BLOCK_FONTS=0
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
-      - CONCURRENCY=4
+      - CONCURRENCY=1
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
@@ -130,14 +135,360 @@ services:
       - DATA_DIR=/data
       - INSTANCE_ID=codex_register_5
       - DEBUG_TRACE=0
-      - DUMP_PAGE_BODY=0
-      - KEEP_ERROR_ARTIFACTS=0
-      - BLOCK_IMAGES=2
-      - BLOCK_CSS=2
-      - BLOCK_FONTS=2
+      - DUMP_PAGE_BODY=1
+      - KEEP_ERROR_ARTIFACTS=1
+      - DISABLE_PROXY=0
+      - BLOCK_IMAGES=0
+      - BLOCK_CSS=0
+      - BLOCK_FONTS=0
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
-      - CONCURRENCY=4
+      - CONCURRENCY=1
+      - HEADLESS=1
+      - ENABLE_REPAIRER=0
+      - SLEEP_MIN=0
+      - SLEEP_MAX=2
+      - MAILCREATE_POLL_SECONDS=0.8
+      - FATAL_DRIVER_RESTART_THRESHOLD=3
+
+  codex_register_6:
+    <<: *register-common
+    container_name: codex_register_6
+    environment:
+      - DATA_DIR=/data
+      - INSTANCE_ID=codex_register_6
+      - DEBUG_TRACE=0
+      - DUMP_PAGE_BODY=1
+      - KEEP_ERROR_ARTIFACTS=1
+      - DISABLE_PROXY=0
+      - BLOCK_IMAGES=0
+      - BLOCK_CSS=0
+      - BLOCK_FONTS=0
+      - BLOCK_GOOGLE_OPT_GUIDE=2
+      - BLOCK_NOISY_HOSTS=2
+      - CONCURRENCY=1
+      - HEADLESS=1
+      - ENABLE_REPAIRER=0
+      - SLEEP_MIN=0
+      - SLEEP_MAX=2
+      - MAILCREATE_POLL_SECONDS=0.8
+      - FATAL_DRIVER_RESTART_THRESHOLD=3
+
+  codex_register_7:
+    <<: *register-common
+    container_name: codex_register_7
+    environment:
+      - DATA_DIR=/data
+      - INSTANCE_ID=codex_register_7
+      - DEBUG_TRACE=0
+      - DUMP_PAGE_BODY=1
+      - KEEP_ERROR_ARTIFACTS=1
+      - DISABLE_PROXY=0
+      - BLOCK_IMAGES=0
+      - BLOCK_CSS=0
+      - BLOCK_FONTS=0
+      - BLOCK_GOOGLE_OPT_GUIDE=2
+      - BLOCK_NOISY_HOSTS=2
+      - CONCURRENCY=1
+      - HEADLESS=1
+      - ENABLE_REPAIRER=0
+      - SLEEP_MIN=0
+      - SLEEP_MAX=2
+      - MAILCREATE_POLL_SECONDS=0.8
+      - FATAL_DRIVER_RESTART_THRESHOLD=3
+
+  codex_register_8:
+    <<: *register-common
+    container_name: codex_register_8
+    environment:
+      - DATA_DIR=/data
+      - INSTANCE_ID=codex_register_8
+      - DEBUG_TRACE=0
+      - DUMP_PAGE_BODY=1
+      - KEEP_ERROR_ARTIFACTS=1
+      - DISABLE_PROXY=0
+      - BLOCK_IMAGES=0
+      - BLOCK_CSS=0
+      - BLOCK_FONTS=0
+      - BLOCK_GOOGLE_OPT_GUIDE=2
+      - BLOCK_NOISY_HOSTS=2
+      - CONCURRENCY=1
+      - HEADLESS=1
+      - ENABLE_REPAIRER=0
+      - SLEEP_MIN=0
+      - SLEEP_MAX=2
+      - MAILCREATE_POLL_SECONDS=0.8
+      - FATAL_DRIVER_RESTART_THRESHOLD=3
+
+  codex_register_9:
+    <<: *register-common
+    container_name: codex_register_9
+    environment:
+      - DATA_DIR=/data
+      - INSTANCE_ID=codex_register_9
+      - DEBUG_TRACE=0
+      - DUMP_PAGE_BODY=1
+      - KEEP_ERROR_ARTIFACTS=1
+      - DISABLE_PROXY=0
+      - BLOCK_IMAGES=0
+      - BLOCK_CSS=0
+      - BLOCK_FONTS=0
+      - BLOCK_GOOGLE_OPT_GUIDE=2
+      - BLOCK_NOISY_HOSTS=2
+      - CONCURRENCY=1
+      - HEADLESS=1
+      - ENABLE_REPAIRER=0
+      - SLEEP_MIN=0
+      - SLEEP_MAX=2
+      - MAILCREATE_POLL_SECONDS=0.8
+      - FATAL_DRIVER_RESTART_THRESHOLD=3
+
+  codex_register_10:
+    <<: *register-common
+    container_name: codex_register_10
+    environment:
+      - DATA_DIR=/data
+      - INSTANCE_ID=codex_register_10
+      - DEBUG_TRACE=0
+      - DUMP_PAGE_BODY=1
+      - KEEP_ERROR_ARTIFACTS=1
+      - DISABLE_PROXY=0
+      - BLOCK_IMAGES=0
+      - BLOCK_CSS=0
+      - BLOCK_FONTS=0
+      - BLOCK_GOOGLE_OPT_GUIDE=2
+      - BLOCK_NOISY_HOSTS=2
+      - CONCURRENCY=1
+      - HEADLESS=1
+      - ENABLE_REPAIRER=0
+      - SLEEP_MIN=0
+      - SLEEP_MAX=2
+      - MAILCREATE_POLL_SECONDS=0.8
+      - FATAL_DRIVER_RESTART_THRESHOLD=3
+
+  codex_register_11:
+    <<: *register-common
+    container_name: codex_register_11
+    environment:
+      - DATA_DIR=/data
+      - INSTANCE_ID=codex_register_11
+      - DEBUG_TRACE=0
+      - DUMP_PAGE_BODY=1
+      - KEEP_ERROR_ARTIFACTS=1
+      - DISABLE_PROXY=0
+      - BLOCK_IMAGES=0
+      - BLOCK_CSS=0
+      - BLOCK_FONTS=0
+      - BLOCK_GOOGLE_OPT_GUIDE=2
+      - BLOCK_NOISY_HOSTS=2
+      - CONCURRENCY=1
+      - HEADLESS=1
+      - ENABLE_REPAIRER=0
+      - SLEEP_MIN=0
+      - SLEEP_MAX=2
+      - MAILCREATE_POLL_SECONDS=0.8
+      - FATAL_DRIVER_RESTART_THRESHOLD=3
+
+  codex_register_12:
+    <<: *register-common
+    container_name: codex_register_12
+    environment:
+      - DATA_DIR=/data
+      - INSTANCE_ID=codex_register_12
+      - DEBUG_TRACE=0
+      - DUMP_PAGE_BODY=1
+      - KEEP_ERROR_ARTIFACTS=1
+      - DISABLE_PROXY=0
+      - BLOCK_IMAGES=0
+      - BLOCK_CSS=0
+      - BLOCK_FONTS=0
+      - BLOCK_GOOGLE_OPT_GUIDE=2
+      - BLOCK_NOISY_HOSTS=2
+      - CONCURRENCY=1
+      - HEADLESS=1
+      - ENABLE_REPAIRER=0
+      - SLEEP_MIN=0
+      - SLEEP_MAX=2
+      - MAILCREATE_POLL_SECONDS=0.8
+      - FATAL_DRIVER_RESTART_THRESHOLD=3
+
+  codex_register_13:
+    <<: *register-common
+    container_name: codex_register_13
+    environment:
+      - DATA_DIR=/data
+      - INSTANCE_ID=codex_register_13
+      - DEBUG_TRACE=0
+      - DUMP_PAGE_BODY=1
+      - KEEP_ERROR_ARTIFACTS=1
+      - DISABLE_PROXY=0
+      - BLOCK_IMAGES=0
+      - BLOCK_CSS=0
+      - BLOCK_FONTS=0
+      - BLOCK_GOOGLE_OPT_GUIDE=2
+      - BLOCK_NOISY_HOSTS=2
+      - CONCURRENCY=1
+      - HEADLESS=1
+      - ENABLE_REPAIRER=0
+      - SLEEP_MIN=0
+      - SLEEP_MAX=2
+      - MAILCREATE_POLL_SECONDS=0.8
+      - FATAL_DRIVER_RESTART_THRESHOLD=3
+
+  codex_register_14:
+    <<: *register-common
+    container_name: codex_register_14
+    environment:
+      - DATA_DIR=/data
+      - INSTANCE_ID=codex_register_14
+      - DEBUG_TRACE=0
+      - DUMP_PAGE_BODY=1
+      - KEEP_ERROR_ARTIFACTS=1
+      - DISABLE_PROXY=0
+      - BLOCK_IMAGES=0
+      - BLOCK_CSS=0
+      - BLOCK_FONTS=0
+      - BLOCK_GOOGLE_OPT_GUIDE=2
+      - BLOCK_NOISY_HOSTS=2
+      - CONCURRENCY=1
+      - HEADLESS=1
+      - ENABLE_REPAIRER=0
+      - SLEEP_MIN=0
+      - SLEEP_MAX=2
+      - MAILCREATE_POLL_SECONDS=0.8
+      - FATAL_DRIVER_RESTART_THRESHOLD=3
+
+  codex_register_15:
+    <<: *register-common
+    container_name: codex_register_15
+    environment:
+      - DATA_DIR=/data
+      - INSTANCE_ID=codex_register_15
+      - DEBUG_TRACE=0
+      - DUMP_PAGE_BODY=1
+      - KEEP_ERROR_ARTIFACTS=1
+      - DISABLE_PROXY=0
+      - BLOCK_IMAGES=0
+      - BLOCK_CSS=0
+      - BLOCK_FONTS=0
+      - BLOCK_GOOGLE_OPT_GUIDE=2
+      - BLOCK_NOISY_HOSTS=2
+      - CONCURRENCY=1
+      - HEADLESS=1
+      - ENABLE_REPAIRER=0
+      - SLEEP_MIN=0
+      - SLEEP_MAX=2
+      - MAILCREATE_POLL_SECONDS=0.8
+      - FATAL_DRIVER_RESTART_THRESHOLD=3
+
+  codex_register_16:
+    <<: *register-common
+    container_name: codex_register_16
+    environment:
+      - DATA_DIR=/data
+      - INSTANCE_ID=codex_register_16
+      - DEBUG_TRACE=0
+      - DUMP_PAGE_BODY=1
+      - KEEP_ERROR_ARTIFACTS=1
+      - DISABLE_PROXY=0
+      - BLOCK_IMAGES=0
+      - BLOCK_CSS=0
+      - BLOCK_FONTS=0
+      - BLOCK_GOOGLE_OPT_GUIDE=2
+      - BLOCK_NOISY_HOSTS=2
+      - CONCURRENCY=1
+      - HEADLESS=1
+      - ENABLE_REPAIRER=0
+      - SLEEP_MIN=0
+      - SLEEP_MAX=2
+      - MAILCREATE_POLL_SECONDS=0.8
+      - FATAL_DRIVER_RESTART_THRESHOLD=3
+
+  codex_register_17:
+    <<: *register-common
+    container_name: codex_register_17
+    environment:
+      - DATA_DIR=/data
+      - INSTANCE_ID=codex_register_17
+      - DEBUG_TRACE=0
+      - DUMP_PAGE_BODY=1
+      - KEEP_ERROR_ARTIFACTS=1
+      - DISABLE_PROXY=0
+      - BLOCK_IMAGES=0
+      - BLOCK_CSS=0
+      - BLOCK_FONTS=0
+      - BLOCK_GOOGLE_OPT_GUIDE=2
+      - BLOCK_NOISY_HOSTS=2
+      - CONCURRENCY=1
+      - HEADLESS=1
+      - ENABLE_REPAIRER=0
+      - SLEEP_MIN=0
+      - SLEEP_MAX=2
+      - MAILCREATE_POLL_SECONDS=0.8
+      - FATAL_DRIVER_RESTART_THRESHOLD=3
+
+  codex_register_18:
+    <<: *register-common
+    container_name: codex_register_18
+    environment:
+      - DATA_DIR=/data
+      - INSTANCE_ID=codex_register_18
+      - DEBUG_TRACE=0
+      - DUMP_PAGE_BODY=1
+      - KEEP_ERROR_ARTIFACTS=1
+      - DISABLE_PROXY=0
+      - BLOCK_IMAGES=0
+      - BLOCK_CSS=0
+      - BLOCK_FONTS=0
+      - BLOCK_GOOGLE_OPT_GUIDE=2
+      - BLOCK_NOISY_HOSTS=2
+      - CONCURRENCY=1
+      - HEADLESS=1
+      - ENABLE_REPAIRER=0
+      - SLEEP_MIN=0
+      - SLEEP_MAX=2
+      - MAILCREATE_POLL_SECONDS=0.8
+      - FATAL_DRIVER_RESTART_THRESHOLD=3
+
+  codex_register_19:
+    <<: *register-common
+    container_name: codex_register_19
+    environment:
+      - DATA_DIR=/data
+      - INSTANCE_ID=codex_register_19
+      - DEBUG_TRACE=0
+      - DUMP_PAGE_BODY=1
+      - KEEP_ERROR_ARTIFACTS=1
+      - DISABLE_PROXY=0
+      - BLOCK_IMAGES=0
+      - BLOCK_CSS=0
+      - BLOCK_FONTS=0
+      - BLOCK_GOOGLE_OPT_GUIDE=2
+      - BLOCK_NOISY_HOSTS=2
+      - CONCURRENCY=1
+      - HEADLESS=1
+      - ENABLE_REPAIRER=0
+      - SLEEP_MIN=0
+      - SLEEP_MAX=2
+      - MAILCREATE_POLL_SECONDS=0.8
+      - FATAL_DRIVER_RESTART_THRESHOLD=3
+
+  codex_register_20:
+    <<: *register-common
+    container_name: codex_register_20
+    environment:
+      - DATA_DIR=/data
+      - INSTANCE_ID=codex_register_20
+      - DEBUG_TRACE=0
+      - DUMP_PAGE_BODY=1
+      - KEEP_ERROR_ARTIFACTS=1
+      - DISABLE_PROXY=0
+      - BLOCK_IMAGES=0
+      - BLOCK_CSS=0
+      - BLOCK_FONTS=0
+      - BLOCK_GOOGLE_OPT_GUIDE=2
+      - BLOCK_NOISY_HOSTS=2
+      - CONCURRENCY=1
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
@@ -182,6 +533,7 @@ services:
       - DATA_DIR=/data
       - INSTANCE_ID=codex_repairer_1
       - REPAIRER_POLL_SECONDS=5
+      - DISABLE_PROXY=0
       - HEADLESS=1
     command: ["python", "repairer.py"]
     restart: always
