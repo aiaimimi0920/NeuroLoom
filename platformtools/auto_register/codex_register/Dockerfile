@@ -47,9 +47,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 复制主逻辑脚本 + uploader
+# 复制主逻辑脚本 + uploader + stealth evasion scripts
 COPY main.py .
 COPY uploader.py .
+COPY stealth_scripts/ ./stealth_scripts/
 
 # 设置环境变量，避免 Python 输出被缓冲
 ENV PYTHONUNBUFFERED=1

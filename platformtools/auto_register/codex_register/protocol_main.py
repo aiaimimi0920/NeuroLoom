@@ -310,6 +310,15 @@ REGISTER_PROXY_REQUIRED = (os.environ.get("REGISTER_PROXY_REQUIRED", "1") or "1"
     "no",
 )
 
+# 显式关闭应用内代理池（用于改走容器默认网络路径）。
+DISABLE_PROXY = (os.environ.get("DISABLE_PROXY", "0") or "0").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+REQUIRE_PROXY = REGISTER_PROXY_REQUIRED and (not DISABLE_PROXY)
+
 PROXY_ROTATE_SECONDS = int(os.environ.get("PROXY_ROTATE_SECONDS", "600") or "600")
 if PROXY_ROTATE_SECONDS < 0:
     PROXY_ROTATE_SECONDS = 0
@@ -1278,7 +1287,7 @@ def register_protocol(proxy: str | None = None) -> tuple[str, str]:
         raise RuntimeError("protocol flow requires curl_cffi; please install curl_cffi")
 
     proxies = _proxy_dict_for_requests(proxy)
-    if REGISTER_PROXY_REQUIRED and not proxies:
+    if REQUIRE_PROXY and not proxies:
         raise RuntimeError("register_proxy_required no_proxy_available flow=protocol")
 
     proxy_id = str(proxy or "DIRECT")
@@ -1467,6 +1476,8 @@ def _partition_proxies(proxies: list[str]) -> list[str]:
 
 
 def load_proxies() -> list[str]:
+    if DISABLE_PROXY:
+        return []
     proxy_file = _data_path("proxies.txt")
     if os.path.exists(proxy_file):
         with open(proxy_file, "r", encoding="utf-8") as f:
@@ -1488,7 +1499,7 @@ def worker(worker_id: int) -> None:
             assigned_at=assigned_at,
         )
 
-        if not proxy and REGISTER_PROXY_REQUIRED:
+        if not proxy and REQUIRE_PROXY:
             _stats_inc("proxy_error", err="register_proxy_required no_proxy_available", stage="stage_other")
             _log(
                 f"[Protocol Worker {worker_id}] [x] register_proxy_required no_proxy_available "
@@ -1499,6 +1510,14 @@ def worker(worker_id: int) -> None:
 
         if proxies and not proxy:
             _stats_inc("cooldown_wait")
+            now_ts = time.time()
+            with proxy_state_lock:
+                cooling = sum(1 for p in proxies if float(_PROXY_COOLDOWN_UNTIL.get(p, 0.0) or 0.0) > now_ts)
+            _log(
+                f"[Protocol Worker {worker_id}] [diag] proxy_pool_exhausted "
+                f"total={len(proxies)} cooling={cooling} require_proxy={int(REQUIRE_PROXY)}",
+                force=True,
+            )
             time.sleep(1.0)
             continue
 
@@ -1588,10 +1607,17 @@ def worker(worker_id: int) -> None:
             cls = _classify_error(e)
             stg = _infer_stage_from_error(str(e))
             _stats_inc(cls, err=e, stage=stg)
-            _log(f"[Protocol Worker {worker_id}] [x] {e}")
+
+            cool_sec = _cooldown_seconds_for_error_class(cls) if proxy else 0
+            err_one_line = " ".join(str(e).splitlines())
+            err_one_line = err_one_line[:360]
+            _log(
+                f"[Protocol Worker {worker_id}] [diag] fail cls={cls} stage={stg} "
+                f"proxy={(proxy or 'DIRECT')} cool={cool_sec}s err={err_one_line}",
+                force=True,
+            )
 
             if proxy:
-                cool_sec = _cooldown_seconds_for_error_class(cls)
                 _proxy_mark_cooldown(proxy, cool_sec)
             current_proxy = None
 

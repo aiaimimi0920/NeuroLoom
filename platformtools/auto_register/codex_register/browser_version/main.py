@@ -211,6 +211,15 @@ REGISTER_PROXY_REQUIRED = (os.environ.get("REGISTER_PROXY_REQUIRED", "1") or "1"
     "no",
 )
 
+# 显式关闭应用内代理池（用于改走容器默认网络路径）。
+DISABLE_PROXY = (os.environ.get("DISABLE_PROXY", "0") or "0").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+REQUIRE_PROXY = REGISTER_PROXY_REQUIRED and (not DISABLE_PROXY)
+
 
 def _data_path(*parts: str) -> str:
     return os.path.join(DATA_DIR, *parts)
@@ -2344,6 +2353,12 @@ def smart_wait(driver, by, value, timeout=20, *, debug_kind: str = "", debug_mes
         "something went wrong",
         "an error occurred",
     ]
+    challenge_hints = [
+        "verify you are human",
+        "performing security verification",
+        "just a moment",
+        "cloudflare",
+    ]
 
     end_time = time.time() + timeout
     while time.time() < end_time:
@@ -2355,8 +2370,16 @@ def smart_wait(driver, by, value, timeout=20, *, debug_kind: str = "", debug_mes
                 )
                 or ""
             ).lower()
+            title_text = str(driver.execute_script("return (document && document.title) ? document.title : '';") or "").lower()
+            cur_url = str(getattr(driver, "current_url", "") or "").lower()
+            joined = "\n".join([title_text, page_text, cur_url])
+
             if any(h in page_text for h in fatal_hints):
                 raise RuntimeError("fatal ui error page detected (糟糕/出错了/oops)，end this round")
+            if any(h in joined for h in challenge_hints):
+                if debug_kind and "password" in debug_kind.lower():
+                    raise RuntimeError("blocked challenge page before password step")
+                raise RuntimeError("blocked challenge page")
 
             # Check for the actual target element
             el = driver.find_element(by, value)
@@ -2460,6 +2483,26 @@ def register(driver, proxy=None) -> tuple[str, str]:
     print("Enter pressed")
 
     # fill password
+    def _is_human_verify_page() -> bool:
+        try:
+            body_text = str(
+                driver.execute_script(
+                    "return (document && document.body && document.body.innerText) ? document.body.innerText : '';"
+                )
+                or ""
+            ).lower()
+            title_text = str(driver.execute_script("return (document && document.title) ? document.title : '';") or "").lower()
+            cur_url = str(getattr(driver, "current_url", "") or "").lower()
+            joined = "\n".join([title_text, body_text, cur_url])
+            return (
+                "verify you are human" in joined
+                or "performing security verification" in joined
+                or "just a moment" in joined
+                or "cloudflare" in joined
+            )
+        except Exception:
+            return False
+
     try:
         pwd_input = smart_wait(
             driver,
@@ -2470,14 +2513,21 @@ def register(driver, proxy=None) -> tuple[str, str]:
             debug_message=f"password input not found; email={email}",
         )
     except Exception:
-        pwd_input = smart_wait(
-            driver,
-            By.CSS_SELECTOR,
-            'input[type="password"], input[name*="password" i], input[id*="password" i]',
-            timeout=15,
-            debug_kind="password_input_fallback",
-            debug_message=f"password input fallback not found; email={email}",
-        )
+        if _is_human_verify_page():
+            raise RuntimeError("blocked challenge page before password step")
+        try:
+            pwd_input = smart_wait(
+                driver,
+                By.CSS_SELECTOR,
+                'input[type="password"], input[name*="password" i], input[id*="password" i]',
+                timeout=15,
+                debug_kind="password_input_fallback",
+                debug_message=f"password input fallback not found; email={email}",
+            )
+        except Exception:
+            if _is_human_verify_page():
+                raise RuntimeError("blocked challenge page before password step")
+            raise
     _dbg("ui", "reach password input", driver=driver)
     print("Reach password input")
     pwd = generate_pwd()
@@ -4150,6 +4200,8 @@ def _repairer_loop() -> None:
 
 
 def load_proxies() -> list[str]:
+    if DISABLE_PROXY:
+        return []
     proxy_file = _data_path("proxies.txt")
     if os.path.exists(proxy_file):
         with open(proxy_file, "r", encoding="utf-8") as f:
@@ -4255,7 +4307,7 @@ def worker(worker_id: int):
 
         if proxy:
             print(f"[Worker {worker_id}] ---> 使用代理: {proxy} <---")
-        elif REGISTER_PROXY_REQUIRED:
+        elif REQUIRE_PROXY:
             print(
                 f"[Worker {worker_id}] [x] register_proxy_required no_proxy_available "
                 f"flow=browser headless={headless_v}"

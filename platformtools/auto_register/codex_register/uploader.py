@@ -351,6 +351,11 @@ def _upload_batch(claimed_items: list[tuple[str, str]], *, timeout: int) -> tupl
         f"[uploader] batch post done: files_claimed={n} files_sent={len(accounts)} "
         f"http={status} prepare_ms={prepare_ms:.1f} http_ms={http_ms:.1f}"
     )
+    preview = (text or "").replace("\n", " ").replace("\r", " ")[:200]
+    print(
+        f"[uploader][diag] register_resp http={status} "
+        f"body_preview={preview}"
+    )
 
     if 200 <= status < 300:
         try:
