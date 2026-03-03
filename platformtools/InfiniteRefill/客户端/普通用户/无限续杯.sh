@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 设计约束：把【无限续杯】作为“配置任务入口”（macOS/Linux）。
+# 设计约束：把【无限续杯】作为"配置任务入口"（macOS/Linux）。
 # - 不带参数：菜单（可输出 cron 配置行 / 单次续杯 / 自动清理）
 # - 带参数（服务器地址 用户密钥）：直接执行一次【单次续杯】
 
@@ -10,11 +10,11 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CFG="$SCRIPT_DIR/无限续杯配置.env"
 ROOT_CFG="$ROOT_DIR/无限续杯配置.env"
 
-服务器地址="${1:-}"
-用户密钥="${2:-}"
+server_url="${1:-}"
+user_key="${2:-}"
 
-if [[ -n "$服务器地址" && -n "$用户密钥" ]]; then
-  bash "$SCRIPT_DIR/单次续杯.sh" "$服务器地址" "$用户密钥"
+if [[ -n "$server_url" && -n "$user_key" ]]; then
+  bash "$SCRIPT_DIR/单次续杯.sh" "$server_url" "$user_key"
   exit 0
 fi
 
@@ -58,7 +58,7 @@ ensure_sync_links() {
   local manifest
   manifest="$target/.infinite_refill_sync_manifest.txt"
 
-  if [[ "${mode,,}" != "symlink" || -z "$target" ]]; then
+  if [[ "$(printf '%s' "$mode" | tr '[:upper:]' '[:lower:]')" != "symlink" || -z "$target" ]]; then
     return 0
   fi
 
@@ -102,13 +102,13 @@ ensure_sync_links() {
   done
 
   printf "%s\n" "${names[@]}" > "$manifest"
-  echo "[OK] 已确保同步软链接：$target（linked=$linked removed=$removed）"
+  echo "[OK] 已确保同步软链接：${target}（linked=${linked} removed=${removed}）"
 }
 
 menu() {
   echo
   echo "====== 无限续杯（配置入口 / macOS/Linux）======"
-  echo "配置文件：$CFG"
+  echo "配置文件：${CFG}"
   echo
   echo "1) 立即执行一次【单次续杯】（使用已保存配置）"
   echo "2) 设置/更新【无限续杯配置】（服务器地址/用户密钥/间隔）"
@@ -121,57 +121,57 @@ menu() {
 
 while true; do
   menu
-  read -r -p "请选择 (1-5，默认 3)：" 选择
-  选择="${选择:-3}"
+  read -r -p "请选择 (1-5，默认 3)：" choice
+  choice="${choice:-3}"
 
-  case "$选择" in
+  case "$choice" in
     1)
       bash "$SCRIPT_DIR/单次续杯.sh"
       ;;
     2)
       load_cfg
-      默认服务器地址="${SERVER_URL:-}"
-      默认用户密钥="${USER_KEY:-}"
+      default_server_url="${SERVER_URL:-}"
+      default_user_key="${USER_KEY:-}"
 
-      默认账户目录="$SCRIPT_DIR/accounts"
-      if [[ ! -d "$默认账户目录" ]]; then
+      default_accounts_dir="$SCRIPT_DIR/accounts"
+      if [[ ! -d "$default_accounts_dir" ]]; then
         for d in "$SCRIPT_DIR"/*; do
           [[ -d "$d/accounts" ]] || continue
-          默认账户目录="$d/accounts"
+          default_accounts_dir="$d/accounts"
           break
         done
       fi
-      mkdir -p "$默认账户目录"
+      mkdir -p "$default_accounts_dir"
 
-      read -r -p "请输入服务器地址（填空则使用默认值：$默认服务器地址）: " 服务器地址
-      服务器地址="${服务器地址:-$默认服务器地址}"
-      read -r -p "请输入用户密钥（填空则使用默认值：$默认用户密钥）: " 用户密钥
-      用户密钥="${用户密钥:-$默认用户密钥}"
+      read -r -p "请输入服务器地址（填空则使用默认值：${default_server_url}）: " input_server_url
+      input_server_url="${input_server_url:-$default_server_url}"
+      read -r -p "请输入用户密钥（填空则使用默认值：${default_user_key}）: " input_user_key
+      input_user_key="${input_user_key:-$default_user_key}"
 
-      检测同步目录=""
+      detected_sync_dir=""
       if [[ -d "$HOME/.cli-proxy-api" ]]; then
-        检测同步目录="$HOME/.cli-proxy-api"
+        detected_sync_dir="$HOME/.cli-proxy-api"
       elif [[ -d "$HOME/cli-proxy-api" ]]; then
-        检测同步目录="$HOME/cli-proxy-api"
+        detected_sync_dir="$HOME/cli-proxy-api"
       else
-        检测同步目录="$HOME/.cli-proxy-api"
+        detected_sync_dir="$HOME/.cli-proxy-api"
       fi
-      echo "[INFO] 检测到默认同步目录：$检测同步目录"
-      read -r -p "是否同步到CLI目录（y/N）: " 是否同步
-      if [[ "${是否同步:-N}" =~ ^[Yy]$ ]]; then
-        同步模式="symlink"
-        read -r -p "请选择同步目录（填空则使用默认值：$检测同步目录）: " 同步目录
-        同步目录="${同步目录:-$检测同步目录}"
+      echo "[INFO] 检测到默认同步目录：${detected_sync_dir}"
+      read -r -p "是否同步到CLI目录（y/N）: " do_sync
+      if [[ "${do_sync:-N}" =~ ^[Yy]$ ]]; then
+        sync_mode="symlink"
+        read -r -p "请选择同步目录（填空则使用默认值：${detected_sync_dir}）: " sync_dir
+        sync_dir="${sync_dir:-$detected_sync_dir}"
       else
-        同步模式="none"
-        同步目录=""
+        sync_mode="none"
+        sync_dir=""
       fi
 
-      read -r -p "请输入执行间隔（分钟，默认 30）: " 间隔分钟
-      间隔分钟="${间隔分钟:-30}"
-      清理间隔="$间隔分钟"
+      read -r -p "请输入执行间隔（分钟，默认 30）: " interval_min
+      interval_min="${interval_min:-30}"
+      clean_interval="$interval_min"
 
-      if [[ -z "$服务器地址" || -z "$用户密钥" ]]; then
+      if [[ -z "$input_server_url" || -z "$input_user_key" ]]; then
         echo "[ERROR] 服务器地址/用户密钥不能为空"
         continue
       fi
@@ -179,22 +179,22 @@ while true; do
       cat >"$CFG" <<EOF
 # 无限续杯配置（本地文件）
 # 注意：请勿分享/上传此文件。
-SERVER_URL=$服务器地址
-USER_KEY=$用户密钥
-ACCOUNTS_DIR=$默认账户目录
+SERVER_URL=$input_server_url
+USER_KEY=$input_user_key
+ACCOUNTS_DIR=$default_accounts_dir
 TARGET_POOL_SIZE=10
 TRIGGER_REMAINING=2
-INTERVAL_MINUTES=$间隔分钟
+INTERVAL_MINUTES=$interval_min
 AUTO_REFILL_AFTER_CLEAN=1
-AUTO_CLEAN_INTERVAL_MINUTES=$清理间隔
+AUTO_CLEAN_INTERVAL_MINUTES=$clean_interval
 AUTO_CLEAN_APPLY=1
 CLEAN_DELETE_STATUSES=401,429
 CLEAN_EXPIRED_DAYS=30
-SYNC_MODE=$同步模式
-SYNC_TARGET_DIR=$同步目录
+SYNC_MODE=$sync_mode
+SYNC_TARGET_DIR=$sync_dir
 EOF
       echo "[OK] 已保存：$CFG"
-      SYNC_MODE="$同步模式" SYNC_TARGET_DIR="$同步目录" ACCOUNTS_DIR="$默认账户目录" ensure_sync_links
+      SYNC_MODE="$sync_mode" SYNC_TARGET_DIR="$sync_dir" ACCOUNTS_DIR="$default_accounts_dir" ensure_sync_links
       ;;
     3)
       load_cfg
@@ -215,7 +215,7 @@ EOF
       exit 0
       ;;
     *)
-      echo "[WARN] 无效选择：$选择"
+      echo "[WARN] 无效选择：${choice}"
       ;;
   esac
 

@@ -216,7 +216,7 @@ if [[ "$APPLY" == "1" && "$deleted" -gt 0 ]]; then
 
   missing=$((target - remain))
   if [[ "$missing" -gt 0 ]]; then
-    echo "[INFO] 清理后剩余=$remain 目标=$target：缺口=$missing" | tee -a "$REPORT"
+    echo "[INFO] 清理后剩余=$remain 目标=${target}：缺口=$missing" | tee -a "$REPORT"
 
     if [[ "$auto_refill" != "1" ]]; then
       echo "[INFO] 未开启自动补齐（AUTO_REFILL_AFTER_CLEAN=1 才会自动续杯）" | tee -a "$REPORT"
@@ -233,7 +233,7 @@ if [[ "$APPLY" == "1" && "$deleted" -gt 0 ]]; then
     body="$SCRIPT_DIR/out/_topup_body.json"
     echo "{\"target_pool_size\":$target,\"reports\":[]}" > "$body"
 
-    echo "[INFO] 开始补齐：请求一次 topup（目标=$target），追加写入：$OUT_REFILL" | tee -a "$REPORT"
+    echo "[INFO] 开始补齐：请求一次 topup（目标=${target}），追加写入：${OUT_REFILL}" | tee -a "$REPORT"
 
     resp="$(curl -sS -X POST "$SERVER_URL/v1/refill/topup" \
       -H "X-User-Key: $USER_KEY" \

@@ -123,7 +123,7 @@ invalid=0
 
 sync_managed_json() {
   local mode target
-  mode="${SYNC_MODE,,}"
+  mode="$(printf '%s' "$SYNC_MODE" | tr '[:upper:]' '[:lower:]')"
   target="$SYNC_TARGET_DIR"
 
   [[ "$mode" == "none" || -z "$target" ]] && return 0
@@ -219,7 +219,7 @@ probe_one() {
 
   local ident
   if [[ -n "$email" ]]; then
-    ident="email:${email,,}"
+    ident="email:$(printf '%s' "$email" | tr '[:upper:]' '[:lower:]')"
   else
     ident="account_id:$aid"
   fi
@@ -322,7 +322,7 @@ done < "$REPORT_JSONL"
 sync_managed_json
 
 echo "[OK] 已完成单次续杯：新账号已写入 accounts-dir；失效(401/429/周配额耗尽映射429)文件已备份并删除。"
-if [[ "${SYNC_MODE,,}" != "none" && -n "$SYNC_TARGET_DIR" ]]; then
-  echo "[OK] 已同步 managed json 到：$SYNC_TARGET_DIR（mode=$SYNC_MODE）"
+if [[ "$(printf '%s' "$SYNC_MODE" | tr '[:upper:]' '[:lower:]')" != "none" && -n "$SYNC_TARGET_DIR" ]]; then
+  echo "[OK] 已同步 managed json 到：${SYNC_TARGET_DIR}（mode=${SYNC_MODE}）"
 fi
 echo "      输出：$OUT_DIR"
