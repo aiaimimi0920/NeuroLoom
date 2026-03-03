@@ -1779,7 +1779,8 @@ export default {
             if (type === "user") {
               for (let j = 0; j < assigned.length; j++) {
                 const a = assigned[j];
-                const accountFileName = `accounts/${String(j + 1).padStart(3, "0")}-${a.account_id}.json`;
+                const safeAccountId = String(a.account_id || "").trim();
+                const accountFileName = `accounts/codex-${safeAccountId || crypto.randomUUID()}.json`;
                 if (a.auth_json_text && a.auth_json_text.trim()) {
                   await zw.add(accountFileName, new TextReader(a.auth_json_text), encOpt);
                 } else {

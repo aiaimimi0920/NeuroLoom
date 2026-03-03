@@ -14,7 +14,7 @@ REM   Header: X-User-Key: <USER_KEY>
 REM   Body:
 REM     {"target_pool_size":10,"reports":[{"file_name":"x.json","email_hash":"...","account_id":"...","status_code":401,"probed_at":"2026-..Z"}]}
 REM   Resp:
-REM     {"ok":true,"accounts":[{"file_name":"无限续杯-001.json","download_url":"https://..."}], ...}
+REM     {"ok":true,"accounts":[{"file_name":"codex-<account_id>.json","download_url":"https://..."}], ...}
 
 set "SCRIPT_DIR=%~dp0"
 set "ROOT_DIR=%SCRIPT_DIR%..\.."
@@ -108,6 +108,9 @@ REM - 仅对本服务端请求使用 --noproxy "*" 强制直连，避免命中�
 if "%MODE_FROM_TASK%"=="0" echo [INFO] 服务器地址=%SERVER_URL%
 if "%MODE_FROM_TASK%"=="0" echo [INFO] accounts-dir=%ACCOUNTS_DIR%
 if "%MODE_FROM_TASK%"=="0" echo [INFO] 目标账户数=%TARGET_POOL_SIZE% 总持有上限=%TOTAL_HOLD_LIMIT% 触发规则=存在失效账号即续杯
+if "%MODE_FROM_TASK%"=="0" echo [DIAG] script=%~f0
+if "%MODE_FROM_TASK%"=="0" echo [DIAG] script_dir=%SCRIPT_DIR%
+if "%MODE_FROM_TASK%"=="0" if not exist "%~f0" echo [DIAG] script_missing=%~f0
 
 if "%MODE_SYNC_ALL%"=="1" goto :SYNC_ALL_PREP
 
@@ -151,7 +154,8 @@ for /f "usebackq delims=" %%F in (`dir /b /a-d "%ACCOUNTS_DIR%\*.json" 2^>nul`) 
   set /a TOTAL+=1
   set /a LAUNCHED+=1
   if "%MODE_FROM_TASK%"=="0" echo [PROBE] 启动 !TOTAL!: %%F
-  start "" /b cmd /d /c call "%~f0" --probe-one-worker "%ACCOUNTS_DIR%\%%F" "%%F" "%PROBE_DIR%\!TOTAL!" "%WHAM_PROXY_MODE%" "%WHAM_CONNECT_TIMEOUT%" "%WHAM_MAX_TIME%"
+  if "%MODE_FROM_TASK%"=="0" echo [DIAG] probe_cmd=call "%~f0" --probe-one-worker "%ACCOUNTS_DIR%\%%F" "%%F" "%PROBE_DIR%\!TOTAL!" "%WHAM_PROXY_MODE%" "%WHAM_CONNECT_TIMEOUT%" "%WHAM_MAX_TIME%"
+  start "" /b "%ComSpec%" /d /v:off /c ""%~f0" --probe-one-worker "%ACCOUNTS_DIR%\%%F" "%%F" "%PROBE_DIR%\!TOTAL!" "%WHAM_PROXY_MODE%" "%WHAM_CONNECT_TIMEOUT%" "%WHAM_MAX_TIME%""
   call :WAIT_FOR_PROBE_SLOT "%PROBE_DIR%" "!LAUNCHED!" "%PROBE_PARALLEL%"
 )
 
@@ -235,12 +239,14 @@ for %%S in ("%RESP_JSON%") do if %%~zS LSS 2 (
   goto :EXIT_MAIN
 )
 
+for /f "usebackq delims=" %%L in (`powershell -NoProfile -Command "$ErrorActionPreference='SilentlyContinue'; try{$r=Get-Content -Raw -LiteralPath '%RESP_JSON%'|ConvertFrom-Json; $i=0; foreach($a in @($r.accounts)){ if($i -ge 5){ break }; $i++; $n=(''+$a.file_name); if(-not $n){$n='(null)'}; Write-Output ('[DIAG] server account['+$i+'] file_name=' + $n) }}catch{}"`) do echo %%L
+
 REM 解析并写入 accounts（兼容 auth_json / download_url）
 set "WRITTEN_COUNT="
 set "SERVER_HOLD_LIMIT="
 set "PARSE_FAILED=0"
 set "PARSE_ERR_MSG="
-for /f "usebackq tokens=1,* delims==" %%A in (`powershell -NoProfile -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; $utf8NoBom=New-Object System.Text.UTF8Encoding($false); try{$r=Get-Content -Raw -LiteralPath '%RESP_JSON%'|ConvertFrom-Json}catch{Write-Output 'ERROR=bad response json'; exit 2}; if(-not $r.ok){Write-Output ('ERROR=' + ($r.error|Out-String)); exit 2}; $accs=@($r.accounts); $written=0; foreach($a in $accs){ $fn=$a.file_name; if(-not $fn){$fn=('无限续杯-' + [Guid]::NewGuid().ToString('N').Substring(0,8) + '.json')}; $dst=Join-Path '%ACCOUNTS_DIR%' $fn; if($null -ne $a.auth_json){ $canon=($a.auth_json | ConvertTo-Json -Depth 20 -Compress); [System.IO.File]::WriteAllText($dst, ($canon + [Environment]::NewLine), $utf8NoBom); $written++; continue }; $dl=($a.download_url|ForEach-Object{$_.ToString().Trim()}); if($dl){ try{ $raw=(Invoke-WebRequest -UseBasicParsing -Uri $dl -Method GET -TimeoutSec 30).Content; $obj=$raw | ConvertFrom-Json; $canon=($obj | ConvertTo-Json -Depth 20 -Compress); [System.IO.File]::WriteAllText($dst, ($canon + [Environment]::NewLine), $utf8NoBom); $written++; }catch{} } }; Write-Output ('WRITTEN=' + $written); $limit=$null; try{$limit=[int]$r.total_hold_limit}catch{}; if($null -eq $limit -or $limit -le 0){ try{$limit=[int]($r.account_limit.effective_account_limit)}catch{} }; if($null -ne $limit -and $limit -gt 0){ Write-Output ('TOTAL_HOLD_LIMIT=' + $limit) }"`) do (
+for /f "usebackq tokens=1,* delims==" %%A in (`powershell -NoProfile -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; $utf8NoBom=New-Object System.Text.UTF8Encoding($false); try{$r=Get-Content -Raw -LiteralPath '%RESP_JSON%'|ConvertFrom-Json}catch{Write-Output 'ERROR=bad response json'; exit 2}; if(-not $r.ok){Write-Output ('ERROR=' + ($r.error|Out-String)); exit 2}; $accs=@($r.accounts); $written=0; foreach($a in $accs){ $aid=(''+$a.account_id).Trim(); if($aid -and $aid -match '^[A-Za-z0-9._-]+$'){ $fn=('codex-' + $aid + '.json') } else { $fn=('codex-' + [Guid]::NewGuid().ToString() + '.json') }; $dst=Join-Path '%ACCOUNTS_DIR%' $fn; if($null -ne $a.auth_json){ $canon=($a.auth_json | ConvertTo-Json -Depth 20 -Compress); [System.IO.File]::WriteAllText($dst, ($canon + [Environment]::NewLine), $utf8NoBom); $written++; continue }; $dl=($a.download_url|ForEach-Object{$_.ToString().Trim()}); if($dl){ try{ $raw=(Invoke-WebRequest -UseBasicParsing -Uri $dl -Method GET -TimeoutSec 30).Content; $obj=$raw | ConvertFrom-Json; $canon=($obj | ConvertTo-Json -Depth 20 -Compress); [System.IO.File]::WriteAllText($dst, ($canon + [Environment]::NewLine), $utf8NoBom); $written++; }catch{} } }; Write-Output ('WRITTEN=' + $written); $limit=$null; try{$limit=[int]$r.total_hold_limit}catch{}; if($null -eq $limit -or $limit -le 0){ try{$limit=[int]($r.account_limit.effective_account_limit)}catch{} }; if($null -ne $limit -and $limit -gt 0){ Write-Output ('TOTAL_HOLD_LIMIT=' + $limit) }"`) do (
   if /I "%%A"=="ERROR" (
     set "PARSE_FAILED=1"
     set "PARSE_ERR_MSG=%%B"
@@ -278,7 +284,7 @@ if not "%SYNC_TARGET_DIR%"=="" if %WRITTEN_COUNT% GTR 0 (
     "$canWrite={ param($p) try{ if(-not (Test-Path -LiteralPath $p)){ New-Item -ItemType Directory -Path $p -Force | Out-Null }; $t=Join-Path $p '.write_test.tmp'; Set-Content -LiteralPath $t -Value 'ok' -Encoding ASCII; Remove-Item -LiteralPath $t -Force -ErrorAction SilentlyContinue; $true } catch { $false } };" ^
     "$target=$targetRaw; if(-not (& $canWrite $target)){ if(& $canWrite $fallback){ Write-Output ('[WARN] sync target 不可写，已回退到: ' + $fallback); $target=$fallback } else { Write-Output ('[WARN] sync target 不可写，已跳过同步: ' + $targetRaw); exit 0 } };" ^
     "$manifest=Join-Path $target '.infinite_refill_sync_manifest.txt';" ^
-    "$src=@(Get-ChildItem -LiteralPath $accounts -Filter '无限续杯-*.json' -File -ErrorAction SilentlyContinue); if($src.Count -eq 0){$src=@(Get-ChildItem -LiteralPath $accounts -Filter '*.json' -File -ErrorAction SilentlyContinue)};" ^
+    "$src=@(Get-ChildItem -LiteralPath $accounts -Filter 'codex-*.json' -File -ErrorAction SilentlyContinue); if($src.Count -eq 0){$src=@(Get-ChildItem -LiteralPath $accounts -Filter '*.json' -File -ErrorAction SilentlyContinue)};" ^
     "$names=@(); foreach($f in $src){ $names += $f.Name };" ^
     "$old=@(); if(Test-Path -LiteralPath $manifest){ $old=@(Get-Content -LiteralPath $manifest -ErrorAction SilentlyContinue | Where-Object { $_ -and $_.Trim() -ne '' }) };" ^
     "$removed=0; foreach($n in $old){ if($names -notcontains $n){ $tp=Join-Path $target $n; if(Test-Path -LiteralPath $tp){ $it=Get-Item -LiteralPath $tp -Force -ErrorAction SilentlyContinue; if($it -and (($it.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)){ Remove-Item -LiteralPath $tp -Force -ErrorAction SilentlyContinue; $removed++ } } } };" ^
@@ -304,12 +310,14 @@ if /I "%RUN_OUTPUT_MODE%"=="compact" (
   set "OUT_DIR=%TMP_BASE%\InfiniteRefill-syncall-%TS%"
 )
 set "RESP_JSON=%OUT_DIR%\sync_all_response.json"
+set "SYNC_PRE_LIST=%OUT_DIR%\sync_all_before_files.txt"
 if /I "%RUN_OUTPUT_MODE%"=="compact" if exist "%OUT_DIR%" rmdir /s /q "%OUT_DIR%" >nul 2>nul
 if not exist "%OUT_DIR%" mkdir "%OUT_DIR%" >nul 2>nul
 goto :SYNC_ALL
 
 :SYNC_ALL
 echo [INFO] 全量同步：POST %SERVER_URL%/v1/refill/sync-all
+(dir /b /a-d "%ACCOUNTS_DIR%\*" 2>nul) >"%SYNC_PRE_LIST%"
 curl -sS --connect-timeout 8 --max-time 30 --noproxy "*" -X POST "%SERVER_URL%/v1/refill/sync-all" ^
   -H "X-User-Key: %USER_KEY%" ^
   -H "Content-Type: application/json" ^
@@ -322,12 +330,20 @@ if not "%CURL_EC%"=="0" (
 )
 
 powershell -NoProfile -Command ^
-  "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; $utf8NoBom=New-Object System.Text.UTF8Encoding($false); try{$r=Get-Content -Raw -LiteralPath '%RESP_JSON%'|ConvertFrom-Json}catch{Write-Output '[ERROR] bad response json'; exit 2}; if(-not $r.ok){ $errObj=$r.error; if($null -eq $errObj){ $err='' } elseif($errObj -is [System.Array]){ $err=(($errObj|ForEach-Object{''+$_}) -join '; ') } else { $err=(''+$errObj) }; if($err -match 'not[-_]?found'){ Write-Output '[ERROR] sync-all 接口不存在：请先部署最新版服务端（包含 /v1/refill/sync-all）'; exit 2 }; if($err -match 'invalid user key|missing X-User-Key'){ Write-Output '[ERROR] 用户密钥无效：请在【设置/更新无限续杯配置】里重新填写正确 USER_KEY'; exit 2 }; Write-Output ('[ERROR] sync-all failed: ' + $err); exit 2}; $accs=@($r.accounts); if($accs.Count -le 0){Write-Output '[WARN] no accounts returned'; exit 0}; $written=0; foreach($a in $accs){ $fn=$a.file_name; if(-not $fn){$fn=('无限续杯-' + [Guid]::NewGuid().ToString('N').Substring(0,8) + '.json')}; $dst=Join-Path '%ACCOUNTS_DIR%' $fn; $dl=($a.download_url|ForEach-Object{$_.ToString().Trim()}); if($dl){ try{ $raw=(Invoke-WebRequest -UseBasicParsing -Uri $dl -Method GET -TimeoutSec 30).Content; $obj=$raw | ConvertFrom-Json; $canon=($obj | ConvertTo-Json -Depth 20 -Compress); [System.IO.File]::WriteAllText($dst, ($canon + [Environment]::NewLine), $utf8NoBom); $written++; }catch{} } }; Write-Output ('[INFO] 已同步账号：' + $written)"
+  "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; $utf8NoBom=New-Object System.Text.UTF8Encoding($false); try{$r=Get-Content -Raw -LiteralPath '%RESP_JSON%'|ConvertFrom-Json}catch{Write-Output '[ERROR] bad response json'; exit 2}; if(-not $r.ok){ $errObj=$r.error; if($null -eq $errObj){ $err='' } elseif($errObj -is [System.Array]){ $err=(($errObj|ForEach-Object{''+$_}) -join '; ') } else { $err=(''+$errObj) }; if($err -match 'not[-_]?found'){ Write-Output '[ERROR] sync-all 接口不存在：请先部署最新版服务端（包含 /v1/refill/sync-all）'; exit 2 }; if($err -match 'invalid user key|missing X-User-Key'){ Write-Output '[ERROR] 用户密钥无效：请在【设置/更新无限续杯配置】里重新填写正确 USER_KEY'; exit 2 }; Write-Output ('[ERROR] sync-all failed: ' + $err); exit 2}; $accs=@($r.accounts); if($accs.Count -le 0){Write-Output '[WARN] no accounts returned'; exit 0}; $written=0; foreach($a in $accs){ $aid=(''+$a.account_id).Trim(); if($aid -and $aid -match '^[A-Za-z0-9._-]+$'){ $fn=('codex-' + $aid + '.json') } else { $fn=('codex-' + [Guid]::NewGuid().ToString() + '.json') }; $dst=Join-Path '%ACCOUNTS_DIR%' $fn; $dl=($a.download_url|ForEach-Object{$_.ToString().Trim()}); if($dl){ try{ $raw=(Invoke-WebRequest -UseBasicParsing -Uri $dl -Method GET -TimeoutSec 30).Content; $obj=$raw | ConvertFrom-Json; $canon=($obj | ConvertTo-Json -Depth 20 -Compress); [System.IO.File]::WriteAllText($dst, ($canon + [Environment]::NewLine), $utf8NoBom); $written++; }catch{} } }; Write-Output ('[INFO] 已同步账号：' + $written)"
 set "EC=%ERRORLEVEL%"
 if not "%EC%"=="0" (
   set "_MAIN_EC=%EC%"
   goto :EXIT_MAIN
 )
+
+for /f "usebackq delims=" %%L in (`powershell -NoProfile -Command ^
+  "$ErrorActionPreference='Stop'; $before='%SYNC_PRE_LIST%'; $resp='%RESP_JSON%'; $accounts='%ACCOUNTS_DIR%';" ^
+  "$keep=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase);" ^
+  "try{ $r=Get-Content -Raw -LiteralPath $resp | ConvertFrom-Json; foreach($a in @($r.accounts)){ $aid=(''+$a.account_id).Trim(); if($aid -and $aid -match '^[A-Za-z0-9._-]+$'){ [void]$keep.Add('codex-' + $aid + '.json') } } } catch {}" ^
+  "if(-not (Test-Path -LiteralPath $before)){ Write-Output '[INFO] sync-all 清理旧文件: 0'; exit 0 };" ^
+  "$deleted=0; foreach($n in @(Get-Content -LiteralPath $before -ErrorAction SilentlyContinue)){ $name=(''+$n).Trim(); if(-not $name){ continue }; if($keep.Contains($name)){ continue }; $p=Join-Path $accounts $name; if(Test-Path -LiteralPath $p){ Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue; if(-not (Test-Path -LiteralPath $p)){ $deleted++ } } };" ^
+  "Write-Output ('[INFO] sync-all 清理旧文件: ' + $deleted)"`) do echo %%L
 
 if not "%SYNC_TARGET_DIR%"=="" (
   if not exist "%SYNC_TARGET_DIR%" mkdir "%SYNC_TARGET_DIR%" >nul 2>nul
@@ -336,7 +352,7 @@ if not "%SYNC_TARGET_DIR%"=="" (
     "$canWrite={ param($p) try{ if(-not (Test-Path -LiteralPath $p)){ New-Item -ItemType Directory -Path $p -Force | Out-Null }; $t=Join-Path $p '.write_test.tmp'; Set-Content -LiteralPath $t -Value 'ok' -Encoding ASCII; Remove-Item -LiteralPath $t -Force -ErrorAction SilentlyContinue; $true } catch { $false } };" ^
     "$target=$targetRaw; if(-not (& $canWrite $target)){ if(& $canWrite $fallback){ Write-Output ('[WARN] sync target 不可写，已回退到: ' + $fallback); $target=$fallback } else { Write-Output ('[WARN] sync target 不可写，已跳过同步: ' + $targetRaw); exit 0 } };" ^
     "$manifest=Join-Path $target '.infinite_refill_sync_manifest.txt';" ^
-    "$src=@(Get-ChildItem -LiteralPath $accounts -Filter '无限续杯-*.json' -File -ErrorAction SilentlyContinue); if($src.Count -eq 0){$src=@(Get-ChildItem -LiteralPath $accounts -Filter '*.json' -File -ErrorAction SilentlyContinue)};" ^
+    "$src=@(Get-ChildItem -LiteralPath $accounts -Filter 'codex-*.json' -File -ErrorAction SilentlyContinue); if($src.Count -eq 0){$src=@(Get-ChildItem -LiteralPath $accounts -Filter '*.json' -File -ErrorAction SilentlyContinue)};" ^
     "$names=@(); foreach($f in $src){ $names += $f.Name };" ^
     "$old=@(); if(Test-Path -LiteralPath $manifest){ $old=@(Get-Content -LiteralPath $manifest -ErrorAction SilentlyContinue | Where-Object { $_ -and $_.Trim() -ne '' }) };" ^
     "$removed=0; foreach($n in $old){ if($names -notcontains $n){ $tp=Join-Path $target $n; if(Test-Path -LiteralPath $tp){ $it=Get-Item -LiteralPath $tp -Force -ErrorAction SilentlyContinue; if($it -and (($it.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)){ Remove-Item -LiteralPath $tp -Force -ErrorAction SilentlyContinue; $removed++ } } } };" ^
@@ -403,6 +419,12 @@ set "TYPE="
 set "TOKEN="
 set "AID="
 set "EMAIL="
+
+>"!PREFIX!.diag" (
+  echo [DIAG] FILE=!FILE!
+  echo [DIAG] BASE=!BASE!
+  if not exist "!FILE!" echo [DIAG] input_missing=!FILE!
+)
 
 for /f "usebackq tokens=1,2,3,4 delims=|" %%A in (`powershell -NoProfile -Command "try{$o=Get-Content -Raw -LiteralPath '%FILE%'|ConvertFrom-Json; $ty=($o.type|ForEach-Object{$_.ToString()}); $tok=($o.access_token|ForEach-Object{$_.ToString()}); $id=($o.account_id|ForEach-Object{$_.ToString()}); $em=($o.email|ForEach-Object{$_.ToString()}); Write-Output ($ty + '|' + $tok + '|' + $id + '|' + $em)}catch{Write-Output '|||'}"`) do (
   set "TYPE=%%A"

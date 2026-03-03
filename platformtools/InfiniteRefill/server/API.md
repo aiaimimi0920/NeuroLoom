@@ -389,7 +389,7 @@ export SERVER_URL="http://127.0.0.1:8788"
 {
   "target_pool_size": 10,
   "reports": [
-    {"file_name":"无限续杯-001.json","email_hash":"<sha256hex>","account_id":"acc_123","status_code":401,"probed_at":"2026-02-28T00:00:00Z"}
+    {"file_name":"codex-acc_123.json","email_hash":"<sha256hex>","account_id":"acc_123","status_code":401,"probed_at":"2026-02-28T00:00:00Z"}
   ]
 }
 ```
@@ -403,7 +403,7 @@ export SERVER_URL="http://127.0.0.1:8788"
   "accepted_reports": 1,
   "errors": [],
   "accounts": [
-    {"file_name":"无限续杯-20260228T000000Z-001.json","auth_json": {"type":"codex","access_token":"..."}}
+    {"file_name":"codex-acc_123.json","auth_json": {"type":"codex","access_token":"..."}}
   ],
   "received_at": "2026-02-28T00:00:00Z"
 }
