@@ -343,11 +343,30 @@ if not "%SERVER_HOLD_LIMIT%"=="" (
   call :UPSERT_ENV_KEY "%ROOT_CFG_ENV%" "TOTAL_HOLD_LIMIT" "%SERVER_HOLD_LIMIT%"
 )
 
-REM 删除失效文件（401/429）并备份
-powershell -NoProfile -Command ^
-  "$items=@(); foreach($l in Get-Content -LiteralPath '%REPORT_JSONL%' -ErrorAction SilentlyContinue){ if($l -and $l.Trim()){ try{$items += ($l | ConvertFrom-Json)}catch{}} }; foreach($it in $items){ $sc=[int]$it.status_code; if($sc -eq 401 -or $sc -eq 429){ $fn=$it.file_name; if($fn){ $src=Join-Path '%ACCOUNTS_DIR%' $fn; if(Test-Path -LiteralPath $src){ if(-not (Test-Path -LiteralPath '%BACKUP_DIR%')){ New-Item -ItemType Directory -Path '%BACKUP_DIR%' -Force | Out-Null }; Copy-Item -LiteralPath $src -Destination (Join-Path '%BACKUP_DIR%' $fn) -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath $src -Force -ErrorAction SilentlyContinue } } } }" >nul 2>nul
+REM 删除失效文件（401/429）并备份（从 probe_jobs 直接读取 .rep，更可靠）
+for /f "usebackq delims=" %%D in (`powershell -NoProfile -Command ^
+  "$probe='%PROBE_DIR%'; $accounts='%ACCOUNTS_DIR%'; $backup='%BACKUP_DIR%'; $del=0; " ^
+  "if(-not $probe -or -not (Test-Path -LiteralPath $probe)){ Write-Output '0'; exit 0 }; " ^
+  "if(-not (Test-Path -LiteralPath $backup)){ New-Item -ItemType Directory -Path $backup -Force -ErrorAction SilentlyContinue | Out-Null }; " ^
+  "Get-ChildItem -LiteralPath $probe -Filter '*.rep' -File -ErrorAction SilentlyContinue | ForEach-Object { " ^
+  "  try{ $o=Get-Content -Raw -LiteralPath $_.FullName -ErrorAction Stop | ConvertFrom-Json; " ^
+  "    $sc=[int]$o.status_code; if($sc -eq 401 -or $sc -eq 429){ " ^
+  "      $fn=$o.file_name; if($fn){ " ^
+  "        $src=Join-Path $accounts $fn; " ^
+  "        if(Test-Path -LiteralPath $src){ " ^
+  "          Copy-Item -LiteralPath $src -Destination (Join-Path $backup $fn) -Force -ErrorAction SilentlyContinue; " ^
+  "          Remove-Item -LiteralPath $src -Force -ErrorAction SilentlyContinue; " ^
+  "          if(-not (Test-Path -LiteralPath $src)){ $del++ } " ^
+  "        } " ^
+  "      } " ^
+  "    } " ^
+  "  }catch{} " ^
+  "}; Write-Output $del"`) do set "DEL_COUNT=%%D"
+if "%DEL_COUNT%"=="" set "DEL_COUNT=0"
+echo [INFO] 已删除失效账号文件：%DEL_COUNT%
 
-if not "%SYNC_TARGET_DIR%"=="" if %WRITTEN_COUNT% GTR 0 (
+set /a _SYNC_NEEDED=%WRITTEN_COUNT% + %DEL_COUNT%
+if not "%SYNC_TARGET_DIR%"=="" if %_SYNC_NEEDED% GTR 0 (
   if not exist "%SYNC_TARGET_DIR%" mkdir "%SYNC_TARGET_DIR%" >nul 2>nul
   for /f "usebackq delims=" %%L in (`powershell -NoProfile -Command ^
     "$ErrorActionPreference='Stop'; $accounts='%ACCOUNTS_DIR%'; $targetRaw='%SYNC_TARGET_DIR%'; $fallback=Join-Path $env:USERPROFILE '.cli-proxy-api';" ^
