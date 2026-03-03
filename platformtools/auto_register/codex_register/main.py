@@ -497,12 +497,15 @@ def _dump_page_body(*, driver, kind: str, message: str = "") -> None:
 
 def _checkpoint_screenshot(driver, step: str) -> None:
     """Save a checkpoint screenshot at the current registration step.
+    Controlled by ENABLE_CHECKPOINT_SCREENSHOT env var (default: 0 = off).
 
     This captures the browser state while the driver is still alive.
     Files saved:
     - checkpoint_latest.png  (always overwritten = last known state)
     - checkpoint_{step}_{ts}.png  (per-step timestamped copy)
     """
+    if os.environ.get("ENABLE_CHECKPOINT_SCREENSHOT", "0") != "1":
+        return
     err_dir = _data_path(ERROR_DIRNAME, INSTANCE_ID)
     try:
         os.makedirs(err_dir, exist_ok=True)
