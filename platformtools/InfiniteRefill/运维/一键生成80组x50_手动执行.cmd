@@ -39,17 +39,16 @@ if "%ADMIN_GUARD%"=="" goto :USAGE
 echo [INFO] SERVER_URL=%SERVER_URL%
 echo [INFO] 已从命令行/.dev.vars 加载管理员密钥
 
-set "OUT_JSON=issue_80x50_response.json"
-set "OUT_ZIP=80x50-packages.bundle.zip"
+set "OUT_JSON=issue_33x30_response.json"
 
-echo [INFO] 请求创建：80 组用户，每组 50 账号...
+echo [INFO] 请求创建：33 组用户，每组 30 账号（不下载总包）...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$ErrorActionPreference='Stop';" ^
-  "$body=@{type='user';count=80;label='manual-80x50';server_url='%SERVER_URL%';max_accounts_per_user=50;min_accounts_required=50;ttl_minutes=120;return_bundle_zip=$true}|ConvertTo-Json -Compress;" ^
+  "$body=@{type='user';count=33;label='manual-33x30';server_url='%SERVER_URL%';max_accounts_per_user=30;min_accounts_required=30;ttl_minutes=120;return_bundle_zip=$false}|ConvertTo-Json -Compress;" ^
   "$headers=@{Authorization='Bearer %ADMIN_TOKEN%';'X-Admin-Guard'='%ADMIN_GUARD%'};" ^
   "$resp=Invoke-RestMethod -Method Post -Uri ('%SERVER_URL%/admin/packages/issue') -Headers $headers -ContentType 'application/json' -Body $body;" ^
   "$resp | ConvertTo-Json -Depth 12 | Set-Content -Encoding UTF8 './%OUT_JSON%';" ^
-  "if($resp.bundle -and $resp.bundle.download_url){ Invoke-WebRequest -Uri $resp.bundle.download_url -OutFile './%OUT_ZIP%' };" ^
+  "if($resp.bundle -and $resp.bundle.download_url){ Write-Output ('BUNDLE_URL=' + $resp.bundle.download_url) };" ^
   "Write-Output ('OK=' + $resp.ok);" ^
   "Write-Output ('BATCH_ID=' + $resp.batch_id);" ^
   "Write-Output ('PACKAGES=' + (@($resp.packages).Count));" ^
@@ -61,7 +60,6 @@ if errorlevel 1 (
 )
 
 echo [OK] 已输出响应：%OUT_JSON%
-echo [OK] 已下载总包：%OUT_ZIP%
 exit /b 0
 
 :USAGE
@@ -70,3 +68,4 @@ echo         INFINITE_REFILL_ADMIN_TOKEN=...
 echo         INFINITE_REFILL_ADMIN_GUARD=...
 echo 用法：%~nx0 [服务器地址] [管理员令牌] [管理员护卫码]
 exit /b 1
+

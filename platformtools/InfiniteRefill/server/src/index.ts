@@ -2999,6 +2999,22 @@ export default {
         if (!userRow) return json({ ok: false, error: "user_not_found" }, 403);
         if (Number(userRow.disabled) === 1) return json({ ok: false, error: "user_disabled" }, 403);
 
+        // 维护 users_v2.current_account_ids 与 accounts_v2.owner 的一致性
+        const refreshUserCurrentAccountIds = async (): Promise<number> => {
+          const ownedRows = await env.DB
+            .prepare("SELECT account_id FROM accounts_v2 WHERE owner=? ORDER BY updated_at DESC, account_id ASC LIMIT 500")
+            .bind(ownerKey)
+            .all<{ account_id: string }>();
+          const accountIds = (ownedRows.results || [])
+            .map((r) => String(r.account_id || "").trim())
+            .filter(Boolean);
+          await env.DB
+            .prepare("UPDATE users_v2 SET current_account_ids=?, updated_at=? WHERE id=?")
+            .bind(JSON.stringify(accountIds), now, userKeyRow.user_id)
+            .run();
+          return accountIds.length;
+        };
+
         // 2) 消费 report：根据探测状态更新 owner
         let acceptedReports = 0;
         const reportErrors: Array<{ idx: number; error: string }> = [];
@@ -3016,12 +3032,18 @@ export default {
           let ownerNext: string | null = null;
           if (statusCode === 401) ownerNext = "-2";
           else if (statusCode === 429) ownerNext = "-4";
-          else if (statusCode !== null && statusCode >= 200 && statusCode < 300) ownerNext = "-1";
+          // 2xx 表示账号正常可用，不更改 owner（保持归属用户）
 
           if (ownerNext !== null) {
             await env.DB
               .prepare("UPDATE accounts_v2 SET owner=?, updated_at=?, last_seen_at=? WHERE account_id=?")
               .bind(ownerNext, now, now, accountId)
+              .run();
+          } else if (statusCode !== null && statusCode >= 200 && statusCode < 300) {
+            // 2xx：仅更新 last_seen_at，确认账号活跃
+            await env.DB
+              .prepare("UPDATE accounts_v2 SET last_seen_at=? WHERE account_id=?")
+              .bind(now, accountId)
               .run();
           }
 
@@ -3038,7 +3060,7 @@ export default {
         const ownedRow = await env.DB.prepare("SELECT COUNT(1) AS c FROM accounts_v2 WHERE owner=?").bind(ownerKey).first<{ c: number }>();
         const currentOwned = Number(ownedRow?.c || 0);
 
-        const rawWant = Math.max(1, Math.min(500, target));
+        // rawWant removed: 实际发放量由 desiredToLimit 决定，不使用客户端 target
 
         // 4) 服务端二次复核客户端提交的 account_ids：判定是否需要续杯（401/429）
         // 额外规则：若 note=r2_object_not_found，直接硬删除该“JSON凭证账户”（accounts_v2），并记审计。
@@ -3095,6 +3117,7 @@ export default {
 
         if (wantFinal <= 0) {
           const overHeld = currentOwnedNow > effectiveAccountLimit;
+          const syncedOwnedCount = await refreshUserCurrentAccountIds();
           return json({
             ok: true,
             target_pool_size: target,
@@ -3118,6 +3141,7 @@ export default {
               account_limit_delta: delta,
               effective_account_limit: effectiveAccountLimit,
               current_owned: currentOwnedNow,
+              current_account_ids_count: syncedOwnedCount,
               abuse_issue_multiplier: abuseIssueMultiplier,
               abuse_issue_threshold: abuseIssueThreshold,
             },
@@ -3302,6 +3326,8 @@ export default {
           issueErrors.push({ account_id: "", error: `daily_refill_limit_exceeded: used=${usedToday}, limit=${dailyLimit}` });
         }
 
+        const syncedOwnedCount = await refreshUserCurrentAccountIds();
+
         return json({
           ok: true,
           target_pool_size: target,
@@ -3321,6 +3347,7 @@ export default {
             account_limit_delta: delta,
             effective_account_limit: effectiveAccountLimit,
             current_owned: currentOwnedNow,
+            current_account_ids_count: syncedOwnedCount,
             abuse_issue_multiplier: abuseIssueMultiplier,
             abuse_issue_threshold: abuseIssueThreshold,
           },

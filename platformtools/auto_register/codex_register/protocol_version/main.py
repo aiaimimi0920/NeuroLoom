@@ -42,17 +42,22 @@ _PLATFORMTOOLS_DEV_VARS = (
 )
 
 # Mail provider client import
-_PLAT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+_PLAT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 _MAILCREATE_CLIENT_DIR = os.path.join(_PLAT_DIR, "mailcreate", "client")
 if _MAILCREATE_CLIENT_DIR not in sys.path:
     sys.path.insert(0, _MAILCREATE_CLIENT_DIR)
 
 from mailbox_provider import Mailbox, create_mailbox, wait_openai_code as wait_openai_code_by_provider  # type: ignore
+from platformtools.auto_register.codex_register.mailbox_shared import (
+    create_temp_mailbox_shared,
+    wait_openai_code_shared,
+)
 
 
 write_lock = threading.Lock()
 stats_lock = threading.Lock()
 proxy_state_lock = threading.Lock()
+flow_totals_lock = threading.Lock()
 
 RUN_STARTED_AT = time.time()
 
@@ -212,6 +217,35 @@ def _append_result_line(line: str) -> None:
     _write_json(_results_state_path(), {"shard_id": shard_id, "line_in_shard": line_in_shard})
 
 
+def _flow_totals_path() -> str:
+    return _data_path("flow_totals.json")
+
+
+def _flow_totals_read() -> dict[str, int]:
+    raw = _read_json(_flow_totals_path())
+    if not isinstance(raw, dict):
+        raw = {}
+    return {
+        "protocol": int(raw.get("protocol", 0) or 0),
+        "browser": int(raw.get("browser", 0) or 0),
+    }
+
+
+def _flow_totals_inc(flow: str, delta: int = 1) -> None:
+    key = (flow or "").strip().lower()
+    if key not in ("protocol", "browser"):
+        return
+    with flow_totals_lock:
+        st = _flow_totals_read()
+        st[key] = int(st.get(key, 0) or 0) + int(delta)
+        _write_json(_flow_totals_path(), st)
+
+
+def _flow_totals_snapshot() -> tuple[int, int]:
+    st = _flow_totals_read()
+    return int(st.get("protocol", 0) or 0), int(st.get("browser", 0) or 0)
+
+
 # Mail provider config
 MAILBOX_PROVIDER = os.environ.get("MAILBOX_PROVIDER", "auto").strip().lower()
 
@@ -349,6 +383,11 @@ if PROXY_PARTITION_TOTAL < 0:
 if PROXY_PARTITION_TOTAL > 0:
     PROXY_PARTITION_INDEX = PROXY_PARTITION_INDEX % PROXY_PARTITION_TOTAL
 
+# 当代理池不可用时是否允许直连兜底（容器场景建议开启）
+PROTOCOL_ALLOW_DIRECT_FALLBACK = _env_bool("PROTOCOL_ALLOW_DIRECT_FALLBACK", True)
+# 强制忽略代理文件，全部走直连（用于容器网络与代理不兼容场景）
+PROTOCOL_IGNORE_PROXIES = _env_bool("PROTOCOL_IGNORE_PROXIES", False)
+
 
 def _log(msg: str, *, force: bool = False) -> None:
     if PROTOCOL_SUMMARY_ONLY and not force and not PROTOCOL_VERBOSE:
@@ -403,6 +442,7 @@ def _stats_inc(kind: str, err: Exception | str | None = None, *, stage: str | No
             _STATS["success"] = int(_STATS.get("success", 0)) + 1
             _SUCCESS_TS.append(now_ts)
             _trim_ts(now_ts)
+            _flow_totals_inc("protocol", 1)
             return
 
         # cooldown_wait 不是失败，只代表“当前无可用代理，等待冷却结束”。
@@ -524,6 +564,8 @@ def _summary_loop() -> None:
         rolling_h = rolling_success * 3600.0 / float(rw)
         rolling_sr = (rolling_success / float(rolling_attempt)) if rolling_attempt > 0 else 0.0
 
+        protocol_total, browser_total = _flow_totals_snapshot()
+
         print(
             (
                 f"[SUMMARY] 完成 {st.get('success', 0)}{target_txt} | 尝试 {st.get('attempt', 0)} | 失败 {st.get('fail', 0)} "
@@ -533,7 +575,7 @@ def _summary_loop() -> None:
                 f"{st.get('stage_auth_continue', 0)}/{st.get('stage_send_otp', 0)}/{st.get('stage_otp_validate', 0)}/"
                 f"{st.get('stage_create_account', 0)}/{st.get('stage_workspace', 0)}/{st.get('stage_callback', 0)}/{st.get('stage_other', 0)} "
                 f"| 速度(累计){speed_h:.0f}/h | 速度({rw}s){rolling_h:.0f}/h | 成功率({rw}s){rolling_sr*100:.1f}% "
-                f"| 代理冷却 {cooling}/{total_proxy}"
+                f"| 代理冷却 {cooling}/{total_proxy} | 总生成(协议/浏览器) {protocol_total}/{browser_total}"
             ),
             flush=True,
         )
@@ -632,41 +674,11 @@ def _pick_mailcreate_with_health() -> Mailbox:
 
 
 def create_temp_mailbox() -> tuple[str, str]:
-    provider = (MAILBOX_PROVIDER or "").strip().lower()
-    if provider in ("mailcreate", "self", "local"):
-        mb = _pick_mailcreate_with_health()
-    else:
-        mb: Mailbox = create_mailbox(
-            provider=MAILBOX_PROVIDER,
-            mailcreate_base_url=MAILCREATE_BASE_URL,
-            mailcreate_custom_auth=MAILCREATE_CUSTOM_AUTH,
-            mailcreate_domain=MAILCREATE_DOMAIN,
-            gptmail_base_url=GPTMAIL_BASE_URL,
-            gptmail_api_key=GPTMAIL_API_KEY,
-            gptmail_keys_file=GPTMAIL_KEYS_FILE,
-            gptmail_prefix=GPTMAIL_PREFIX,
-            gptmail_domain=GPTMAIL_DOMAIN,
-        )
-        if getattr(mb, "provider", "") == "mailcreate":
-            try:
-                mb = _pick_mailcreate_with_health()
-            except Exception:
-                pass
-
-    return mb.email, mb.ref
+    return create_temp_mailbox_shared()
 
 
 def wait_openai_code(*, mailbox_ref: str, timeout_seconds: int = 180) -> str:
-    return wait_openai_code_by_provider(
-        provider=MAILBOX_PROVIDER,
-        mailbox_ref=mailbox_ref,
-        mailcreate_base_url=MAILCREATE_BASE_URL,
-        mailcreate_custom_auth=MAILCREATE_CUSTOM_AUTH,
-        gptmail_base_url=GPTMAIL_BASE_URL,
-        gptmail_api_key=GPTMAIL_API_KEY,
-        gptmail_keys_file=GPTMAIL_KEYS_FILE,
-        timeout_seconds=timeout_seconds,
-    )
+    return wait_openai_code_shared(mailbox_ref=mailbox_ref, timeout_seconds=timeout_seconds)
 
 
 def _b64url_no_pad(raw: bytes) -> str:
@@ -1025,8 +1037,179 @@ def register_protocol(proxy: str | None = None) -> tuple[str, str]:
     if curl_requests is None:
         raise RuntimeError("protocol flow requires curl_cffi; please install curl_cffi")
 
+    def _mailtm_headers(*, token: str = "", use_json: bool = False) -> Dict[str, str]:
+        headers = {"Accept": "application/json"}
+        if use_json:
+            headers["Content-Type"] = "application/json"
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        return headers
+
+    def _mailtm_domains(*, api_base: str, px: dict[str, str] | None, imp: str) -> list[str]:
+        resp = curl_requests.get(
+            f"{api_base}/domains",
+            headers=_mailtm_headers(),
+            proxies=px,
+            impersonate=imp,
+            timeout=15,
+        )
+        if int(getattr(resp, "status_code", 0) or 0) != 200:
+            raise RuntimeError(f"获取 Mail.tm 域名失败，状态码: {resp.status_code}")
+
+        data = resp.json()
+        if isinstance(data, list):
+            items = data
+        elif isinstance(data, dict):
+            items = data.get("hydra:member") or data.get("items") or []
+        else:
+            items = []
+
+        domains: list[str] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            domain = str(item.get("domain") or "").strip()
+            is_active = item.get("isActive", True)
+            is_private = item.get("isPrivate", False)
+            if domain and is_active and not is_private:
+                domains.append(domain)
+        return domains
+
+    def _create_mailtm_mailbox(*, api_base: str, px: dict[str, str] | None, imp: str) -> tuple[str, str, str]:
+        domains = _mailtm_domains(api_base=api_base, px=px, imp=imp)
+        if not domains:
+            raise RuntimeError("Mail.tm 没有可用域名")
+
+        for _ in range(5):
+            local = f"oc{secrets.token_hex(5)}"
+            domain = random.choice(domains)
+            email = f"{local}@{domain}"
+            password = secrets.token_urlsafe(18)
+
+            create_resp = curl_requests.post(
+                f"{api_base}/accounts",
+                headers=_mailtm_headers(use_json=True),
+                json={"address": email, "password": password},
+                proxies=px,
+                impersonate=imp,
+                timeout=15,
+            )
+            if int(getattr(create_resp, "status_code", 0) or 0) not in (200, 201):
+                continue
+
+            token_resp = curl_requests.post(
+                f"{api_base}/token",
+                headers=_mailtm_headers(use_json=True),
+                json={"address": email, "password": password},
+                proxies=px,
+                impersonate=imp,
+                timeout=15,
+            )
+            if int(getattr(token_resp, "status_code", 0) or 0) == 200:
+                token = str((token_resp.json() or {}).get("token") or "").strip()
+                if token:
+                    return email, token, password
+
+        raise RuntimeError("Mail.tm 邮箱创建成功但获取 Token 失败")
+
+    def _poll_oai_code(
+        *,
+        api_base: str,
+        token: str,
+        email: str,
+        px: dict[str, str] | None,
+        imp: str,
+        timeout_seconds: int,
+    ) -> str:
+        url_list = f"{api_base}/messages"
+        regex = r"(?<!\d)(\d{6})(?!\d)"
+        seen_ids: set[str] = set()
+
+        loops = max(1, int(timeout_seconds / 3))
+        _log(f"[protocol] waiting otp for {email}", force=True)
+
+        for _ in range(loops):
+            try:
+                resp = curl_requests.get(
+                    url_list,
+                    headers=_mailtm_headers(token=token),
+                    proxies=px,
+                    impersonate=imp,
+                    timeout=15,
+                )
+                if int(getattr(resp, "status_code", 0) or 0) != 200:
+                    time.sleep(3)
+                    continue
+
+                data = resp.json()
+                if isinstance(data, list):
+                    messages = data
+                elif isinstance(data, dict):
+                    messages = data.get("hydra:member") or data.get("messages") or []
+                else:
+                    messages = []
+
+                for msg in messages:
+                    if not isinstance(msg, dict):
+                        continue
+                    msg_id = str(msg.get("id") or "").strip()
+                    if not msg_id or msg_id in seen_ids:
+                        continue
+                    seen_ids.add(msg_id)
+
+                    read_resp = curl_requests.get(
+                        f"{api_base}/messages/{msg_id}",
+                        headers=_mailtm_headers(token=token),
+                        proxies=px,
+                        impersonate=imp,
+                        timeout=15,
+                    )
+                    if int(getattr(read_resp, "status_code", 0) or 0) != 200:
+                        continue
+
+                    mail_data = read_resp.json()
+                    sender = str(((mail_data.get("from") or {}).get("address") or "")).lower()
+                    subject = str(mail_data.get("subject") or "")
+                    intro = str(mail_data.get("intro") or "")
+                    text = str(mail_data.get("text") or "")
+                    html = mail_data.get("html") or ""
+                    if isinstance(html, list):
+                        html = "\n".join(str(x) for x in html)
+                    content = "\n".join([subject, intro, text, str(html)])
+
+                    if "openai" not in sender and "openai" not in content.lower():
+                        continue
+
+                    m = re.search(regex, content)
+                    if m:
+                        return m.group(1)
+            except Exception:
+                pass
+
+            time.sleep(3)
+
+        return ""
+
+    api_base = (os.environ.get("PROTOCOL_MAILTM_BASE", "https://api.mail.tm") or "https://api.mail.tm").strip().rstrip("/")
     proxies = _proxy_dict_for_requests(proxy)
-    sess = curl_requests.Session(proxies=proxies, impersonate=PROTOCOL_IMPERSONATE)
+
+    imp_seed = (os.environ.get("PROTOCOL_IMPERSONATE_POOL", "chrome,chrome110,chrome116,safari") or "chrome,chrome110,chrome116,safari")
+    # edge 在部分 curl_cffi 版本会在真实请求阶段抛出 not supported，这里默认剔除
+    imp_pool = [x.strip() for x in imp_seed.split(",") if x.strip() and x.strip().lower() != "edge"]
+    if not imp_pool:
+        imp_pool = ["chrome"]
+
+    imp_value = str(PROTOCOL_IMPERSONATE or "chrome").strip().lower()
+    current_impersonate = random.choice(imp_pool) if imp_value in ("auto", "random") else str(PROTOCOL_IMPERSONATE or "chrome")
+
+    try:
+        sess = curl_requests.Session(proxies=proxies, impersonate=current_impersonate)
+    except Exception as e:
+        if "not supported" in str(e).lower() and str(current_impersonate).lower() != "chrome":
+            current_impersonate = "chrome"
+            sess = curl_requests.Session(proxies=proxies, impersonate=current_impersonate)
+        else:
+            raise
 
     if PROTOCOL_CHECK_GEO:
         trace_resp = sess.get("https://cloudflare.com/cdn-cgi/trace", timeout=10)
@@ -1039,68 +1222,112 @@ def register_protocol(proxy: str | None = None) -> tuple[str, str]:
         if loc and loc in PROTOCOL_BLOCKED_LOCS:
             raise RuntimeError(f"protocol flow blocked geo loc={loc}")
 
-    email, mailbox_ref = create_temp_mailbox()
+    email, mailbox_token, mailbox_password = _create_mailtm_mailbox(api_base=api_base, px=proxies, imp=current_impersonate)
     _log(f"Email obtained: {email}")
 
     oauth = generate_oauth_url()
     _log(f"OAuth URL: {oauth.auth_url}")
-
-    sess.get(oauth.auth_url, timeout=PROTOCOL_TIMEOUT_SECONDS)
-
-    did = str(sess.cookies.get("oai-did") or "").strip()
-    if not did:
-        raise RuntimeError("protocol flow missing oai-did cookie")
-
-    sentinel_req = json.dumps(
-        {"p": "", "id": did, "flow": "authorize_continue"},
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
-    sen_resp = sess.post(
-        "https://sentinel.openai.com/backend-api/sentinel/req",
-        headers={
-            "origin": "https://sentinel.openai.com",
-            "referer": "https://sentinel.openai.com/backend-api/sentinel/frame.html?sv=20260219f9f6",
-            "content-type": "text/plain;charset=UTF-8",
-        },
-        data=sentinel_req,
-        timeout=PROTOCOL_TIMEOUT_SECONDS,
-    )
-    if int(getattr(sen_resp, "status_code", 0) or 0) != 200:
-        raise RuntimeError(f"sentinel req failed: http={sen_resp.status_code}")
-
-    sentinel_token = str((sen_resp.json() or {}).get("token") or "").strip()
-    if not sentinel_token:
-        raise RuntimeError("sentinel token missing")
-
-    sentinel_header_value = json.dumps(
-        {"p": "", "t": "", "c": sentinel_token, "id": did, "flow": "authorize_continue"},
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
 
     signup_body = json.dumps(
         {"username": {"value": email, "kind": "email"}, "screen_hint": "signup"},
         ensure_ascii=False,
         separators=(",", ":"),
     )
-    signup_resp = sess.post(
-        "https://auth.openai.com/api/accounts/authorize/continue",
-        headers={
-            "referer": "https://auth.openai.com/create-account",
-            "accept": "application/json",
-            "content-type": "application/json",
-            "openai-sentinel-token": sentinel_header_value,
-        },
-        data=signup_body,
-        timeout=PROTOCOL_TIMEOUT_SECONDS,
-    )
-    if int(getattr(signup_resp, "status_code", 0) or 0) != 200:
-        raise RuntimeError(
-            f"authorize/continue failed: http={signup_resp.status_code} body={str(getattr(signup_resp, 'text', '') or '')[:300]}"
+
+    signup_resp = None
+    for _auth_try in range(2):
+        # 重新打一次 OAuth 起点，确保 did/cookie/sentinel 同步
+        try:
+            sess.get(oauth.auth_url, timeout=PROTOCOL_TIMEOUT_SECONDS)
+        except Exception as e:
+            if "not supported" in str(e).lower() and str(current_impersonate).lower() != "chrome":
+                current_impersonate = "chrome"
+                sess = curl_requests.Session(proxies=proxies, impersonate=current_impersonate)
+                _log(f"[protocol] fallback impersonate={current_impersonate}", force=True)
+                sess.get(oauth.auth_url, timeout=PROTOCOL_TIMEOUT_SECONDS)
+            else:
+                raise
+
+        did = str(sess.cookies.get("oai-did") or "").strip()
+        if not did:
+            raise RuntimeError("protocol flow missing oai-did cookie")
+
+        sentinel_req = json.dumps(
+            {"p": "", "id": did, "flow": "authorize_continue"},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        # 与参考3保持一致：sentinel 使用独立请求（非 session）
+        sen_resp = curl_requests.post(
+            "https://sentinel.openai.com/backend-api/sentinel/req",
+            headers={
+                "origin": "https://sentinel.openai.com",
+                "referer": "https://sentinel.openai.com/backend-api/sentinel/frame.html?sv=20260219f9f6",
+                "content-type": "text/plain;charset=UTF-8",
+            },
+            data=sentinel_req,
+            proxies=proxies,
+            impersonate=current_impersonate,
+            timeout=PROTOCOL_TIMEOUT_SECONDS,
+        )
+        if int(getattr(sen_resp, "status_code", 0) or 0) != 200:
+            raise RuntimeError(f"sentinel req failed: http={sen_resp.status_code}")
+
+        sentinel_token = str((sen_resp.json() or {}).get("token") or "").strip()
+        if not sentinel_token:
+            raise RuntimeError("sentinel token missing")
+
+        sentinel_header_value = json.dumps(
+            {"p": "", "t": "", "c": sentinel_token, "id": did, "flow": "authorize_continue"},
+            ensure_ascii=False,
+            separators=(",", ":"),
         )
 
-    pwd = generate_pwd()
+        signup_resp = sess.post(
+            "https://auth.openai.com/api/accounts/authorize/continue",
+            headers={
+                "referer": "https://auth.openai.com/create-account",
+                "accept": "application/json",
+                "content-type": "application/json",
+                "openai-sentinel-token": sentinel_header_value,
+            },
+            data=signup_body,
+            timeout=PROTOCOL_TIMEOUT_SECONDS,
+        )
+
+        _st = int(getattr(signup_resp, "status_code", 0) or 0)
+        _body = str(getattr(signup_resp, "text", "") or "")
+        if _st == 200:
+            break
+
+        # 命中 challenge 时，换一套指纹重试一次
+        if (
+            _auth_try == 0
+            and _st in (403, 429)
+            and "just a moment" in _body.lower()
+        ):
+            alt_pool = [x for x in imp_pool if str(x).strip().lower() != str(current_impersonate).strip().lower()]
+            # 兜底保证 chrome 总可选
+            if not any(str(x).strip().lower() == "chrome" for x in alt_pool):
+                alt_pool.append("chrome")
+            random.shuffle(alt_pool)
+            for next_imp in alt_pool:
+                try:
+                    sess = curl_requests.Session(proxies=proxies, impersonate=next_imp)
+                    current_impersonate = next_imp
+                    _log(f"[protocol] challenge retry with impersonate={current_impersonate}", force=True)
+                    break
+                except Exception:
+                    continue
+            else:
+                # 没有任何可用指纹则保持现状，交给后续报错
+                pass
+            if _auth_try == 0 and current_impersonate:
+                continue
+
+        raise RuntimeError(
+            f"authorize/continue failed: http={_st} body={_body[:300]}"
+        )
 
     otp_send_resp = sess.post(
         "https://auth.openai.com/api/accounts/passwordless/send-otp",
@@ -1116,7 +1343,16 @@ def register_protocol(proxy: str | None = None) -> tuple[str, str]:
             f"send-otp failed: http={otp_send_resp.status_code} body={str(getattr(otp_send_resp, 'text', '') or '')[:300]}"
         )
 
-    code = wait_openai_code(mailbox_ref=mailbox_ref, timeout_seconds=OTP_TIMEOUT_SECONDS)
+    code = _poll_oai_code(
+        api_base=api_base,
+        token=mailbox_token,
+        email=email,
+        px=proxies,
+        imp=current_impersonate,
+        timeout_seconds=OTP_TIMEOUT_SECONDS,
+    )
+    if not code:
+        raise RuntimeError("timeout waiting for 6-digit code")
     _log(f"Verification Code: {code}")
 
     otp_verify_resp = sess.post(
@@ -1135,7 +1371,7 @@ def register_protocol(proxy: str | None = None) -> tuple[str, str]:
         )
 
     first_name, last_name = generate_name()
-    birthdate = "2000-02-20"
+    birthdate = f"{random.randint(1980, 2002)}-0{random.randint(1, 9)}-{random.randint(10, 28)}"
 
     create_account_resp = sess.post(
         "https://auth.openai.com/api/accounts/create_account",
@@ -1190,8 +1426,8 @@ def register_protocol(proxy: str | None = None) -> tuple[str, str]:
         code_verifier=oauth.code_verifier,
         redirect_uri=oauth.redirect_uri,
         proxy=proxy,
-        mailbox_ref=mailbox_ref,
-        password=pwd,
+        mailbox_ref=f"mailtm:{email}",
+        password=mailbox_password,
         first_name=first_name,
         last_name=last_name,
         birthdate=birthdate,
@@ -1208,6 +1444,8 @@ def _partition_proxies(proxies: list[str]) -> list[str]:
 
 
 def load_proxies() -> list[str]:
+    if PROTOCOL_IGNORE_PROXIES:
+        return []
     proxy_file = _data_path("proxies.txt")
     if os.path.exists(proxy_file):
         with open(proxy_file, "r", encoding="utf-8") as f:
@@ -1229,9 +1467,17 @@ def worker(worker_id: int) -> None:
         )
 
         if proxies and not proxy:
-            _stats_inc("cooldown_wait")
-            time.sleep(1.0)
-            continue
+            if PROTOCOL_ALLOW_DIRECT_FALLBACK:
+                # 代理池全部冷却/不可用时，允许直连继续跑，避免容器长时间0产出
+                proxy = None
+                _log(
+                    f"[Protocol Worker {worker_id}] proxy pool unavailable -> fallback DIRECT",
+                    force=True,
+                )
+            else:
+                _stats_inc("cooldown_wait")
+                time.sleep(1.0)
+                continue
 
         current_proxy = proxy
         _stats_inc("attempt")

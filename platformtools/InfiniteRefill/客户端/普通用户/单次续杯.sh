@@ -38,6 +38,7 @@ SERVER_URL="${1:-}"
 USER_KEY="${2:-}"
 ACCOUNTS_DIR="$SCRIPT_DIR/accounts"
 TARGET_POOL_SIZE=10
+TOTAL_HOLD_LIMIT=50
 TRIGGER_REMAINING=2
 SYNC_MODE=none
 SYNC_TARGET_DIR=
@@ -55,6 +56,7 @@ SERVER_URL="${SERVER_URL:-${SERVER_URL:-}}"
 USER_KEY="${USER_KEY:-${USER_KEY:-}}"
 ACCOUNTS_DIR="${ACCOUNTS_DIR:-$SCRIPT_DIR/accounts}"
 TARGET_POOL_SIZE="${TARGET_POOL_SIZE:-10}"
+TOTAL_HOLD_LIMIT="${TOTAL_HOLD_LIMIT:-50}"
 TRIGGER_REMAINING="${TRIGGER_REMAINING:-2}"
 SYNC_MODE="${SYNC_MODE:-none}"
 SYNC_TARGET_DIR="${SYNC_TARGET_DIR:-}"
@@ -257,25 +259,38 @@ else
   done
 fi
 
-threshold=$((TARGET_POOL_SIZE - TRIGGER_REMAINING))
-if [[ "$threshold" -lt 1 ]]; then threshold=1; fi
-
 available_est=$((total - invalid))
-echo "[INFO] 统计：total=$total available_est=$available_est probed_ok=$probed_ok net_fail=$net_fail invalid(401/429)=$invalid trigger_invalid>=$threshold"
 
-# 规则：网络失败(net_fail)默认按“可用”计入 available_est（即不算 invalid）
+# 计算 hold_limit
+hold_limit="${TOTAL_HOLD_LIMIT:-50}"
+if ! [[ "$hold_limit" =~ ^[0-9]+$ ]] || [[ "$hold_limit" -lt 1 ]]; then hold_limit=50; fi
+
+# REQUEST_TARGET = hold_limit - available_est（精确补差，不超发）
+request_target=$((hold_limit - available_est))
+if [[ "$request_target" -lt 0 ]]; then request_target=0; fi
+
+echo "[INFO] 统计：total=$total available_est=$available_est probed_ok=$probed_ok net_fail=$net_fail invalid(401/429)=$invalid hold_limit=$hold_limit request_target=$request_target"
+
+# 触发规则
 need_trigger=0
+if [[ "$invalid" -gt 0 ]]; then need_trigger=1; fi
 if [[ "$total" -lt "$TARGET_POOL_SIZE" ]]; then need_trigger=1; fi
-if [[ "$available_est" -le "$TRIGGER_REMAINING" ]]; then need_trigger=1; fi
+if [[ "$hold_limit" -gt 0 ]] && [[ "$available_est" -lt "$hold_limit" ]]; then need_trigger=1; fi
 
 if [[ "$need_trigger" == "0" ]]; then
   echo "[OK] 未达到续杯条件：无需 topup"
   exit 0
 fi
 
+# 持有量已达上限时提前退出
+if [[ "$request_target" -eq 0 ]]; then
+  echo "[OK] 无需续杯：持有量已达上限（available_est=$available_est hold_limit=$hold_limit）"
+  exit 0
+fi
+
 # jsonl -> reports array（纯 bash 拼接，避免 jq 依赖）
 {
-  printf '{"target_pool_size":%s,"reports":[' "${TARGET_POOL_SIZE}"
+  printf '{"target_pool_size":%s,"reports":[' "${request_target}"
   first=1
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue

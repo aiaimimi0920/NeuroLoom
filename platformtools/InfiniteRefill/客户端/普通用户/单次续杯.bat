@@ -43,6 +43,10 @@ set "SYNC_TARGET_DIR="
 set "WHAM_PROXY_MODE=auto"
 set "WHAM_CONNECT_TIMEOUT=5"
 set "WHAM_MAX_TIME=15"
+set "TOPUP_CONNECT_TIMEOUT=10"
+set "TOPUP_MAX_TIME=180"
+set "TOPUP_RETRY=3"
+set "TOPUP_RETRY_DELAY=3"
 set "RUN_OUTPUT_MODE=compact"
 set "PROBE_PARALLEL=6"
 set "FINAL_REPORT=%SCRIPT_DIR%out\最终续杯报告.json"
@@ -58,6 +62,10 @@ if exist "%ROOT_CFG_ENV%" (
     if /I "%%A"=="WHAM_PROXY_MODE" set "WHAM_PROXY_MODE=%%B"
     if /I "%%A"=="WHAM_CONNECT_TIMEOUT" set "WHAM_CONNECT_TIMEOUT=%%B"
     if /I "%%A"=="WHAM_MAX_TIME" set "WHAM_MAX_TIME=%%B"
+    if /I "%%A"=="TOPUP_CONNECT_TIMEOUT" set "TOPUP_CONNECT_TIMEOUT=%%B"
+    if /I "%%A"=="TOPUP_MAX_TIME" set "TOPUP_MAX_TIME=%%B"
+    if /I "%%A"=="TOPUP_RETRY" set "TOPUP_RETRY=%%B"
+    if /I "%%A"=="TOPUP_RETRY_DELAY" set "TOPUP_RETRY_DELAY=%%B"
     if /I "%%A"=="RUN_OUTPUT_MODE" set "RUN_OUTPUT_MODE=%%B"
     if /I "%%A"=="PROBE_PARALLEL" set "PROBE_PARALLEL=%%B"
   )
@@ -73,6 +81,10 @@ if exist "%CFG_ENV%" (
     if /I "%%A"=="WHAM_PROXY_MODE" set "WHAM_PROXY_MODE=%%B"
     if /I "%%A"=="WHAM_CONNECT_TIMEOUT" set "WHAM_CONNECT_TIMEOUT=%%B"
     if /I "%%A"=="WHAM_MAX_TIME" set "WHAM_MAX_TIME=%%B"
+    if /I "%%A"=="TOPUP_CONNECT_TIMEOUT" set "TOPUP_CONNECT_TIMEOUT=%%B"
+    if /I "%%A"=="TOPUP_MAX_TIME" set "TOPUP_MAX_TIME=%%B"
+    if /I "%%A"=="TOPUP_RETRY" set "TOPUP_RETRY=%%B"
+    if /I "%%A"=="TOPUP_RETRY_DELAY" set "TOPUP_RETRY_DELAY=%%B"
     if /I "%%A"=="PROBE_PARALLEL" set "PROBE_PARALLEL=%%B"
   )
 )
@@ -100,6 +112,19 @@ if not exist "%ACCOUNTS_DIR%" (
   set "_MAIN_EC=3"
   goto :EXIT_MAIN
 )
+
+echo %TOPUP_CONNECT_TIMEOUT%| findstr /R "^[0-9][0-9]*$" >nul 2>nul
+if errorlevel 1 set "TOPUP_CONNECT_TIMEOUT=10"
+if %TOPUP_CONNECT_TIMEOUT% LSS 1 set "TOPUP_CONNECT_TIMEOUT=10"
+echo %TOPUP_MAX_TIME%| findstr /R "^[0-9][0-9]*$" >nul 2>nul
+if errorlevel 1 set "TOPUP_MAX_TIME=180"
+if %TOPUP_MAX_TIME% LSS 30 set "TOPUP_MAX_TIME=180"
+echo %TOPUP_RETRY%| findstr /R "^[0-9][0-9]*$" >nul 2>nul
+if errorlevel 1 set "TOPUP_RETRY=3"
+if %TOPUP_RETRY% LSS 0 set "TOPUP_RETRY=3"
+echo %TOPUP_RETRY_DELAY%| findstr /R "^[0-9][0-9]*$" >nul 2>nul
+if errorlevel 1 set "TOPUP_RETRY_DELAY=3"
+if %TOPUP_RETRY_DELAY% LSS 1 set "TOPUP_RETRY_DELAY=3"
 
 REM 注意：不要清空全局代理环境变量。
 REM - 探测 OpenAI(wham) 可能依赖代理；
@@ -144,6 +169,8 @@ set /a TOTAL=0
 set /a PROBED_OK=0
 set /a NET_FAIL=0
 set /a INVALID=0
+set /a INVALID_401=0
+set /a INVALID_429=0
 set "PROBE_DIR=%OUT_DIR%\probe_jobs"
 if exist "%PROBE_DIR%" rmdir /s /q "%PROBE_DIR%" >nul 2>nul
 mkdir "%PROBE_DIR%" >nul 2>nul
@@ -163,31 +190,51 @@ if %LAUNCHED% GTR 0 (
   call :WAIT_FOR_PROBE_ALL "%PROBE_DIR%" "%LAUNCHED%"
 
   >"%REPORT_JSONL%" (
-    for /f "usebackq delims=" %%M in (`dir /b /a-d "%PROBE_DIR%\*.meta" 2^>nul`) do (
-      for /f "tokens=1,2,3 delims=|" %%a in ('type "%PROBE_DIR%\%%M" 2^>nul') do (
-        set /a PROBED_OK+=%%a
-        set /a NET_FAIL+=%%b
-        set /a INVALID+=%%c
-      )
-    )
     for /f "usebackq delims=" %%R in (`dir /b /a-d "%PROBE_DIR%\*.rep" 2^>nul`) do type "%PROBE_DIR%\%%R"
   )
 
   >"%NETFAIL_LOG%" (
     for /f "usebackq delims=" %%N in (`dir /b /a-d "%PROBE_DIR%\*.net" 2^>nul`) do type "%PROBE_DIR%\%%N"
   )
-)
 
-set /a HOLD_LIMIT=%TOTAL_HOLD_LIMIT%
-for /f "delims=0123456789" %%I in ("%HOLD_LIMIT%") do set /a HOLD_LIMIT=50
-if %HOLD_LIMIT% LSS 1 set /a HOLD_LIMIT=50
-set /a REQUEST_TARGET=%TARGET_POOL_SIZE%
-if %HOLD_LIMIT% GTR %REQUEST_TARGET% set /a REQUEST_TARGET=%HOLD_LIMIT%
+  set /a PROBED_OK=0
+  set /a NET_FAIL=0
+  set /a INVALID=0
+  set /a INVALID_401=0
+  set /a INVALID_429=0
+
+  for /f "usebackq delims=" %%M in (`dir /b /a-d "%PROBE_DIR%\*.meta" 2^>nul`) do (
+    for /f "tokens=1,2,3 delims=|" %%a in ('type "%PROBE_DIR%\%%M" 2^>nul') do (
+      set /a PROBED_OK+=%%a
+      set /a NET_FAIL+=%%b
+      set /a INVALID+=%%c
+    )
+  )
+
+  for /f "usebackq delims=" %%R in (`dir /b /a-d "%PROBE_DIR%\*.rep" 2^>nul`) do (
+    findstr /C:"\"status_code\":401" "%PROBE_DIR%\%%R" >nul 2>nul
+    if not errorlevel 1 set /a INVALID_401+=1
+    findstr /C:"\"status_code\":429" "%PROBE_DIR%\%%R" >nul 2>nul
+    if not errorlevel 1 set /a INVALID_429+=1
+  )
+
+  set /a INVALID=!INVALID_401! + !INVALID_429!
+)
 
 set /a AVAILABLE_EST=%TOTAL% - %INVALID%
 
+REM 计算 HOLD_LIMIT（用 findstr 安全验证数字，避免路径报错）
+set /a HOLD_LIMIT=0
+echo %TOTAL_HOLD_LIMIT%| findstr /R "^[0-9][0-9]*$" >nul 2>nul
+if not errorlevel 1 ( set /a HOLD_LIMIT=%TOTAL_HOLD_LIMIT% ) else ( set /a HOLD_LIMIT=50 )
+if %HOLD_LIMIT% LSS 1 set /a HOLD_LIMIT=50
+
+REM REQUEST_TARGET = hold_limit - available_est（精确补差，不超发）
+set /a REQUEST_TARGET=%HOLD_LIMIT% - %AVAILABLE_EST%
+if %REQUEST_TARGET% LSS 0 set /a REQUEST_TARGET=0
+
 echo.
-echo [INFO] 统计：total=%TOTAL% available_est=%AVAILABLE_EST% probed_ok=%PROBED_OK% net_fail=%NET_FAIL% invalid(401/429)=%INVALID% hold_limit=%HOLD_LIMIT% request_target=%REQUEST_TARGET%
+echo [INFO] 统计：total=%TOTAL% available_est=%AVAILABLE_EST% probed_ok=%PROBED_OK% net_fail=%NET_FAIL% invalid_401=%INVALID_401% invalid_429=%INVALID_429% invalid(401/429)=%INVALID% hold_limit=%HOLD_LIMIT% request_target=%REQUEST_TARGET%
 if %TOTAL% EQU 0 (
   echo [WARN] accounts-dir 下未发现 .json 文件：%ACCOUNTS_DIR%
 )
@@ -198,8 +245,10 @@ REM 2) 若总量不足目标池，也触发（bootstrap）；
 REM 3) 若总量低于总持有上限，也触发补齐。
 set "NEED_TRIGGER=0"
 if %INVALID% GTR 0 set "NEED_TRIGGER=1"
+if %INVALID_401% GTR 0 set "NEED_TRIGGER=1"
+if %INVALID_429% GTR 0 set "NEED_TRIGGER=1"
 if %TOTAL% LSS %TARGET_POOL_SIZE% set "NEED_TRIGGER=1"
-if %HOLD_LIMIT% GTR 0 if %TOTAL% LSS %HOLD_LIMIT% set "NEED_TRIGGER=1"
+if %HOLD_LIMIT% GTR 0 if %AVAILABLE_EST% LSS %HOLD_LIMIT% set "NEED_TRIGGER=1"
 
 if "%NEED_TRIGGER%"=="0" (
   echo [OK] 未达到续杯条件：无需 topup
@@ -208,23 +257,44 @@ if "%NEED_TRIGGER%"=="0" (
   goto :EXIT_MAIN
 )
 
-REM 构造 topup body：读取 jsonl 为数组
+REM 持有量已达上限时提前退出（REQUEST_TARGET=0 无需请求服务端）
+if %REQUEST_TARGET% EQU 0 (
+  echo [OK] 无需续杯：持有量已达上限（available_est=%AVAILABLE_EST% hold_limit=%HOLD_LIMIT%）
+  call :WRITE_FINAL_REPORT "topup" "at_limit" "%TOTAL%" "%PROBED_OK%" "%NET_FAIL%" "%INVALID%" "%OUT_DIR%"
+  set "_MAIN_EC=0"
+  goto :EXIT_MAIN
+)
+
+REM 构造 topup body：读取 jsonl 为数组（增强容错+错误日志）
 powershell -NoProfile -Command ^
-  "$items=@(); foreach($l in Get-Content -LiteralPath '%REPORT_JSONL%' -ErrorAction SilentlyContinue){ if($l -and $l.Trim()){ try{$items += ($l | ConvertFrom-Json)}catch{}} }; $body=@{target_pool_size=[int]('%REQUEST_TARGET%'); reports=$items}; $body | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath '%BODY_JSON%' -Encoding UTF8" >nul 2>nul
+  "$probe='%PROBE_DIR%'; $bodyPath='%BODY_JSON%'; $target=[int]('%REQUEST_TARGET%'); $items=@(); if(Test-Path -LiteralPath $probe){ Get-ChildItem -LiteralPath $probe -Filter '*.rep' -File -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object { try { $txt=Get-Content -Raw -LiteralPath $_.FullName -ErrorAction Stop; if($txt -and $txt.Trim()){ $items += ($txt | ConvertFrom-Json) } } catch {} } }; $body=[ordered]@{target_pool_size=$target; reports=$items}; $dir=Split-Path -Parent $bodyPath; if($dir -and -not (Test-Path -LiteralPath $dir)){ New-Item -ItemType Directory -Path $dir -Force | Out-Null }; $json=($body | ConvertTo-Json -Depth 6); $utf8NoBom=New-Object System.Text.UTF8Encoding($false); [System.IO.File]::WriteAllText($bodyPath,$json,$utf8NoBom)" 1>"%OUT_DIR%\topup_body_build.log" 2>"%OUT_DIR%\topup_body_error.log"
 if not exist "%BODY_JSON%" (
-  echo [ERROR] topup body 生成失败：%BODY_JSON%
+  echo [WARN] topup body 生成失败，尝试使用兜底 body：%BODY_JSON%
+  if exist "%OUT_DIR%\topup_body_error.log" type "%OUT_DIR%\topup_body_error.log"
+  >"%BODY_JSON%" echo {"target_pool_size":%REQUEST_TARGET%,"reports":[]}
+)
+if not exist "%BODY_JSON%" (
+  echo [ERROR] 兜底 body 仍生成失败：%BODY_JSON%
   set "_MAIN_EC=2"
   goto :EXIT_MAIN
 )
 
+for /f "usebackq tokens=1,2 delims=|" %%a in (`powershell -NoProfile -Command "$n=0; $bad=0; try{$o=Get-Content -Raw -LiteralPath '%BODY_JSON%'|ConvertFrom-Json; $arr=@($o.reports); $n=$arr.Count; foreach($r in $arr){ $s=[int]$r.status_code; if($s -eq 401 -or $s -eq 429){$bad++} }}catch{}; Write-Output ($n.ToString() + '|' + $bad.ToString())"`) do (
+  set "BODY_REPORTS=%%a"
+  set "BODY_INVALID=%%b"
+)
+if "%BODY_REPORTS%"=="" set "BODY_REPORTS=0"
+if "%BODY_INVALID%"=="" set "BODY_INVALID=0"
+echo [INFO] 上报报告条数：%BODY_REPORTS%（失效401/429=%BODY_INVALID%）
+
 echo [INFO] 触发 topup：POST %SERVER_URL%/v1/refill/topup
-curl -sS --connect-timeout 8 --max-time 30 --noproxy "*" -X POST "%SERVER_URL%/v1/refill/topup" ^
+curl -sS --connect-timeout %TOPUP_CONNECT_TIMEOUT% --max-time %TOPUP_MAX_TIME% --retry %TOPUP_RETRY% --retry-all-errors --retry-delay %TOPUP_RETRY_DELAY% --noproxy "*" -X POST "%SERVER_URL%/v1/refill/topup" ^
   -H "X-User-Key: %USER_KEY%" ^
   -H "Content-Type: application/json" ^
   --data-binary "@%BODY_JSON%" >"%RESP_JSON%"
 set "CURL_EC=%ERRORLEVEL%"
 if not "%CURL_EC%"=="0" (
-  echo [ERROR] topup 请求失败（curl exit=%CURL_EC%）
+  echo [ERROR] topup 请求失败（curl exit=%CURL_EC%，可能是服务端超时/网络抖动）
   set "_MAIN_EC=2"
   goto :EXIT_MAIN
 )

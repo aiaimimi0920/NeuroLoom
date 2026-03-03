@@ -31,6 +31,7 @@ write_lock = threading.Lock()
 driver_init_lock = threading.Lock()
 stats_lock = threading.Lock()
 proxy_state_lock = threading.Lock()
+flow_totals_lock = threading.Lock()
 
 RUN_STARTED_AT = time.time()
 
@@ -325,6 +326,35 @@ def _write_json(path: str, obj: dict) -> None:
     os.replace(tmp, path)
 
 
+def _flow_totals_path() -> str:
+    return _data_path("flow_totals.json")
+
+
+def _flow_totals_read() -> dict[str, int]:
+    raw = _read_json(_flow_totals_path())
+    if not isinstance(raw, dict):
+        raw = {}
+    return {
+        "protocol": int(raw.get("protocol", 0) or 0),
+        "browser": int(raw.get("browser", 0) or 0),
+    }
+
+
+def _flow_totals_inc(flow: str, delta: int = 1) -> None:
+    key = (flow or "").strip().lower()
+    if key not in ("protocol", "browser"):
+        return
+    with flow_totals_lock:
+        st = _flow_totals_read()
+        st[key] = int(st.get(key, 0) or 0) + int(delta)
+        _write_json(_flow_totals_path(), st)
+
+
+def _flow_totals_snapshot() -> tuple[int, int]:
+    st = _flow_totals_read()
+    return int(st.get("protocol", 0) or 0), int(st.get("browser", 0) or 0)
+
+
 def _infer_results_state() -> dict:
     """Infer last shard id + current line count from existing shard files.
 
@@ -435,6 +465,7 @@ def _stats_inc(kind: str, err: Exception | str | None = None, *, stage: str | No
             _STATS["success"] = int(_STATS.get("success", 0)) + 1
             _SUCCESS_TS.append(now_ts)
             _trim_ts(now_ts)
+            _flow_totals_inc("browser", 1)
             return
 
         _STATS["fail"] = int(_STATS.get("fail", 0)) + 1
@@ -529,6 +560,8 @@ def _summary_loop() -> None:
         rolling_h = rolling_success * 3600.0 / float(rw)
         rolling_sr = (rolling_success / float(rolling_attempt)) if rolling_attempt > 0 else 0.0
 
+        protocol_total, browser_total = _flow_totals_snapshot()
+
         print(
             (
                 f"[BROWSER_SUMMARY] 完成 {st.get('success', 0)} | 尝试 {st.get('attempt', 0)} | 失败 {st.get('fail', 0)} "
@@ -537,6 +570,7 @@ def _summary_loop() -> None:
                 f"{st.get('stage_email', 0)}/{st.get('stage_password', 0)}/{st.get('stage_otp', 0)}/"
                 f"{st.get('stage_profile', 0)}/{st.get('stage_callback', 0)}/{st.get('stage_other', 0)} "
                 f"| 速度(累计){speed_h:.0f}/h | 速度({rw}s){rolling_h:.0f}/h | 成功率({rw}s){rolling_sr*100:.1f}%"
+                f" | 总生成(协议/浏览器) {protocol_total}/{browser_total}"
             ),
             flush=True,
         )

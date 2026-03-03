@@ -89,9 +89,9 @@ set /a NET_FAIL=0
 set /a CAND=0
 set /a DELETED=0
 
-for %%F in ("%ACCOUNTS_DIR%\*.json") do (
+for /f "usebackq delims=" %%F in (`dir /b /a-d "%ACCOUNTS_DIR%\*.json" 2^>nul`) do (
   set /a TOTAL+=1
-  call :处理单个文件 "%%~fF" "%%~nxF"
+  call :PROCESS_ONE_FILE "%ACCOUNTS_DIR%\%%F" "%%F"
 )
 
 echo.
@@ -192,7 +192,7 @@ if "!Q0!"=="1" set "_N=429"
 :NORMALIZE_END
 endlocal & set "%~3=%_N%" & exit /b 0
 
-:处理单个文件
+:PROCESS_ONE_FILE
 set "FILE=%~1"
 set "BASE=%~2"
 

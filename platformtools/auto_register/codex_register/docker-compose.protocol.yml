@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  codex_protocol_20t:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime
+    container_name: codex_protocol_20t
+    working_dir: /workspace
+    env_file:
+      - ./.env.center
+    volumes:
+      - ../../../:/workspace
+      - ./data:/data
+    environment:
+      - DATA_DIR=/data
+      - INSTANCE_ID=codex_protocol_20t
+      - CONCURRENCY=20
+      - SUMMARY_PRINT_SECONDS=5
+      - PROTOCOL_SUMMARY_ONLY=1
+      - PROTOCOL_ALLOW_DIRECT_FALLBACK=1
+      - PROTOCOL_IGNORE_PROXIES=1
+      - SLEEP_MIN=0
+      - SLEEP_MAX=1
+    command: ["python", "-m", "platformtools.auto_register.codex_register.protocol_version.main"]
+    restart: always
+
+  codex_browser_1t:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime
+    container_name: codex_browser_1t
+    working_dir: /workspace
+    env_file:
+      - ./.env.center
+    volumes:
+      - ../../../:/workspace
+      - ./data:/data
+    environment:
+      - DATA_DIR=/data
+      - INSTANCE_ID=codex_browser_1t
+      - CONCURRENCY=1
+      - SUMMARY_PRINT_SECONDS=5
+      - SLEEP_MIN=0
+      - SLEEP_MAX=2
+      - HEADLESS=1
+    command: ["python", "-m", "platformtools.auto_register.codex_register.browser_version.main"]
+    restart: always
