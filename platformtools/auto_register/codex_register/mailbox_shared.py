@@ -83,6 +83,13 @@ GPTMAIL_KEYS_FILE = os.environ.get(
 GPTMAIL_PREFIX = os.environ.get("GPTMAIL_PREFIX", "").strip() or None
 GPTMAIL_DOMAIN = os.environ.get("GPTMAIL_DOMAIN", "").strip() or None
 
+# Mail.tm provider config
+MAILTM_API_BASE = (
+    os.environ.get("MAILTM_API_BASE")
+    or _PLATFORMTOOLS_DEV_VARS.get("MAILTM_API_BASE")
+    or "https://api.mail.tm"
+).strip()
+
 _MAIL_DOMAIN_HEALTH_ORDER = [
     d.strip().lower()
     for d in (
@@ -122,6 +129,7 @@ def _pick_mailcreate_with_health() -> Mailbox:
             gptmail_keys_file=GPTMAIL_KEYS_FILE,
             gptmail_prefix=GPTMAIL_PREFIX,
             gptmail_domain=GPTMAIL_DOMAIN,
+            mailtm_api_base=MAILTM_API_BASE,
         )
 
     tries = max(1, _MAILBOX_PICK_TRIES)
@@ -141,6 +149,7 @@ def _pick_mailcreate_with_health() -> Mailbox:
                 gptmail_keys_file=GPTMAIL_KEYS_FILE,
                 gptmail_prefix=GPTMAIL_PREFIX,
                 gptmail_domain=GPTMAIL_DOMAIN,
+                mailtm_api_base=MAILTM_API_BASE,
             )
         except Exception as e:
             last_err = e
@@ -157,6 +166,7 @@ def _pick_mailcreate_with_health() -> Mailbox:
             gptmail_keys_file=GPTMAIL_KEYS_FILE,
             gptmail_prefix=GPTMAIL_PREFIX,
             gptmail_domain=GPTMAIL_DOMAIN,
+            mailtm_api_base=MAILTM_API_BASE,
         )
 
     raise RuntimeError("failed to pick mailcreate domain")
@@ -177,6 +187,7 @@ def create_temp_mailbox_shared() -> tuple[str, str]:
             gptmail_keys_file=GPTMAIL_KEYS_FILE,
             gptmail_prefix=GPTMAIL_PREFIX,
             gptmail_domain=GPTMAIL_DOMAIN,
+            mailtm_api_base=MAILTM_API_BASE,
         )
         if getattr(mb, "provider", "") == "mailcreate":
             try:
@@ -196,5 +207,6 @@ def wait_openai_code_shared(*, mailbox_ref: str, timeout_seconds: int = 180) -> 
         gptmail_base_url=GPTMAIL_BASE_URL,
         gptmail_api_key=GPTMAIL_API_KEY,
         gptmail_keys_file=GPTMAIL_KEYS_FILE,
+        mailtm_api_base=MAILTM_API_BASE,
         timeout_seconds=timeout_seconds,
     )

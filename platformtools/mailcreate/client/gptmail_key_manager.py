@@ -30,6 +30,21 @@ from typing import List, Optional
 _RUNTIME_COOLDOWN_STATE: dict[str, dict[str, int]] = {}
 _RUNTIME_COOLDOWN_LOCK = threading.Lock()
 
+# 付费 key 连续非网络失败跟踪
+# key -> consecutive non-network failure count
+_CONSECUTIVE_FAIL_COUNT: dict[str, int] = {}
+_CONSECUTIVE_FAIL_LOCK = threading.Lock()
+_PAID_KEY_EXHAUST_THRESHOLD = int(os.environ.get("GPTMAIL_PAID_KEY_EXHAUST_THRESHOLD", "10") or "10")
+
+# 网络错误关键词（命中任一则认为是网络波动，不计入连续失败）
+_NETWORK_ERROR_KEYWORDS = (
+    "timeout", "timed out", "connection refused", "connection reset",
+    "connectionerror", "urlopen error", "name or service not known",
+    "temporary failure in name resolution", "network is unreachable",
+    "no route to host", "ssl", "eof occurred", "broken pipe",
+    "connection aborted", "remotedisconnected", "incompleteread",
+)
+
 
 @dataclass
 class GPTMailKey:
@@ -337,8 +352,68 @@ class GPTMailKeyManager:
                 k.cooldown_until_epoch = until
                 break
 
+    # ------------------------------------------------------------------
+    # 付费 key 连续非网络失败自动废弃
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _is_network_error(reason: str) -> bool:
+        """判断错误是否为网络波动（而非 API 业务错误）。
+
+        网络波动不计入连续失败，避免误废弃正常 key。
+        """
+        r = (reason or "").lower()
+        return any(kw in r for kw in _NETWORK_ERROR_KEYWORDS)
+
+    def mark_failure_maybe_exhaust(
+        self,
+        key: str,
+        *,
+        reason: str = "",
+    ) -> bool:
+        """跟踪付费 key 的连续非网络失败次数。
+
+        - 网络错误（超时、DNS、连接拒绝等）→ 不计入，仅走冷却
+        - 非网络错误 → 连续计数 +1
+        - 连续非网络失败 ≥ 阈值 → 永久废弃（persist=True）
+
+        Returns:
+            True if key was auto-exhausted, False otherwise.
+        """
+        # gpt-test 不走此逻辑（它有自己的每日重置机制）
+        if (key or "").strip() == "gpt-test":
+            return False
+
+        if self._is_network_error(reason):
+            # 网络问题不计入连续失败，仅施加冷却
+            self.mark_failure_cooldown(key, reason=reason)
+            return False
+
+        # 累加连续非网络失败
+        with _CONSECUTIVE_FAIL_LOCK:
+            count = _CONSECUTIVE_FAIL_COUNT.get(key, 0) + 1
+            _CONSECUTIVE_FAIL_COUNT[key] = count
+
+        self.mark_failure_cooldown(key, reason=reason)
+
+        if count >= _PAID_KEY_EXHAUST_THRESHOLD:
+            print(
+                f"[gptmail_key_manager] key '{key[:8]}...' auto-exhausted: "
+                f"{count} consecutive non-network failures (threshold={_PAID_KEY_EXHAUST_THRESHOLD})"
+            )
+            self.mark_exhausted(key, persist=True, reason=reason)
+            return True
+
+        return False
+
+    @staticmethod
+    def _reset_consecutive_fail(key: str) -> None:
+        """成功后清零连续非网络失败计数。"""
+        with _CONSECUTIVE_FAIL_LOCK:
+            _CONSECUTIVE_FAIL_COUNT.pop(key, None)
+
     def mark_success(self, key: str) -> None:
-        """某 key 成功调用一次后，清零冷却等级与冷却时间。"""
+        """某 key 成功调用一次后，清零冷却等级、冷却时间和连续失败计数。"""
 
         with _RUNTIME_COOLDOWN_LOCK:
             _RUNTIME_COOLDOWN_STATE[key] = {
@@ -346,6 +421,8 @@ class GPTMailKeyManager:
                 "until": 0,
                 "day": self._utc_day_token(self._now_epoch()),
             }
+
+        self._reset_consecutive_fail(key)
 
         for k in self._keys:
             if k.key == key:

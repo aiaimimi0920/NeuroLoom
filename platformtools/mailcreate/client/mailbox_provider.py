@@ -33,6 +33,7 @@ from typing import Optional
 from mailcreate_client import MailCreateClient, MailCreateConfig, wait_for_6digit_code
 from gptmail_client import GPTMailClient, GPTMailConfig, GPTMailError, wait_for_6digit_code_gptmail
 from gptmail_key_manager import GPTMailKeyManager
+from mailtm_client import MailTmClient, MailTmConfig, MailTmError, wait_for_6digit_code_mailtm
 
 
 MAILBOX_VERBOSE = (os.environ.get("MAILBOX_VERBOSE", "0") or "0").strip().lower() not in (
@@ -131,7 +132,7 @@ def _decode_ref(ref: str) -> tuple[Optional[str], str]:
     p, raw = s.split(":", 1)
     p = p.strip().lower()
     raw = raw.strip()
-    if p in ("mailcreate", "gptmail", "gpt"):
+    if p in ("mailcreate", "gptmail", "gpt", "mailtm"):
         return ("gptmail" if p in ("gpt",) else p), raw
     return None, s
 
@@ -216,25 +217,137 @@ def _create_mailbox_gptmail(
 
             # Still suspicious => rotate key (but don't mark exhausted).
             if not generated_ok:
-                km.mark_failure_cooldown(k, reason="suspicious_email")
+                km.mark_failure_maybe_exhaust(k, reason="suspicious_email")
             continue
         except GPTMailError as e:
             last_err = e
             # quota/invalid 仍维持原 exhausted 语义，同时施加冷却（避免短时间抖动误判）
             print(f"[gptmail] generate_email failed: key={_mask_key(k)} err={e}")
             km.mark_exhausted(k, persist=True, reason=str(e))
-            km.mark_failure_cooldown(k, reason=str(e))
+            km.mark_failure_maybe_exhaust(k, reason=str(e))
             continue
         except Exception as e:
             last_err = e
             # unknown error: 不直接判死，进入冷却后再试下一个 key
             print(f"[gptmail] generate_email exception: key={_mask_key(k)} err={e}")
-            km.mark_failure_cooldown(k, reason=str(e))
+            km.mark_failure_maybe_exhaust(k, reason=str(e))
             continue
 
     if last_err:
         raise RuntimeError(f"GPTMail generate_email failed (last_key={_mask_key(last_key)}): {last_err}")
-    raise RuntimeError("Failed to create GPTMail mailbox")
+
+
+def _create_mailbox_mailtm(
+    *, api_base: str,
+) -> Mailbox:
+    """Create a temporary mailbox via Mail.tm public API."""
+    cfg = MailTmConfig(api_base=api_base)
+    client = MailTmClient(cfg)
+    email, token, password = client.create_mailbox()
+    # ref encodes both token and password so we can poll later
+    raw_ref = f"{token}||{password}"
+    return Mailbox(provider="mailtm", email=email, ref=_encode_ref("mailtm", raw_ref))
+from provider_scheduler import ProviderScheduler, ProviderSlot, create_default_scheduler
+
+
+# ---------------------------------------------------------------------------
+# Global scheduler (lazy-initialised on first auto call)
+# ---------------------------------------------------------------------------
+
+_SCHEDULER: Optional[ProviderScheduler] = None
+_SCHEDULER_LOCK = __import__("threading").Lock()
+
+_GPT_TEST_KEY = "gpt-test"
+
+
+def _get_scheduler(
+    *,
+    gptmail_api_key: str,
+    gptmail_keys_file: str,
+    mailcreate_base_url: str,
+    mailcreate_custom_auth: str,
+) -> ProviderScheduler:
+    """Return (and lazily create) the global provider scheduler."""
+    global _SCHEDULER
+    if _SCHEDULER is not None:
+        return _SCHEDULER
+
+    with _SCHEDULER_LOCK:
+        if _SCHEDULER is not None:
+            return _SCHEDULER
+
+        # Determine which backends are available
+        has_gptmail_test = (gptmail_api_key == _GPT_TEST_KEY)
+
+        has_gptmail_paid = False
+        if gptmail_api_key and gptmail_api_key != _GPT_TEST_KEY:
+            has_gptmail_paid = True
+        else:
+            try:
+                km = GPTMailKeyManager.from_file(gptmail_keys_file)
+                has_gptmail_paid = km.any_available()
+            except Exception:
+                pass
+
+        has_mailcreate = bool(mailcreate_base_url)
+
+        _SCHEDULER = create_default_scheduler(
+            has_gptmail_test_key=has_gptmail_test,
+            has_mailcreate=has_mailcreate,
+            has_gptmail_paid=has_gptmail_paid,
+            has_mailtm=True,  # always available as fallback
+        )
+
+        _mb_log(f"[scheduler] initialised: {_SCHEDULER.status_summary()}")
+        return _SCHEDULER
+
+
+def _create_by_slot_name(
+    slot_name: str,
+    *,
+    mailcreate_base_url: str,
+    mailcreate_custom_auth: str,
+    mailcreate_domain: str,
+    gptmail_base_url: str,
+    gptmail_api_key: str,
+    gptmail_keys_file: str,
+    gptmail_prefix: Optional[str],
+    gptmail_domain: Optional[str],
+    mailtm_api_base: str,
+) -> Mailbox:
+    """Dispatch mailbox creation by scheduler slot name."""
+
+    if slot_name == "gptmail_test":
+        return _create_mailbox_gptmail(
+            base_url=gptmail_base_url,
+            api_key=_GPT_TEST_KEY,
+            keys_file="",
+            prefix=gptmail_prefix,
+            domain=gptmail_domain,
+        )
+
+    if slot_name == "mailcreate":
+        return _create_mailbox_mailcreate(
+            base_url=mailcreate_base_url,
+            custom_auth=mailcreate_custom_auth,
+            domain=mailcreate_domain,
+        )
+
+    if slot_name == "gptmail_paid":
+        # Use explicit key if it's not gpt-test, else fall back to keys_file
+        api_key = gptmail_api_key if (gptmail_api_key and gptmail_api_key != _GPT_TEST_KEY) else ""
+        return _create_mailbox_gptmail(
+            base_url=gptmail_base_url,
+            api_key=api_key,
+            keys_file=gptmail_keys_file,
+            prefix=gptmail_prefix,
+            domain=gptmail_domain,
+        )
+
+    if slot_name == "mailtm":
+        return _create_mailbox_mailtm(api_base=mailtm_api_base)
+
+    raise RuntimeError(f"unknown scheduler slot: {slot_name}")
 
 
 def create_mailbox(
@@ -250,39 +363,52 @@ def create_mailbox(
     gptmail_keys_file: str = "",
     gptmail_prefix: Optional[str] = None,
     gptmail_domain: Optional[str] = None,
+    # mailtm
+    mailtm_api_base: str = "https://api.mail.tm",
 ) -> Mailbox:
     p = (provider or "").strip().lower()
 
     if p in ("auto", "prefer_gptmail", "gptmail_first"):
-        # 规则：
-        # 1) 先判断是否还有可用 GPTMail key（单 key 或 keys_file 任一可用）
-        # 2) 有可用 key -> 走 GPTMail
-        # 3) 没有可用 key -> 直接走 MailCreate（自建）
-        has_available_gptmail_key = False
-
-        if gptmail_api_key:
-            has_available_gptmail_key = True
-        else:
-            try:
-                km = GPTMailKeyManager.from_file(gptmail_keys_file)
-                has_available_gptmail_key = km.any_available()
-            except Exception:
-                has_available_gptmail_key = False
-
-        if has_available_gptmail_key:
-            return _create_mailbox_gptmail(
-                base_url=gptmail_base_url,
-                api_key=gptmail_api_key,
-                keys_file=gptmail_keys_file,
-                prefix=gptmail_prefix,
-                domain=gptmail_domain,
-            )
-
-        return _create_mailbox_mailcreate(
-            base_url=mailcreate_base_url,
-            custom_auth=mailcreate_custom_auth,
-            domain=mailcreate_domain,
+        sched = _get_scheduler(
+            gptmail_api_key=gptmail_api_key,
+            gptmail_keys_file=gptmail_keys_file,
+            mailcreate_base_url=mailcreate_base_url,
+            mailcreate_custom_auth=mailcreate_custom_auth,
         )
+
+        candidates = sched.pick()
+        if not candidates:
+            raise RuntimeError("auto: no available mailbox providers")
+
+        _mb_log(f"[scheduler] pick order: {[s.name for s in candidates]}  ({sched.status_summary()})")
+
+        last_err: Optional[Exception] = None
+        for slot in candidates:
+            try:
+                mb = _create_by_slot_name(
+                    slot.name,
+                    mailcreate_base_url=mailcreate_base_url,
+                    mailcreate_custom_auth=mailcreate_custom_auth,
+                    mailcreate_domain=mailcreate_domain,
+                    gptmail_base_url=gptmail_base_url,
+                    gptmail_api_key=gptmail_api_key,
+                    gptmail_keys_file=gptmail_keys_file,
+                    gptmail_prefix=gptmail_prefix,
+                    gptmail_domain=gptmail_domain,
+                    mailtm_api_base=mailtm_api_base,
+                )
+                sched.mark_success(slot.name)
+                _mb_log(f"[scheduler] {slot.name} success  email={mb.email}")
+                return mb
+            except Exception as e:
+                last_err = e
+                sched.mark_failure(slot.name)
+                _mb_log(f"[scheduler] {slot.name} failed: {e}")
+                continue
+
+        raise RuntimeError(f"auto: all providers failed. last error: {last_err}")
+
+    # --- Specified provider (no fallback) ---------------------------------
 
     if p in ("mailcreate", "self", "local"):
         return _create_mailbox_mailcreate(
@@ -300,6 +426,9 @@ def create_mailbox(
             domain=gptmail_domain,
         )
 
+    if p in ("mailtm", "mail.tm", "mail_tm"):
+        return _create_mailbox_mailtm(api_base=mailtm_api_base)
+
     raise RuntimeError(f"unknown provider: {provider}")
 
 
@@ -314,6 +443,8 @@ def wait_openai_code(
     gptmail_base_url: str = "https://mail.chatgpt.org.uk",
     gptmail_api_key: str = "",
     gptmail_keys_file: str = "",
+    # mailtm
+    mailtm_api_base: str = "https://api.mail.tm",
     timeout_seconds: int = 180,
 ) -> str:
     # In auto mode we rely on encoded ref prefix.
@@ -458,18 +589,48 @@ def wait_openai_code(
                 if _should_rotate_gptmail_key(e):
                     _mb_log(f"[gptmail] poll failed: key={_mask_key(k)} err={e}")
                     km.mark_exhausted(k, persist=True, reason=str(e))
-                    km.mark_failure_cooldown(k, reason=str(e))
+                    km.mark_failure_maybe_exhaust(k, reason=str(e))
                     continue
                 # 非认证/配额类错误也进入冷却，但不判 exhausted
-                km.mark_failure_cooldown(k, reason=str(e))
+                km.mark_failure_maybe_exhaust(k, reason=str(e))
                 raise
             except Exception as e:
                 last_err = e
-                km.mark_failure_cooldown(k, reason=str(e))
+                km.mark_failure_maybe_exhaust(k, reason=str(e))
                 raise
 
         if last_err:
             raise RuntimeError(f"GPTMail poll failed (last_key={_mask_key(k)}): {last_err}")
         raise RuntimeError("Failed to poll GPTMail mailbox")
+
+    if p in ("mailtm", "mail.tm", "mail_tm"):
+        # ref = "mailtm:<token>||<password>"
+        raw = raw_ref if ref_provider else mailbox_ref
+        parts = raw.split("||", 1)
+        if len(parts) != 2:
+            raise RuntimeError(f"mailtm ref must be 'token||password', got ref_preview={raw[:30]}")
+        mailtm_token, _ = parts
+
+        # Reconstruct email from ref to pass into the poller
+        # The email isn't stored in ref, so we use mailbox_ref itself if needed.
+        # Actually ref_provider decoding strips it. We need to poll by token only.
+        cfg = MailTmConfig(api_base=mailtm_api_base)
+        client = MailTmClient(cfg)
+
+        _mb_log(f"[mailbox-provider] mailtm poll start timeout={timeout_seconds}s")
+        try:
+            code = wait_for_6digit_code_mailtm(
+                client,
+                token=mailtm_token,
+                email="(mailtm)",
+                from_contains="openai",
+                timeout_seconds=timeout_seconds,
+                poll_seconds=3.0,
+            )
+            _mb_log(f"[mailbox-provider] mailtm poll ok code_len={len(str(code or ''))}")
+            return code
+        except Exception as e:
+            _mb_log(f"[mailbox-provider] mailtm poll fail err_type={type(e).__name__} err={e}")
+            raise
 
     raise RuntimeError(f"unknown provider: {provider}")

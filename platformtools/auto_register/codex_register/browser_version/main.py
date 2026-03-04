@@ -14,6 +14,7 @@ from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
 import time
 import random
 import os
@@ -21,11 +22,17 @@ import re
 import json
 import glob
 import socket
+import subprocess
 from urllib.parse import urlparse, parse_qs
 import tempfile
 import shutil
 import concurrent.futures
 import threading
+
+try:
+    import undetected_chromedriver as uc  # type: ignore
+except Exception:
+    uc = None
 
 write_lock = threading.Lock()
 driver_init_lock = threading.Lock()
@@ -34,6 +41,8 @@ proxy_state_lock = threading.Lock()
 flow_totals_lock = threading.Lock()
 
 RUN_STARTED_AT = time.time()
+
+_uc_init_lock = threading.Lock()
 
 _STATS: dict[str, Any] = {
     "attempt": 0,
@@ -704,6 +713,34 @@ except Exception:
 
 _CLICK_SNAP_COUNTER = 0
 
+# ---------------------------------------------------------------------------
+# Legacy human-like behavior helpers (migrated from pre-refactor browser flow)
+# ---------------------------------------------------------------------------
+def _human_delay(min_s: float = 0.3, max_s: float = 1.5) -> None:
+    time.sleep(random.uniform(min_s, max_s))
+
+
+def _human_mouse_jitter(driver, *, attempts: int = 3) -> None:
+    try:
+        actions = ActionChains(driver)
+        for _ in range(attempts):
+            x_off = random.randint(-80, 80)
+            y_off = random.randint(-40, 40)
+            actions.move_by_offset(x_off, y_off)
+            actions.pause(random.uniform(0.05, 0.15))
+        actions.perform()
+    except Exception:
+        pass
+
+
+def _human_type(element, text: str, *, per_char_delay: tuple[float, float] = (0.03, 0.10)) -> None:
+    if len(text) > 60:
+        element.send_keys(text)
+        return
+    for ch in text:
+        element.send_keys(ch)
+        time.sleep(random.uniform(*per_char_delay))
+
 
 def _dbg(step: str, msg: str = "", *, driver=None) -> None:
     if not DEBUG_TRACE:
@@ -915,7 +952,7 @@ import sys
 
 # Ensure repo root is importable so we can `import platformtools...` even when
 # this file is executed via a script path.
-_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
@@ -1001,6 +1038,13 @@ GPTMAIL_KEYS_FILE = os.environ.get(
 GPTMAIL_PREFIX = os.environ.get("GPTMAIL_PREFIX", "").strip() or None
 GPTMAIL_DOMAIN = os.environ.get("GPTMAIL_DOMAIN", "").strip() or None
 
+# Mail.tm provider config
+MAILTM_API_BASE = (
+    os.environ.get("MAILTM_API_BASE")
+    or _PLATFORMTOOLS_DEV_VARS.get("MAILTM_API_BASE")
+    or "https://api.mail.tm"
+).strip()
+
 
 _MAIL_DOMAIN_HEALTH_ORDER = [
     d.strip().lower()
@@ -1059,6 +1103,7 @@ def _pick_mailcreate_with_health() -> Mailbox:
             gptmail_keys_file=GPTMAIL_KEYS_FILE,
             gptmail_prefix=GPTMAIL_PREFIX,
             gptmail_domain=GPTMAIL_DOMAIN,
+            mailtm_api_base=MAILTM_API_BASE,
         )
 
     tries = max(1, _MAILBOX_PICK_TRIES)
@@ -1078,6 +1123,7 @@ def _pick_mailcreate_with_health() -> Mailbox:
                 gptmail_keys_file=GPTMAIL_KEYS_FILE,
                 gptmail_prefix=GPTMAIL_PREFIX,
                 gptmail_domain=GPTMAIL_DOMAIN,
+                mailtm_api_base=MAILTM_API_BASE,
             )
         except Exception as e:
             last_err = e
@@ -1095,6 +1141,7 @@ def _pick_mailcreate_with_health() -> Mailbox:
             gptmail_keys_file=GPTMAIL_KEYS_FILE,
             gptmail_prefix=GPTMAIL_PREFIX,
             gptmail_domain=GPTMAIL_DOMAIN,
+            mailtm_api_base=MAILTM_API_BASE,
         )
 
     raise RuntimeError("failed to pick mailcreate domain")
@@ -1125,6 +1172,7 @@ def create_temp_mailbox() -> tuple[str, str]:
             gptmail_keys_file=GPTMAIL_KEYS_FILE,
             gptmail_prefix=GPTMAIL_PREFIX,
             gptmail_domain=GPTMAIL_DOMAIN,
+            mailtm_api_base=MAILTM_API_BASE,
         )
 
         # auto 情况：若最终落到 mailcreate，再做一次健康域优选
@@ -1161,6 +1209,7 @@ def wait_openai_code(*, address_jwt: str, timeout_seconds: int = 180) -> str:
             gptmail_base_url=GPTMAIL_BASE_URL,
             gptmail_api_key=GPTMAIL_API_KEY,
             gptmail_keys_file=GPTMAIL_KEYS_FILE,
+            mailtm_api_base=MAILTM_API_BASE,
             timeout_seconds=timeout_seconds,
         )
     except Exception as e:
@@ -2194,6 +2243,11 @@ from selenium.webdriver.chrome.options import Options
 def new_driver(proxy: str | None = None):
     options = Options()
 
+    # 匿名模式：开启后使用无痕窗口，减少本地会话残留。
+    anonymous_mode = int(os.environ.get("ANONYMOUS_MODE", "0") or "0")
+    if anonymous_mode == 1:
+        options.add_argument('--incognito')
+
     # Headless defaults to ON for servers/containers.
     # Set HEADLESS=0 to show the browser window for debugging/observing repair flow.
     headless = int(os.environ.get("HEADLESS", "1"))
@@ -2201,10 +2255,18 @@ def new_driver(proxy: str | None = None):
         options.add_argument('--headless')
 
     options.add_argument('--no-sandbox')
-    options.add_argument('--incognito')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
-    options.add_argument('--window-size=1920,1080')
+    window_size = str(os.environ.get("BROWSER_WINDOW_SIZE", "500,600") or "500,600")
+    options.add_argument(f'--window-size={window_size}')
+    desired_window_size: tuple[int, int] | None = None
+    try:
+        w_raw, h_raw = [x.strip() for x in window_size.split(",", 1)]
+        w, h = int(w_raw), int(h_raw)
+        if w > 0 and h > 0:
+            desired_window_size = (w, h)
+    except Exception:
+        desired_window_size = None
     options.add_argument('--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
     options.add_argument('--enable-features=NetworkService,NetworkServiceInProcess')
     
@@ -2251,10 +2313,8 @@ def new_driver(proxy: str | None = None):
     if host_rule_entries:
         options.add_argument(f"--host-resolver-rules={', '.join(host_rule_entries)}")
 
-    # Anti-detect features for standard selenium
+    # Anti-detect baseline
     options.add_argument('--disable-blink-features=AutomationControlled')
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option('useAutomationExtension', False)
     
     # Traffic saver defaults to ON (2) unless explicitly disabled.
     # 2 = block, 1 = allow
@@ -2293,8 +2353,55 @@ def new_driver(proxy: str | None = None):
     options.add_argument('--disable-in-process-stack-traces')
     options.page_load_strategy = 'eager' # Don't wait for all resources to download
     
-    service = Service()
-    driver = webdriver.Chrome(service=service, options=options)
+    use_uc = (os.environ.get("USE_UNDETECTED_CHROMEDRIVER", "1") or "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+    )
+
+    driver = None
+    if use_uc and uc is not None:
+        try:
+            # uc binary install/cache path is shared; multi-thread init may race.
+            with _uc_init_lock:
+                uc_kwargs: dict[str, Any] = {"options": options}
+                vm = _resolve_chrome_version_main()
+                if vm:
+                    uc_kwargs["version_main"] = vm
+                driver = uc.Chrome(**uc_kwargs)
+            print(f"[driver] using undetected_chromedriver version_main={vm}")
+        except Exception as e:
+            print(f"[driver] uc init failed, fallback selenium webdriver.Chrome: {e}")
+            driver = None
+
+    if driver is None:
+        service = Service()
+        driver = webdriver.Chrome(service=service, options=options)
+
+    # Force non-headless window size after browser startup.
+    # uc/chrome may append its own flags (e.g. --start-maximized), so we enforce by CDP+WebDriver.
+    if headless == 0 and desired_window_size is not None:
+        w, h = desired_window_size
+        try:
+            win = driver.execute_cdp_cmd("Browser.getWindowForTarget", {})
+            win_id = int(win.get("windowId"))
+            # Exit maximized/fullscreen first, then set exact bounds.
+            driver.execute_cdp_cmd("Browser.setWindowBounds", {
+                "windowId": win_id,
+                "bounds": {"windowState": "normal"}
+            })
+            driver.execute_cdp_cmd("Browser.setWindowBounds", {
+                "windowId": win_id,
+                "bounds": {"left": 0, "top": 0, "width": int(w), "height": int(h)}
+            })
+        except Exception:
+            try:
+                driver.set_window_rect(0, 0, w, h)
+            except Exception:
+                try:
+                    driver.set_window_size(w, h)
+                except Exception:
+                    pass
 
     # Aggressive network blocking (CDP). This is more reliable than prefs alone.
     try:
@@ -2337,6 +2444,43 @@ def new_driver(proxy: str | None = None):
     })
 
     return driver, proxy_dir
+
+def _resolve_chrome_version_main() -> int | None:
+    """Resolve Chrome major version for undetected-chromedriver.
+
+    Priority:
+    1) CHROME_VERSION_MAIN env (manual override)
+    2) Runtime detection from local chrome binary
+    3) None (let uc decide)
+    """
+
+    raw = (os.environ.get("CHROME_VERSION_MAIN") or "").strip()
+    if raw.isdigit():
+        try:
+            v = int(raw)
+            if v > 0:
+                return v
+        except Exception:
+            pass
+
+    for cmd in (
+        ["google-chrome", "--product-version"],
+        ["google-chrome-stable", "--product-version"],
+        ["chromium", "--product-version"],
+    ):
+        try:
+            out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=3)
+            ver = out.decode("utf-8", errors="ignore").strip()
+            m = re.match(r"^(\d+)\.", ver)
+            if m:
+                major = int(m.group(1))
+                if major > 0:
+                    return major
+        except Exception:
+            continue
+
+    return None
+
 
 def generate_name() -> tuple[str, str]:
     first = ["Neo", "John", "Sarah", "Michael", "Emma", "David", "James", "Robert", "Mary", "William", "Richard", "Thomas", "Charles", "Christopher", "Daniel", "Matthew", "Anthony", "Mark", "Donald", "Steven", "Paul", "Andrew", "Joshua", "Kenneth", "Kevin", "Brian", "George", "Edward", "Ronald", "Timothy"]
@@ -2393,8 +2537,20 @@ def smart_wait(driver, by, value, timeout=20, *, debug_kind: str = "", debug_mes
         "just a moment",
         "cloudflare",
     ]
+    # Cloudflare/anti-bot pages often render almost empty body text in headless mode.
+    # Keep extra DOM/source markers to avoid misclassifying as generic input-not-found.
+    challenge_source_hints = [
+        "cdn-cgi/challenge-platform",
+        "__cf$cv$params",
+        "jsd/main.js",
+        "cf-challenge",
+        "turnstile",
+        "challenges.cloudflare.com",
+    ]
 
     end_time = time.time() + timeout
+    wait_started_at = time.time()
+    challenge_grace_seconds = float(os.environ.get("SMART_WAIT_CHALLENGE_GRACE_SECONDS", "0") or "0")
     while time.time() < end_time:
         try:
             # Fail-fast on fatal error pages/overlays.
@@ -2407,13 +2563,41 @@ def smart_wait(driver, by, value, timeout=20, *, debug_kind: str = "", debug_mes
             title_text = str(driver.execute_script("return (document && document.title) ? document.title : '';") or "").lower()
             cur_url = str(getattr(driver, "current_url", "") or "").lower()
             joined = "\n".join([title_text, page_text, cur_url])
+            page_source = str(getattr(driver, "page_source", "") or "").lower()
 
             if any(h in page_text for h in fatal_hints):
                 raise RuntimeError("fatal ui error page detected (糟糕/出错了/oops)，end this round")
-            if any(h in joined for h in challenge_hints):
+            challenge_text_hit = any(h in joined for h in challenge_hints)
+            challenge_source_hit = any(h in page_source for h in challenge_source_hints)
+
+            # Form-stage special-case:
+            # Some create-account/create-password pages keep challenge-related scripts in source,
+            # but the form is already interactive. Do not fail-fast on source markers alone.
+            lower_kind = (debug_kind or "").lower()
+            is_email_stage = "email_input" in lower_kind
+            is_password_stage = "password_input" in lower_kind or "password_continue" in lower_kind
+            challenge_detected = challenge_text_hit or (challenge_source_hit and not (is_email_stage or is_password_stage))
+
+            if challenge_detected:
+                # Avoid aborting too early on transient/intermediate challenge DOM during email stage.
+                # Especially in visible debug mode, UI may recover to real form a few seconds later.
+                if (time.time() - wait_started_at) < challenge_grace_seconds:
+                    time.sleep(0.5)
+                    continue
                 if debug_kind and "password" in debug_kind.lower():
                     raise RuntimeError("blocked challenge page before password step")
                 raise RuntimeError("blocked challenge page")
+
+            # Legacy recovery: detect OpenAI Oops overlay and click Try again.
+            try_again_btns = driver.find_elements(
+                By.XPATH,
+                "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'try again')]",
+            )
+            if try_again_btns and try_again_btns[0].is_displayed():
+                _dbg("overlay", "Detected 'Oops' overlay; clicking 'Try again'", driver=driver)
+                _click_with_debug(driver, try_again_btns[0], tag="overlay_try_again", note="smart_wait oops overlay")
+                time.sleep(2)
+                continue
 
             # Check for the actual target element
             el = driver.find_element(by, value)
@@ -2473,104 +2657,517 @@ def register(driver, proxy=None) -> tuple[str, str]:
         _dump_page_body(driver=driver, kind="wait_auth_openai", message="URL did not contain auth.openai.com")
         raise RuntimeError("did not reach auth.openai.com; page dumped")
 
-    # click sign up
-    sign_up_button = smart_wait(
-        driver,
-        By.XPATH,
-        "//*[self::button or self::a][contains(normalize-space(), 'Sign up') or contains(normalize-space(), '注册') or contains(normalize-space(), 'Sign Up') or contains(normalize-space(), 'sign up') or contains(normalize-space(), 'SignUp')]",
-        timeout=20,
-        debug_kind="signup_button",
-        debug_message="sign up button not found",
-    )
-    _dbg("ui", "click sign up", driver=driver)
-    _click_with_debug(driver, sign_up_button, tag="signup_button", note="register click sign up")
-    _dbg("ui", "sign up clicked", driver=driver)
-    print("Sign up clicked")
+    # click sign up (or fallback: jump directly to create-account when login page variant has no sign-up button)
+    cur_url0 = str(getattr(driver, "current_url", "") or "")
+    if "auth.openai.com/log-in" in cur_url0:
+        _dbg("ui", f"on login url, redirect to create-account: {cur_url0}", driver=driver)
+        driver.get("https://auth.openai.com/create-account")
 
-    # fill email
     try:
-        email_input = smart_wait(
+        sign_up_button = smart_wait(
             driver,
-            By.ID,
-            "_r_f_-email",
-            timeout=20,
-            debug_kind="email_input",
-            debug_message="email input not found",
+            By.XPATH,
+            "//*[self::button or self::a][contains(normalize-space(), 'Sign up') or contains(normalize-space(), '注册') or contains(normalize-space(), 'Sign Up') or contains(normalize-space(), 'sign up') or contains(normalize-space(), 'SignUp')]",
+            timeout=12,
+            debug_kind="signup_button",
+            debug_message="sign up button not found",
         )
+        _dbg("ui", "click sign up", driver=driver)
+        _click_with_debug(driver, sign_up_button, tag="signup_button", note="register click sign up")
+        _dbg("ui", "sign up clicked", driver=driver)
+        print("Sign up clicked")
     except Exception:
-        email_input = smart_wait(
-            driver,
-            By.CSS_SELECTOR,
-            'input[type="email"], input[name*="email" i], input[id*="email" i]',
-            timeout=15,
-            debug_kind="email_input_fallback",
-            debug_message="email input fallback not found",
-        )
-    _dbg("ui", "reach email input", driver=driver)
-    email_input.clear()
-    _dbg("ui", f"fill email={email}", driver=driver)
-    print("Reach email input")
-    # Speed: send full string instead of per-char typing.
-    email_input.send_keys(email)
-    email_input.send_keys(Keys.ENTER)
-    _dbg("ui", "email ENTER pressed", driver=driver)
-    print("Enter pressed")
+        # Some UI variants already land on create-account and won't render a Sign up CTA.
+        # Also handle "创建密码" stage: do NOT redirect back to create-account.
+        cur_url1 = str(getattr(driver, "current_url", "") or "")
 
-    # fill password
-    def _is_human_verify_page() -> bool:
+        password_stage_now = False
+        try:
+            password_stage_now = bool(driver.execute_script(
+                """
+                const hasPwd = !!document.querySelector('input[type="password"],input[name*="password"],input[id*="password"]');
+                const t = (document && document.body && document.body.innerText) ? document.body.innerText : '';
+                return hasPwd || /创建密码|password|new password/i.test(t);
+                """
+            ))
+        except Exception:
+            password_stage_now = False
+
+        if password_stage_now:
+            _dbg("ui", "signup cta missing but already on password stage, keep current page", driver=driver)
+        else:
+            if "auth.openai.com/create-account" not in cur_url1:
+                _dbg("ui", f"signup cta missing, force redirect create-account from: {cur_url1}", driver=driver)
+                driver.get("https://auth.openai.com/create-account")
+            _dbg("ui", "signup cta missing, continue on create-account", driver=driver)
+
+    def _is_password_stage_page() -> bool:
+        try:
+            # Fast DOM-first detection
+            found = driver.execute_script(
+                """
+                const sels = [
+                  'input[type="password"]',
+                  'input[name*="password"]',
+                  'input[id*="password"]',
+                  'input[placeholder*="密码"]'
+                ];
+                for (const s of sels) {
+                  const el = document.querySelector(s);
+                  if (!el) continue;
+                  const st = window.getComputedStyle(el);
+                  const visible = st && st.display !== 'none' && st.visibility !== 'hidden' && el.offsetParent !== null;
+                  if (visible && !el.disabled) return true;
+                }
+                return false;
+                """
+            )
+            if bool(found):
+                return True
+        except Exception:
+            pass
+
         try:
             body_text = str(
                 driver.execute_script(
                     "return (document && document.body && document.body.innerText) ? document.body.innerText : '';"
                 )
                 or ""
-            ).lower()
-            title_text = str(driver.execute_script("return (document && document.title) ? document.title : '';") or "").lower()
-            cur_url = str(getattr(driver, "current_url", "") or "").lower()
-            joined = "\n".join([title_text, body_text, cur_url])
+            )
+            body_lower = body_text.lower()
             return (
-                "verify you are human" in joined
-                or "performing security verification" in joined
-                or "just a moment" in joined
-                or "cloudflare" in joined
+                "创建密码" in body_text
+                or "password" in body_lower
+                or "new password" in body_lower
             )
         except Exception:
             return False
 
-    try:
-        pwd_input = smart_wait(
-            driver,
-            By.ID,
-            "_r_u_-new-password",
-            timeout=30,
-            debug_kind="password_input",
-            debug_message=f"password input not found; email={email}",
-        )
-    except Exception:
+    # fill email
+    # In debug-visible mode, give create-account UI more settle time before first lookup.
+    debug_visible = int(os.environ.get("HEADLESS", "1") or "1") == 0
+    if debug_visible:
+        time.sleep(float(os.environ.get("DEBUG_EMAIL_PREWAIT_SECONDS", "4.0") or "4.0"))
+
+    email_wait_rounds = int(os.environ.get("DEBUG_EMAIL_WAIT_ROUNDS", "3" if debug_visible else "1") or ("3" if debug_visible else "1"))
+    if email_wait_rounds < 1:
+        email_wait_rounds = 1
+
+    email_input = None
+    last_email_err = None
+    skip_email_submit = False
+    for _round in range(1, email_wait_rounds + 1):
+        # If UI already moved to password step, skip email stage.
+        if _is_password_stage_page():
+            skip_email_submit = True
+            _dbg("ui", f"password stage detected before email fill, skip email round={_round}/{email_wait_rounds}", driver=driver)
+            break
+
+        # 1) First try a JS-visible selector sweep (more robust for dynamic id like _r_2_-email)
+        try:
+            email_input = driver.execute_script(
+                """
+                const sels = [
+                  'input[type="email"]',
+                  'input[name*="email"]',
+                  'input[id*="email"]',
+                  'input[placeholder*="邮箱"]',
+                  'input[placeholder*="email" i]'
+                ];
+                for (const s of sels) {
+                  const el = document.querySelector(s);
+                  if (!el) continue;
+                  const st = window.getComputedStyle(el);
+                  const visible = st && st.display !== 'none' && st.visibility !== 'hidden' && el.offsetParent !== null;
+                  if (visible && !el.disabled) return el;
+                }
+                return null;
+                """
+            )
+            if email_input is not None:
+                _dbg("ui", f"email input found by js sweep round={_round}/{email_wait_rounds}", driver=driver)
+                break
+        except Exception as e0:
+            last_email_err = e0
+
+        # 2) Then try existing wait locators
+        try:
+            email_input = smart_wait(
+                driver,
+                By.ID,
+                "_r_f_-email",
+                timeout=35 if debug_visible else 20,
+                debug_kind="email_input",
+                debug_message="email input not found",
+            )
+            break
+        except Exception as e1:
+            last_email_err = e1
+            try:
+                email_input = smart_wait(
+                    driver,
+                    By.CSS_SELECTOR,
+                    'input[type="email"], input[name*="email"], input[id*="email"]',
+                    timeout=30 if debug_visible else 15,
+                    debug_kind="email_input_fallback",
+                    debug_message="email input fallback not found",
+                )
+                break
+            except Exception as e2:
+                last_email_err = e2
+                if _round < email_wait_rounds:
+                    _dbg("ui", f"email input not ready, retry round={_round}/{email_wait_rounds}", driver=driver)
+                    time.sleep(float(os.environ.get("DEBUG_EMAIL_RETRY_SLEEP_SECONDS", "2.0") or "2.0"))
+
+    if not skip_email_submit:
+        if email_input is None:
+            if last_email_err is not None:
+                raise last_email_err
+            raise RuntimeError("email input not found after retries")
+        _dbg("ui", "reach email input", driver=driver)
+        _dbg("ui", f"fill email={email}", driver=driver)
+        print("Reach email input")
+
+        # Make email fill deterministic in visible debug mode:
+        # 1) focus+clear
+        # 2) JS set value + dispatch input/change
+        # 3) verify value, fallback to human typing
+        try:
+            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", email_input)
+        except Exception:
+            pass
+
+        try:
+            email_input.click()
+        except Exception:
+            try:
+                driver.execute_script("arguments[0].click();", email_input)
+            except Exception:
+                pass
+
+        try:
+            email_input.send_keys(Keys.CONTROL, "a")
+            email_input.send_keys(Keys.BACKSPACE)
+        except Exception:
+            try:
+                email_input.clear()
+            except Exception:
+                pass
+
+        js_ok = False
+        try:
+            driver.execute_script(
+                """
+                const el = arguments[0];
+                const v = arguments[1];
+                if (!el) return false;
+                el.focus();
+                el.value = v;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                return (el.value || '') === v;
+                """,
+                email_input,
+                email,
+            )
+            cur_v = str(getattr(email_input, "get_attribute", lambda _k: "")("value") or "")
+            js_ok = (cur_v == email)
+        except Exception:
+            js_ok = False
+
+        if not js_ok:
+            _human_mouse_jitter(driver, attempts=2)
+            _human_type(email_input, email)
+
+        final_v = ""
+        try:
+            final_v = str(email_input.get_attribute("value") or "")
+        except Exception:
+            final_v = ""
+
+        if final_v != email:
+            raise RuntimeError(f"email not filled as expected: got={final_v!r} want={email!r}")
+
+        _human_delay(0.10, 0.30)
+
+        # Prefer clicking explicit continue button over ENTER for this page variant.
+        try:
+            continue_btn = smart_wait(
+                driver,
+                By.CSS_SELECTOR,
+                'button[type="submit"][name="intent"][value="email"]',
+                timeout=10,
+                debug_kind="email_continue_button",
+                debug_message="email continue button not found",
+            )
+            _click_with_debug(driver, continue_btn, tag="email_continue", note="submit email step")
+            _dbg("ui", "email continue clicked", driver=driver)
+            print("Email continue clicked")
+        except Exception:
+            # Fallback 1: click visible button by text (兼容中文“继续”文案变体)
+            clicked = False
+            try:
+                btn = driver.execute_script(
+                    """
+                    const nodes = Array.from(document.querySelectorAll('button,[role="button"]'));
+                    for (const n of nodes) {
+                      const t = (n.innerText || n.textContent || '').trim();
+                      if (!t) continue;
+                      if (!/继续|continue/i.test(t)) continue;
+                      const st = window.getComputedStyle(n);
+                      const visible = st && st.display !== 'none' && st.visibility !== 'hidden' && n.offsetParent !== null;
+                      if (!visible) continue;
+                      n.click();
+                      return true;
+                    }
+                    return false;
+                    """
+                )
+                clicked = bool(btn)
+            except Exception:
+                clicked = False
+
+            if clicked:
+                _dbg("ui", "email continue clicked by text fallback", driver=driver)
+                print("Email continue clicked (text fallback)")
+            else:
+                # Fallback 2: press ENTER on email input
+                email_input.send_keys(Keys.ENTER)
+                _dbg("ui", "email ENTER pressed (fallback)", driver=driver)
+                print("Enter pressed")
+    else:
+        _dbg("ui", "skip email stage because password page is already present", driver=driver)
+
+    # fill password
+    def _is_human_verify_page() -> bool:
+        try:
+            # If password box is already visible, it's not blocked.
+            has_pwd = bool(driver.execute_script(
+                """
+                const el = document.querySelector('input[type="password"],input[name*="password"],input[id*="password"]');
+                if (!el) return false;
+                const st = window.getComputedStyle(el);
+                return !!(st && st.display !== 'none' && st.visibility !== 'hidden' && el.offsetParent !== null && !el.disabled);
+                """
+            ))
+            if has_pwd:
+                return False
+
+            body_text_raw = str(
+                driver.execute_script(
+                    "return (document && document.body && document.body.innerText) ? document.body.innerText : '';"
+                )
+                or ""
+            )
+            body_text = body_text_raw.lower()
+            title_text = str(driver.execute_script("return (document && document.title) ? document.title : '';") or "").lower()
+            cur_url = str(getattr(driver, "current_url", "") or "").lower()
+
+            # Strong signals only: avoid over-detecting by generic cloudflare/turnstile script presence.
+            strong_url = (
+                "cdn-cgi/challenge-platform" in cur_url
+                or "/challenge" in cur_url
+            )
+            strong_text = (
+                "verify you are human" in body_text
+                or "performing security verification" in body_text
+                or "just a moment" in body_text
+                or "验证你是真人" in body_text_raw
+                or "安全验证" in body_text_raw
+            )
+            strong_title = (
+                "just a moment" in title_text
+                or "attention required" in title_text
+                or "verify" in title_text
+            )
+            return bool(strong_url or strong_text or strong_title)
+        except Exception:
+            return False
+
+    pwd_wait_rounds = int(os.environ.get("DEBUG_PASSWORD_WAIT_ROUNDS", "3" if debug_visible else "1") or ("3" if debug_visible else "1"))
+    if pwd_wait_rounds < 1:
+        pwd_wait_rounds = 1
+
+    challenge_grace_rounds = int(os.environ.get("DEBUG_CHALLENGE_GRACE_ROUNDS", "6" if debug_visible else "3") or ("6" if debug_visible else "3"))
+    if challenge_grace_rounds < 1:
+        challenge_grace_rounds = 1
+
+    pwd_input = None
+    last_pwd_err = None
+    challenge_hits = 0
+    total_rounds = max(pwd_wait_rounds, challenge_grace_rounds)
+    for _round in range(1, total_rounds + 1):
         if _is_human_verify_page():
-            raise RuntimeError("blocked challenge page before password step")
+            challenge_hits += 1
+            _dbg("ui", f"possible challenge before password, grace wait round={challenge_hits}/{challenge_grace_rounds}", driver=driver)
+            if challenge_hits >= challenge_grace_rounds:
+                raise RuntimeError("blocked challenge page before password step")
+            time.sleep(float(os.environ.get("DEBUG_PASSWORD_RETRY_SLEEP_SECONDS", "2.0") or "2.0"))
+            continue
+
+        try:
+            pwd_input = driver.execute_script(
+                """
+                const sels = [
+                  'input[type="password"]',
+                  'input[name*="password"]',
+                  'input[id*="password"]',
+                  'input[placeholder*="密码"]'
+                ];
+                for (const s of sels) {
+                  const el = document.querySelector(s);
+                  if (!el) continue;
+                  const st = window.getComputedStyle(el);
+                  const visible = st && st.display !== 'none' && st.visibility !== 'hidden' && el.offsetParent !== null;
+                  if (visible && !el.disabled) return el;
+                }
+                return null;
+                """
+            )
+            if pwd_input is not None:
+                _dbg("ui", f"password input found by js sweep round={_round}/{pwd_wait_rounds}", driver=driver)
+                break
+        except Exception as e0:
+            last_pwd_err = e0
+
         try:
             pwd_input = smart_wait(
                 driver,
-                By.CSS_SELECTOR,
-                'input[type="password"], input[name*="password" i], input[id*="password" i]',
-                timeout=15,
-                debug_kind="password_input_fallback",
-                debug_message=f"password input fallback not found; email={email}",
+                By.ID,
+                "_r_u_-new-password",
+                timeout=30 if debug_visible else 20,
+                debug_kind="password_input",
+                debug_message=f"password input not found; email={email}",
             )
-        except Exception:
+            break
+        except Exception as e1:
+            last_pwd_err = e1
             if _is_human_verify_page():
-                raise RuntimeError("blocked challenge page before password step")
-            raise
+                challenge_hits += 1
+                _dbg("ui", f"possible challenge while waiting password input, grace round={challenge_hits}/{challenge_grace_rounds}", driver=driver)
+                if challenge_hits >= challenge_grace_rounds:
+                    raise RuntimeError("blocked challenge page before password step")
+                time.sleep(float(os.environ.get("DEBUG_PASSWORD_RETRY_SLEEP_SECONDS", "2.0") or "2.0"))
+                continue
+            try:
+                pwd_input = smart_wait(
+                    driver,
+                    By.CSS_SELECTOR,
+                    'input[type="password"], input[name*="password"], input[id*="password"]',
+                    timeout=20 if debug_visible else 12,
+                    debug_kind="password_input_fallback",
+                    debug_message=f"password input fallback not found; email={email}",
+                )
+                break
+            except Exception as e2:
+                last_pwd_err = e2
+                if _round < total_rounds:
+                    _dbg("ui", f"password input not ready, retry round={_round}/{total_rounds}", driver=driver)
+                    time.sleep(float(os.environ.get("DEBUG_PASSWORD_RETRY_SLEEP_SECONDS", "2.0") or "2.0"))
+
+    if pwd_input is None:
+        # Last-resort fallback: on some variants, the password box is already focused
+        # but attributes are dynamic and miss our selectors momentarily.
+        try:
+            ae = driver.switch_to.active_element
+            ae_tag = str(getattr(ae, "tag_name", "") or "").lower()
+            ae_type = str(ae.get_attribute("type") or "").lower()
+            ae_disabled = str(ae.get_attribute("disabled") or "").lower()
+            if ae_tag == "input" and ae_disabled not in ("true", "disabled") and ae_type in ("password", "text", ""):
+                pwd_input = ae
+                _dbg("ui", f"password input fallback to active_element type={ae_type}", driver=driver)
+        except Exception:
+            pass
+
+    if pwd_input is None:
+        if _is_human_verify_page():
+            raise RuntimeError("blocked challenge page before password step")
+        if last_pwd_err is not None:
+            raise last_pwd_err
+        raise RuntimeError(f"password input not found; email={email}")
+
     _dbg("ui", "reach password input", driver=driver)
     print("Reach password input")
     pwd = generate_pwd()
     _dbg("ui", "fill password", driver=driver)
-    # Speed: send full string instead of per-char typing.
-    pwd_input.send_keys(pwd)
-    pwd_input.send_keys(Keys.ENTER)
-    _dbg("ui", "password ENTER pressed", driver=driver)
-    print("Enter pressed")
+
+    # Deterministic password fill (same strategy as email):
+    # focus+clear -> JS set+events -> verify value -> fallback human typing.
+    try:
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", pwd_input)
+    except Exception:
+        pass
+
+    try:
+        pwd_input.click()
+    except Exception:
+        try:
+            driver.execute_script("arguments[0].click();", pwd_input)
+        except Exception:
+            pass
+
+    try:
+        pwd_input.send_keys(Keys.CONTROL, "a")
+        pwd_input.send_keys(Keys.BACKSPACE)
+    except Exception:
+        try:
+            pwd_input.clear()
+        except Exception:
+            pass
+
+    pwd_js_ok = False
+    try:
+        driver.execute_script(
+            """
+            const el = arguments[0];
+            const v = arguments[1];
+            if (!el) return false;
+            el.focus();
+            el.value = v;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            return (el.value || '') === v;
+            """,
+            pwd_input,
+            pwd,
+        )
+        pwd_cur_v = str(getattr(pwd_input, "get_attribute", lambda _k: "")("value") or "")
+        pwd_js_ok = (pwd_cur_v == pwd)
+    except Exception:
+        pwd_js_ok = False
+
+    if not pwd_js_ok:
+        _human_mouse_jitter(driver, attempts=2)
+        _human_type(pwd_input, pwd)
+
+    pwd_final_v = ""
+    try:
+        pwd_final_v = str(pwd_input.get_attribute("value") or "")
+    except Exception:
+        pwd_final_v = ""
+
+    if pwd_final_v != pwd:
+        raise RuntimeError(f"password not filled as expected: got={pwd_final_v!r} want={pwd!r}")
+
+    _human_delay(0.10, 0.30)
+
+    # Prefer explicit continue button click on password page.
+    try:
+        pwd_continue_btn = smart_wait(
+            driver,
+            By.CSS_SELECTOR,
+            'button[type="submit"], button[name="intent"][value="password"]',
+            timeout=10,
+            debug_kind="password_continue_button",
+            debug_message=f"password continue button not found; email={email}",
+        )
+        _click_with_debug(driver, pwd_continue_btn, tag="password_continue", note="submit password step")
+        _dbg("ui", "password continue clicked", driver=driver)
+        print("Password continue clicked")
+    except Exception:
+        pwd_input.send_keys(Keys.ENTER)
+        _dbg("ui", "password ENTER pressed (fallback)", driver=driver)
+        print("Enter pressed")
 
     # 严格流程顺序：先确认已进入验证码阶段，再去邮箱拉取验证码。
     try:
@@ -3257,7 +3854,8 @@ def register(driver, proxy=None) -> tuple[str, str]:
                     By.XPATH,
                     (
                         "//button[(contains(., 'Agree') or "
-                        "contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue')) "
+                        "contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue') or "
+                        "contains(normalize-space(.), '继续') or contains(normalize-space(.), '同意')) "
                         "and not(contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue with'))]"
                     ),
                     timeout=10,
@@ -3647,6 +4245,7 @@ def _wait_code_try_candidates(*, candidates: list[str], timeout_seconds: int) ->
                 gptmail_base_url=GPTMAIL_BASE_URL,
                 gptmail_api_key=GPTMAIL_API_KEY,
                 gptmail_keys_file=GPTMAIL_KEYS_FILE,
+                mailtm_api_base=MAILTM_API_BASE,
                 timeout_seconds=timeout_seconds,
             )
             return str(code), r
