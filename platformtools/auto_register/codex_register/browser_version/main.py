@@ -3123,9 +3123,24 @@ def register(driver, proxy=None) -> tuple[str, str]:
             const v = arguments[1];
             if (!el) return false;
             el.focus();
-            el.value = v;
+
+            // Use React-compatible setter to trigger internal state update
+            const nativeSetter = Object.getOwnPropertyDescriptor(
+                window.HTMLInputElement.prototype, 'value'
+            ).set;
+            nativeSetter.call(el, v);
+
+            // Dispatch events React listens on
             el.dispatchEvent(new Event('input', { bubbles: true }));
             el.dispatchEvent(new Event('change', { bubbles: true }));
+
+            // Also try React 16+ specific event
+            try {
+                const ev = new Event('input', { bubbles: true });
+                ev.simulated = true;
+                el.dispatchEvent(ev);
+            } catch(e) {}
+
             return (el.value || '') === v;
             """,
             pwd_input,
