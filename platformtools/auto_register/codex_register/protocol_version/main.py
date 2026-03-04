@@ -78,6 +78,12 @@ _STATS: dict[str, Any] = {
     "stage_workspace": 0,
     "stage_callback": 0,
     "stage_other": 0,
+    # 网络根因诊断（与错误类别正交）
+    "net_local": 0,
+    "net_tunnel": 0,
+    "net_residential": 0,
+    "net_openai": 0,
+    "net_unknown": 0,
     "last_error": "",
 }
 
@@ -312,9 +318,10 @@ PROTOCOL_TIMEOUT_SECONDS = int(os.environ.get("PROTOCOL_TIMEOUT_SECONDS", "30") 
 if PROTOCOL_TIMEOUT_SECONDS <= 0:
     PROTOCOL_TIMEOUT_SECONDS = 30
 
-OTP_TIMEOUT_SECONDS = int(os.environ.get("OTP_TIMEOUT_SECONDS", "360") or "360")
+# 采用浏览器版本同级别的激进邮箱验证码等待：默认 120s
+OTP_TIMEOUT_SECONDS = int(os.environ.get("OTP_TIMEOUT_SECONDS", "120") or "120")
 if OTP_TIMEOUT_SECONDS <= 0:
-    OTP_TIMEOUT_SECONDS = 360
+    OTP_TIMEOUT_SECONDS = 120
 
 PROXY_ROTATE_SECONDS = int(os.environ.get("PROXY_ROTATE_SECONDS", "600") or "600")
 if PROXY_ROTATE_SECONDS < 0:
@@ -429,7 +436,89 @@ def _infer_stage_from_error(err_text: str) -> str:
     return "stage_other"
 
 
-def _stats_inc(kind: str, err: Exception | str | None = None, *, stage: str | None = None) -> None:
+def _infer_net_cause(err_text: str) -> str:
+    """将异常文本粗分到链路位置，帮助定位网络波动来源。
+
+    注意：这是启发式分类，不是 100% 精确归因。
+    """
+    s = (err_text or "").lower()
+    if not s:
+        return "net_unknown"
+
+    # 1) OpenAI 侧：挑战/封控/5xx/相关端点失败
+    if (
+        "just a moment" in s
+        or "captcha" in s
+        or "cf-chl" in s
+        or "cf-ray" in s
+        or "authorize/continue failed" in s
+        or "send-otp failed" in s
+        or "email-otp/validate failed" in s
+        or "create_account failed" in s
+        or "workspace/select failed" in s
+        or "sentinel req failed" in s
+        or "auth.openai.com" in s
+        or "sentinel.openai.com" in s
+    ):
+        return "net_openai"
+
+    # 2) 本地出口/系统网络栈
+    if (
+        "getaddrinfo failed" in s
+        or "name or service not known" in s
+        or "temporary failure in name resolution" in s
+        or "no such host" in s
+        or "network is unreachable" in s
+        or "no route to host" in s
+        or "winerror 10051" in s
+        or "winerror 10065" in s
+        or "dns" in s
+    ):
+        return "net_local"
+
+    # 3) 本地隧道/翻墙代理链路（与住宅代理前的一跳）
+    if (
+        "http=407" in s
+        or "proxy authentication" in s
+        or "proxyconnect" in s
+        or "tunnel connection failed" in s
+        or "socks" in s
+        or "connect to proxy" in s
+        or ("proxy" in s and "failed to connect" in s)
+    ):
+        return "net_tunnel"
+
+    # 4) 远端住宅代理节点波动（超时/TLS/连接重置等）
+    if (
+        "curl: (28)" in s
+        or "curl: (35)" in s
+        or "curl: (56)" in s
+        or "timed out" in s
+        or "timeout was reached" in s
+        or "ssl" in s
+        or "tls" in s
+        or "connection reset" in s
+        or "recv failure" in s
+        or "empty reply from server" in s
+        or "failed to connect" in s
+        or "couldn't connect" in s
+    ):
+        # 若明确提到 proxy，优先归到隧道层；否则归住宅出口层
+        if "proxy" in s:
+            return "net_tunnel"
+        return "net_residential"
+
+    return "net_unknown"
+
+
+
+def _stats_inc(
+    kind: str,
+    err: Exception | str | None = None,
+    *,
+    stage: str | None = None,
+    net_cause: str | None = None,
+) -> None:
     with stats_lock:
         now_ts = time.time()
         if kind == "attempt":
@@ -464,6 +553,12 @@ def _stats_inc(kind: str, err: Exception | str | None = None, *, stage: str | No
             _STATS[stg] = int(_STATS.get(stg, 0)) + 1
         else:
             _STATS["stage_other"] = int(_STATS.get("stage_other", 0)) + 1
+
+        nc = (net_cause or _infer_net_cause(str(err or ""))).strip().lower()
+        if nc in _STATS:
+            _STATS[nc] = int(_STATS.get(nc, 0)) + 1
+        else:
+            _STATS["net_unknown"] = int(_STATS.get("net_unknown", 0)) + 1
 
 
 def _trim_ts(now_ts: float) -> None:
@@ -574,6 +669,8 @@ def _summary_loop() -> None:
                 f"| 阶段(auth/send/otpv/create/ws/cb/other)="
                 f"{st.get('stage_auth_continue', 0)}/{st.get('stage_send_otp', 0)}/{st.get('stage_otp_validate', 0)}/"
                 f"{st.get('stage_create_account', 0)}/{st.get('stage_workspace', 0)}/{st.get('stage_callback', 0)}/{st.get('stage_other', 0)} "
+                f"| 根因(local/tunnel/res/openai/unk)="
+                f"{st.get('net_local', 0)}/{st.get('net_tunnel', 0)}/{st.get('net_residential', 0)}/{st.get('net_openai', 0)}/{st.get('net_unknown', 0)} "
                 f"| 速度(累计){speed_h:.0f}/h | 速度({rw}s){rolling_h:.0f}/h | 成功率({rw}s){rolling_sr*100:.1f}% "
                 f"| 代理冷却 {cooling}/{total_proxy} | 总生成(协议/浏览器) {protocol_total}/{browser_total}"
             ),
@@ -1520,8 +1617,9 @@ def worker(worker_id: int) -> None:
         except Exception as e:
             cls = _classify_error(e)
             stg = _infer_stage_from_error(str(e))
-            _stats_inc(cls, err=e, stage=stg)
-            _log(f"[Protocol Worker {worker_id}] [x] {e}")
+            net = _infer_net_cause(str(e))
+            _stats_inc(cls, err=e, stage=stg, net_cause=net)
+            _log(f"[Protocol Worker {worker_id}] [x] cls={cls} stage={stg} net={net} err={e}")
 
             if proxy:
                 cool_sec = _cooldown_seconds_for_error_class(cls)

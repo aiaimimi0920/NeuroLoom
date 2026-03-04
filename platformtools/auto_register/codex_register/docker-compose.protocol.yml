@@ -15,11 +15,13 @@ services:
     environment:
       - DATA_DIR=/data
       - INSTANCE_ID=codex_protocol_20t
-      - CONCURRENCY=3
+      - CONCURRENCY=5
       - SUMMARY_PRINT_SECONDS=5
       - PROTOCOL_SUMMARY_ONLY=1
       - PROTOCOL_ALLOW_DIRECT_FALLBACK=1
-      - PROTOCOL_IGNORE_PROXIES=1
+      - PROTOCOL_IGNORE_PROXIES=0
+      - PROXY_PARTITION_TOTAL=3
+      - PROXY_PARTITION_INDEX=0
       - OTP_TIMEOUT_SECONDS=120
       - PROTOCOL_TIMEOUT_SECONDS=20
       - SLEEP_MIN=0
@@ -41,11 +43,13 @@ services:
     environment:
       - DATA_DIR=/data
       - INSTANCE_ID=codex_protocol_20t_2
-      - CONCURRENCY=3
+      - CONCURRENCY=5
       - SUMMARY_PRINT_SECONDS=5
       - PROTOCOL_SUMMARY_ONLY=1
       - PROTOCOL_ALLOW_DIRECT_FALLBACK=1
-      - PROTOCOL_IGNORE_PROXIES=1
+      - PROTOCOL_IGNORE_PROXIES=0
+      - PROXY_PARTITION_TOTAL=3
+      - PROXY_PARTITION_INDEX=1
       - OTP_TIMEOUT_SECONDS=120
       - PROTOCOL_TIMEOUT_SECONDS=20
       - SLEEP_MIN=0
@@ -67,37 +71,13 @@ services:
     environment:
       - DATA_DIR=/data
       - INSTANCE_ID=codex_protocol_20t_3
-      - CONCURRENCY=3
+      - CONCURRENCY=5
       - SUMMARY_PRINT_SECONDS=5
       - PROTOCOL_SUMMARY_ONLY=1
       - PROTOCOL_ALLOW_DIRECT_FALLBACK=1
-      - PROTOCOL_IGNORE_PROXIES=1
-      - OTP_TIMEOUT_SECONDS=120
-      - PROTOCOL_TIMEOUT_SECONDS=20
-      - SLEEP_MIN=0
-      - SLEEP_MAX=1
-    command: ["python", "-m", "platformtools.auto_register.codex_register.protocol_version.main"]
-    restart: always
-
-  codex_protocol_20t_4:
-    build:
-      context: .
-      dockerfile: Dockerfile.runtime
-    container_name: codex_protocol_20t_4
-    working_dir: /workspace
-    env_file:
-      - ./.env.center
-    volumes:
-      - ../../../:/workspace
-      - ./data:/data
-    environment:
-      - DATA_DIR=/data
-      - INSTANCE_ID=codex_protocol_20t_4
-      - CONCURRENCY=3
-      - SUMMARY_PRINT_SECONDS=5
-      - PROTOCOL_SUMMARY_ONLY=1
-      - PROTOCOL_ALLOW_DIRECT_FALLBACK=1
-      - PROTOCOL_IGNORE_PROXIES=1
+      - PROTOCOL_IGNORE_PROXIES=0
+      - PROXY_PARTITION_TOTAL=3
+      - PROXY_PARTITION_INDEX=2
       - OTP_TIMEOUT_SECONDS=120
       - PROTOCOL_TIMEOUT_SECONDS=20
       - SLEEP_MIN=0
