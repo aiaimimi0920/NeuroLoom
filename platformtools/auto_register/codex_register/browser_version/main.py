@@ -6,6 +6,7 @@ import secrets
 import urllib.parse
 import urllib.request
 import urllib.error
+import ssl
 from dataclasses import dataclass
 from collections import deque
 from typing import Any, Dict
@@ -229,6 +230,23 @@ DISABLE_PROXY = (os.environ.get("DISABLE_PROXY", "0") or "0").strip().lower() in
     "on",
 )
 REQUIRE_PROXY = REGISTER_PROXY_REQUIRED and (not DISABLE_PROXY)
+
+# Token exchange / TLS knobs
+TOKEN_POST_TLS_VERIFY = (os.environ.get("TOKEN_POST_TLS_VERIFY", "0") or "0").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+    "off",
+)
+TOKEN_POST_TRY_DIRECT_FIRST = (os.environ.get("TOKEN_POST_TRY_DIRECT_FIRST", "1") or "1").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+    "off",
+)
+TOKEN_POST_MAX_RETRIES = int(os.environ.get("TOKEN_POST_MAX_RETRIES", "6") or "6")
+if TOKEN_POST_MAX_RETRIES <= 0:
+    TOKEN_POST_MAX_RETRIES = 6
 
 
 def _data_path(*parts: str) -> str:
@@ -1982,11 +2000,16 @@ def _to_int(v: Any) -> int:
         return 0
 
 
-def get_opener(proxy: str | None = None):
-    if not proxy:
-        return urllib.request.build_opener()
-    proxy_handler = urllib.request.ProxyHandler({'http': proxy, 'https': proxy})
-    return urllib.request.build_opener(proxy_handler)
+def get_opener(proxy: str | None = None, *, verify_tls: bool = True):
+    handlers: list[Any] = []
+    if proxy:
+        handlers.append(urllib.request.ProxyHandler({'http': proxy, 'https': proxy}))
+    if not verify_tls:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        handlers.append(urllib.request.HTTPSHandler(context=ctx))
+    return urllib.request.build_opener(*handlers)
 
 def _post_form(url: str, data: Dict[str, str], timeout: int = 30, proxy: str | None = None) -> Dict[str, Any]:
     body = urllib.parse.urlencode(data).encode("utf-8")
@@ -1999,24 +2022,40 @@ def _post_form(url: str, data: Dict[str, str], timeout: int = 30, proxy: str | N
             "Accept": "application/json",
         },
     )
-    for _ in range(4):
-        try:
-            with get_opener(proxy).open(req, timeout=timeout) as resp:
-                raw = resp.read()
-                if resp.status != 200:
-                    raise RuntimeError(
-                        f"token exchange failed: {resp.status}: {raw.decode('utf-8', 'replace')}"
-                    )
-                return json.loads(raw.decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            raw = exc.read()
-            raise RuntimeError(
-                f"token exchange failed: {exc.code}: {raw.decode('utf-8', 'replace')}"
-            ) from exc
-        except Exception as e:
-            print(f"POST Request error: {e}")
-            time.sleep(2)
-            
+    retry_total = max(1, TOKEN_POST_MAX_RETRIES)
+    for attempt in range(retry_total):
+        routes: list[tuple[str, str | None]] = []
+        if proxy:
+            if TOKEN_POST_TRY_DIRECT_FIRST:
+                routes.extend([("direct", None), ("proxy", proxy)])
+            else:
+                routes.extend([("proxy", proxy), ("direct", None)])
+        else:
+            routes.append(("direct", None))
+
+        for label, route_proxy in routes:
+            try:
+                with get_opener(route_proxy, verify_tls=TOKEN_POST_TLS_VERIFY).open(req, timeout=timeout) as resp:
+                    raw = resp.read()
+                    if resp.status != 200:
+                        raise RuntimeError(
+                            f"token exchange failed: {resp.status}: {raw.decode('utf-8', 'replace')}"
+                        )
+                    print(f"POST token exchange ok via {label} (urllib, verify_tls={TOKEN_POST_TLS_VERIFY})")
+                    return json.loads(raw.decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                raw = exc.read()
+                raise RuntimeError(
+                    f"token exchange failed: {exc.code}: {raw.decode('utf-8', 'replace')}"
+                ) from exc
+            except Exception as e:
+                print(
+                    f"POST Request error (urllib/{label}, verify_tls={TOKEN_POST_TLS_VERIFY}, attempt {attempt+1}): {e}"
+                )
+                continue
+
+        time.sleep(2)
+
     raise RuntimeError("Failed to post form after max retries")
 
 
@@ -2322,7 +2361,16 @@ def new_driver(proxy: str | None = None):
     block_css = int(os.environ.get("BLOCK_CSS", "2"))
     block_fonts = int(os.environ.get("BLOCK_FONTS", "2"))
     
-    prefs = {}
+    prefs = {
+        # Disable Chrome password manager/save-password bubble (native UI popup)
+        # which can steal focus and block OTP typing in visual mode.
+        "credentials_enable_service": False,
+        "profile.password_manager_enabled": False,
+        "profile.password_manager_leak_detection": False,
+        # Keep autofill noise low during automated signup.
+        "autofill.profile_enabled": False,
+        "autofill.credit_card_enabled": False,
+    }
     if block_images == 2:
         prefs["profile.managed_default_content_settings.images"] = 2
         options.add_argument('--blink-settings=imagesEnabled=false')
@@ -2331,9 +2379,8 @@ def new_driver(proxy: str | None = None):
     if block_fonts == 2:
         prefs["profile.managed_default_content_settings.fonts"] = 2
 
-    if prefs:
-        print(f"Traffic Saver Mode Active: Images={block_images==2}, CSS={block_css==2}, Fonts={block_fonts==2}")
-        options.add_experimental_option("prefs", prefs)
+    print(f"Traffic Saver Mode Active: Images={block_images==2}, CSS={block_css==2}, Fonts={block_fonts==2}")
+    options.add_experimental_option("prefs", prefs)
     
     proxy_dir = None
     if proxy and "@" in proxy:
@@ -3184,19 +3231,69 @@ def register(driver, proxy=None) -> tuple[str, str]:
         _dbg("ui", "password ENTER pressed (fallback)", driver=driver)
         print("Enter pressed")
 
-    # 严格流程顺序：先确认已进入验证码阶段，再去邮箱拉取验证码。
-    try:
-        smart_wait(
-            driver,
-            By.CSS_SELECTOR,
-            'input[autocomplete="one-time-code"], input[inputmode="numeric"][maxlength="6"], div[role="group"] input[inputmode="numeric"][maxlength="1"]',
-            timeout=25,
-            debug_kind="otp_stage_ready",
-            debug_message="password submitted but otp stage not ready",
-        )
-        _dbg("otp", "otp stage ready, now polling mailbox", driver=driver)
-    except Exception:
-        # 页面未到验证码阶段时，不提前拉邮箱，直接按流程失败返回更准确原因。
+    # 严格流程顺序：先确认已进入验证码阶段（支持 URL/文案/输入框多信号），再去邮箱拉取验证码。
+    otp_stage_ready = False
+    otp_stage_reason = ""
+    otp_wait_timeout = int(os.environ.get("OTP_STAGE_WAIT_SECONDS", "45") or "45")
+    if otp_wait_timeout < 20:
+        otp_wait_timeout = 20
+    end_ts = time.time() + otp_wait_timeout
+    while time.time() < end_ts:
+        cur_url = ""
+        page_txt = ""
+        try:
+            cur_url = str(getattr(driver, "current_url", "") or "")
+        except Exception:
+            cur_url = ""
+        try:
+            page_txt = str(driver.execute_script("return document && document.body ? (document.body.innerText || '') : ''; ") or "")
+        except Exception:
+            page_txt = ""
+
+        # Signal A: URL already switched to email-verification page.
+        if "email-verification" in cur_url:
+            otp_stage_ready = True
+            otp_stage_reason = "url=email-verification"
+            break
+
+        # Signal B: OTP-related text is visible on page.
+        lower_txt = page_txt.lower()
+        if (
+            "验证码" in page_txt
+            or "检查您的收件箱" in page_txt
+            or "重新发送电子邮件" in page_txt
+            or "verification code" in lower_txt
+            or "check your inbox" in lower_txt
+            or "resend email" in lower_txt
+            or "enter code" in lower_txt
+            or "one-time code" in lower_txt
+        ):
+            otp_stage_ready = True
+            otp_stage_reason = "page_text_hint"
+            break
+
+        # Signal C: OTP input control exists.
+        try:
+            els = driver.find_elements(
+                By.CSS_SELECTOR,
+                'input[autocomplete="one-time-code"], input[inputmode="numeric"][maxlength="6"], div[role="group"] input[inputmode="numeric"][maxlength="1"]',
+            )
+            if els:
+                otp_stage_ready = True
+                otp_stage_reason = "otp_input_found"
+                break
+        except Exception:
+            pass
+
+        time.sleep(0.4)
+
+    if otp_stage_ready:
+        _dbg("otp", f"otp stage ready ({otp_stage_reason}), now polling mailbox", driver=driver)
+    else:
+        try:
+            _dump_page_body(driver=driver, kind="otp_stage_ready", message="password submitted but otp stage not ready")
+        except Exception:
+            pass
         raise RuntimeError("password submitted but otp stage not reached")
 
     _dbg("mail", f"start polling mailbox timeout={OTP_TIMEOUT_SECONDS}s", driver=driver)

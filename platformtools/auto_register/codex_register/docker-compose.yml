@@ -1,4 +1,4 @@
-version: '3.8'
+﻿version: '3.8'
 
 x-register-common: &register-common
   build:
@@ -24,14 +24,17 @@ x-register-common: &register-common
     - MAIL_DOMAIN_HEALTH_ORDER=mail.aiaimimi.com
     - MAILBOX_PICK_TRIES=1
     - DISABLE_PROXY=0
-    - BLOCK_IMAGES=0
-    - BLOCK_CSS=0
-    - BLOCK_FONTS=0
+    - BLOCK_IMAGES=2
+    - BLOCK_CSS=2
+    - BLOCK_FONTS=2
     - BLOCK_GOOGLE_OPT_GUIDE=2
     - BLOCK_NOISY_HOSTS=2
-    - CONCURRENCY=3
+    - CONCURRENCY=1
     - HEADLESS=1
     - ENABLE_REPAIRER=0
+    - TOKEN_POST_TRY_DIRECT_FIRST=1
+    - TOKEN_POST_TLS_VERIFY=0
+    - TOKEN_POST_MAX_RETRIES=6
     - SLEEP_MIN=0
     - SLEEP_MAX=2
     - MAILCREATE_POLL_SECONDS=0.8
@@ -54,12 +57,12 @@ services:
       - MAIL_DOMAIN_HEALTH_ORDER=mail.aiaimimi.com
       - MAILBOX_PICK_TRIES=1
       - DISABLE_PROXY=0
-      - BLOCK_IMAGES=0
-      - BLOCK_CSS=0
-      - BLOCK_FONTS=0
+      - BLOCK_IMAGES=2
+      - BLOCK_CSS=2
+      - BLOCK_FONTS=2
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
-      - CONCURRENCY=3
+      - CONCURRENCY=1
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
@@ -77,9 +80,9 @@ services:
       - DUMP_PAGE_BODY=0
       - KEEP_ERROR_ARTIFACTS=0
       - DISABLE_PROXY=0
-      - BLOCK_IMAGES=0
-      - BLOCK_CSS=0
-      - BLOCK_FONTS=0
+      - BLOCK_IMAGES=2
+      - BLOCK_CSS=2
+      - BLOCK_FONTS=2
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
       - CONCURRENCY=1
@@ -100,9 +103,9 @@ services:
       - DUMP_PAGE_BODY=0
       - KEEP_ERROR_ARTIFACTS=0
       - DISABLE_PROXY=0
-      - BLOCK_IMAGES=0
-      - BLOCK_CSS=0
-      - BLOCK_FONTS=0
+      - BLOCK_IMAGES=2
+      - BLOCK_CSS=2
+      - BLOCK_FONTS=2
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
       - CONCURRENCY=1
@@ -123,9 +126,9 @@ services:
       - DUMP_PAGE_BODY=0
       - KEEP_ERROR_ARTIFACTS=0
       - DISABLE_PROXY=0
-      - BLOCK_IMAGES=0
-      - BLOCK_CSS=0
-      - BLOCK_FONTS=0
+      - BLOCK_IMAGES=2
+      - BLOCK_CSS=2
+      - BLOCK_FONTS=2
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
       - CONCURRENCY=1
@@ -146,9 +149,9 @@ services:
       - DUMP_PAGE_BODY=0
       - KEEP_ERROR_ARTIFACTS=0
       - DISABLE_PROXY=0
-      - BLOCK_IMAGES=0
-      - BLOCK_CSS=0
-      - BLOCK_FONTS=0
+      - BLOCK_IMAGES=2
+      - BLOCK_CSS=2
+      - BLOCK_FONTS=2
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
       - CONCURRENCY=1
@@ -169,9 +172,9 @@ services:
       - DUMP_PAGE_BODY=0
       - KEEP_ERROR_ARTIFACTS=0
       - DISABLE_PROXY=0
-      - BLOCK_IMAGES=0
-      - BLOCK_CSS=0
-      - BLOCK_FONTS=0
+      - BLOCK_IMAGES=2
+      - BLOCK_CSS=2
+      - BLOCK_FONTS=2
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
       - CONCURRENCY=1
@@ -192,9 +195,9 @@ services:
       - DUMP_PAGE_BODY=0
       - KEEP_ERROR_ARTIFACTS=0
       - DISABLE_PROXY=0
-      - BLOCK_IMAGES=0
-      - BLOCK_CSS=0
-      - BLOCK_FONTS=0
+      - BLOCK_IMAGES=2
+      - BLOCK_CSS=2
+      - BLOCK_FONTS=2
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
       - CONCURRENCY=1
@@ -215,9 +218,9 @@ services:
       - DUMP_PAGE_BODY=0
       - KEEP_ERROR_ARTIFACTS=0
       - DISABLE_PROXY=0
-      - BLOCK_IMAGES=0
-      - BLOCK_CSS=0
-      - BLOCK_FONTS=0
+      - BLOCK_IMAGES=2
+      - BLOCK_CSS=2
+      - BLOCK_FONTS=2
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
       - CONCURRENCY=1
@@ -238,9 +241,9 @@ services:
       - DUMP_PAGE_BODY=0
       - KEEP_ERROR_ARTIFACTS=0
       - DISABLE_PROXY=0
-      - BLOCK_IMAGES=0
-      - BLOCK_CSS=0
-      - BLOCK_FONTS=0
+      - BLOCK_IMAGES=2
+      - BLOCK_CSS=2
+      - BLOCK_FONTS=2
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
       - CONCURRENCY=1
@@ -261,9 +264,9 @@ services:
       - DUMP_PAGE_BODY=0
       - KEEP_ERROR_ARTIFACTS=0
       - DISABLE_PROXY=0
-      - BLOCK_IMAGES=0
-      - BLOCK_CSS=0
-      - BLOCK_FONTS=0
+      - BLOCK_IMAGES=2
+      - BLOCK_CSS=2
+      - BLOCK_FONTS=2
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
       - CONCURRENCY=1
@@ -284,9 +287,9 @@ services:
       - DUMP_PAGE_BODY=0
       - KEEP_ERROR_ARTIFACTS=0
       - DISABLE_PROXY=0
-      - BLOCK_IMAGES=0
-      - BLOCK_CSS=0
-      - BLOCK_FONTS=0
+      - BLOCK_IMAGES=2
+      - BLOCK_CSS=2
+      - BLOCK_FONTS=2
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
       - CONCURRENCY=1
@@ -307,9 +310,9 @@ services:
       - DUMP_PAGE_BODY=0
       - KEEP_ERROR_ARTIFACTS=0
       - DISABLE_PROXY=0
-      - BLOCK_IMAGES=0
-      - BLOCK_CSS=0
-      - BLOCK_FONTS=0
+      - BLOCK_IMAGES=2
+      - BLOCK_CSS=2
+      - BLOCK_FONTS=2
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
       - CONCURRENCY=1
@@ -330,9 +333,9 @@ services:
       - DUMP_PAGE_BODY=0
       - KEEP_ERROR_ARTIFACTS=0
       - DISABLE_PROXY=0
-      - BLOCK_IMAGES=0
-      - BLOCK_CSS=0
-      - BLOCK_FONTS=0
+      - BLOCK_IMAGES=2
+      - BLOCK_CSS=2
+      - BLOCK_FONTS=2
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
       - CONCURRENCY=1
@@ -353,9 +356,9 @@ services:
       - DUMP_PAGE_BODY=0
       - KEEP_ERROR_ARTIFACTS=0
       - DISABLE_PROXY=0
-      - BLOCK_IMAGES=0
-      - BLOCK_CSS=0
-      - BLOCK_FONTS=0
+      - BLOCK_IMAGES=2
+      - BLOCK_CSS=2
+      - BLOCK_FONTS=2
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
       - CONCURRENCY=1
@@ -376,9 +379,9 @@ services:
       - DUMP_PAGE_BODY=0
       - KEEP_ERROR_ARTIFACTS=0
       - DISABLE_PROXY=0
-      - BLOCK_IMAGES=0
-      - BLOCK_CSS=0
-      - BLOCK_FONTS=0
+      - BLOCK_IMAGES=2
+      - BLOCK_CSS=2
+      - BLOCK_FONTS=2
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
       - CONCURRENCY=1
@@ -399,9 +402,9 @@ services:
       - DUMP_PAGE_BODY=0
       - KEEP_ERROR_ARTIFACTS=0
       - DISABLE_PROXY=0
-      - BLOCK_IMAGES=0
-      - BLOCK_CSS=0
-      - BLOCK_FONTS=0
+      - BLOCK_IMAGES=2
+      - BLOCK_CSS=2
+      - BLOCK_FONTS=2
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
       - CONCURRENCY=1
@@ -422,9 +425,9 @@ services:
       - DUMP_PAGE_BODY=0
       - KEEP_ERROR_ARTIFACTS=0
       - DISABLE_PROXY=0
-      - BLOCK_IMAGES=0
-      - BLOCK_CSS=0
-      - BLOCK_FONTS=0
+      - BLOCK_IMAGES=2
+      - BLOCK_CSS=2
+      - BLOCK_FONTS=2
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
       - CONCURRENCY=1
@@ -445,9 +448,9 @@ services:
       - DUMP_PAGE_BODY=0
       - KEEP_ERROR_ARTIFACTS=0
       - DISABLE_PROXY=0
-      - BLOCK_IMAGES=0
-      - BLOCK_CSS=0
-      - BLOCK_FONTS=0
+      - BLOCK_IMAGES=2
+      - BLOCK_CSS=2
+      - BLOCK_FONTS=2
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
       - CONCURRENCY=1
@@ -468,9 +471,9 @@ services:
       - DUMP_PAGE_BODY=0
       - KEEP_ERROR_ARTIFACTS=0
       - DISABLE_PROXY=0
-      - BLOCK_IMAGES=0
-      - BLOCK_CSS=0
-      - BLOCK_FONTS=0
+      - BLOCK_IMAGES=2
+      - BLOCK_CSS=2
+      - BLOCK_FONTS=2
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
       - CONCURRENCY=1
@@ -491,9 +494,9 @@ services:
       - DUMP_PAGE_BODY=0
       - KEEP_ERROR_ARTIFACTS=0
       - DISABLE_PROXY=0
-      - BLOCK_IMAGES=0
-      - BLOCK_CSS=0
-      - BLOCK_FONTS=0
+      - BLOCK_IMAGES=2
+      - BLOCK_CSS=2
+      - BLOCK_FONTS=2
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
       - CONCURRENCY=1
@@ -545,3 +548,4 @@ services:
       - HEADLESS=1
     command: ["python", "repairer.py"]
     restart: always
+

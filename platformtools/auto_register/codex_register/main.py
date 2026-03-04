@@ -6,6 +6,7 @@ import secrets
 import urllib.parse
 import urllib.request
 import urllib.error
+import ssl
 from dataclasses import dataclass
 from typing import Any, Dict
 from collections import deque
@@ -752,6 +753,23 @@ DISABLE_PROXY = (os.environ.get("DISABLE_PROXY", "0") or "0").strip().lower() in
     "on",
 )
 REQUIRE_PROXY = REGISTER_PROXY_REQUIRED and (not DISABLE_PROXY)
+
+# Token exchange / TLS knobs
+TOKEN_POST_TLS_VERIFY = (os.environ.get("TOKEN_POST_TLS_VERIFY", "0") or "0").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+    "off",
+)
+TOKEN_POST_TRY_DIRECT_FIRST = (os.environ.get("TOKEN_POST_TRY_DIRECT_FIRST", "1") or "1").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+    "off",
+)
+TOKEN_POST_MAX_RETRIES = int(os.environ.get("TOKEN_POST_MAX_RETRIES", "6") or "6")
+if TOKEN_POST_MAX_RETRIES <= 0:
+    TOKEN_POST_MAX_RETRIES = 6
 
 # Protocol-flow knobs
 PROTOCOL_IMPERSONATE = (os.environ.get("PROTOCOL_IMPERSONATE", "chrome") or "chrome").strip() or "chrome"
@@ -1758,11 +1776,16 @@ def _to_int(v: Any) -> int:
         return 0
 
 
-def get_opener(proxy: str | None = None):
-    if not proxy:
-        return urllib.request.build_opener()
-    proxy_handler = urllib.request.ProxyHandler({'http': proxy, 'https': proxy})
-    return urllib.request.build_opener(proxy_handler)
+def get_opener(proxy: str | None = None, *, verify_tls: bool = True):
+    handlers: list[Any] = []
+    if proxy:
+        handlers.append(urllib.request.ProxyHandler({'http': proxy, 'https': proxy}))
+    if not verify_tls:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        handlers.append(urllib.request.HTTPSHandler(context=ctx))
+    return urllib.request.build_opener(*handlers)
 
 def _post_form(url: str, data: Dict[str, str], timeout: int = 30, proxy: str | None = None) -> Dict[str, Any]:
     """POST form data with Chrome TLS/HTTP2 fingerprint via curl_cffi.
@@ -1776,7 +1799,8 @@ def _post_form(url: str, data: Dict[str, str], timeout: int = 30, proxy: str | N
     if proxy:
         proxy_configs.append(("proxy", {"https": proxy, "http": proxy}))
 
-    for attempt in range(4):
+    retry_total = max(1, TOKEN_POST_MAX_RETRIES)
+    for attempt in range(retry_total):
         for label, proxies in proxy_configs:
             # --- curl_cffi with Chrome impersonation ---
             try:
@@ -1808,33 +1832,55 @@ def _post_form(url: str, data: Dict[str, str], timeout: int = 30, proxy: str | N
                 print(f"POST Request error (curl_cffi/{label}, attempt {attempt+1}): {e}")
                 continue  # try next proxy config
 
-        # --- Fallback: urllib (direct only, proxy already failed above) ---
-        try:
-            body = urllib.parse.urlencode(data).encode("utf-8")
-            req = urllib.request.Request(
-                url,
-                data=body,
-                method="POST",
-                headers={
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "Accept": "application/json",
-                },
-            )
-            with urllib.request.build_opener().open(req, timeout=timeout) as resp:
-                raw = resp.read()
-                if resp.status != 200:
-                    raise RuntimeError(
-                        f"token exchange failed: {resp.status}: {raw.decode('utf-8', 'replace')}"
+        # --- Fallback: urllib (direct/proxy; allow TLS verify toggle) ---
+        body = urllib.parse.urlencode(data).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=body,
+            method="POST",
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Accept": "application/json",
+            },
+        )
+
+        urllib_proxies: list[tuple[str, str | None]] = []
+        if proxy:
+            if TOKEN_POST_TRY_DIRECT_FIRST:
+                urllib_proxies.extend([("direct", None), ("proxy", proxy)])
+            else:
+                urllib_proxies.extend([("proxy", proxy), ("direct", None)])
+        else:
+            urllib_proxies.append(("direct", None))
+
+        urllib_ok = False
+        for urllib_label, urllib_proxy in urllib_proxies:
+            try:
+                with get_opener(urllib_proxy, verify_tls=TOKEN_POST_TLS_VERIFY).open(req, timeout=timeout) as resp:
+                    raw = resp.read()
+                    if resp.status != 200:
+                        raise RuntimeError(
+                            f"token exchange failed: {resp.status}: {raw.decode('utf-8', 'replace')}"
+                        )
+                    print(
+                        f"POST token exchange ok via {urllib_label} (urllib, verify_tls={TOKEN_POST_TLS_VERIFY})"
                     )
-                print("POST token exchange ok via urllib (direct)")
-                return json.loads(raw.decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            raw = exc.read()
-            raise RuntimeError(
-                f"token exchange failed: {exc.code}: {raw.decode('utf-8', 'replace')}"
-            ) from exc
-        except Exception as e:
-            print(f"POST Request error (urllib, attempt {attempt+1}): {e}")
+                    return json.loads(raw.decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                raw = exc.read()
+                raise RuntimeError(
+                    f"token exchange failed: {exc.code}: {raw.decode('utf-8', 'replace')}"
+                ) from exc
+            except Exception as e:
+                print(
+                    f"POST Request error (urllib/{urllib_label}, verify_tls={TOKEN_POST_TLS_VERIFY}, attempt {attempt+1}): {e}"
+                )
+                continue
+            finally:
+                urllib_ok = True
+
+        if not urllib_ok:
+            print(f"POST Request error (urllib, attempt {attempt+1}): no route available")
 
         time.sleep(2)
 
