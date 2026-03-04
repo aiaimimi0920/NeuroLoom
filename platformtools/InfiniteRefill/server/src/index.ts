@@ -82,6 +82,26 @@ async function ensureRuntimeSchema(env: Env): Promise<void> {
   await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_sync_all_risk_events_day_fp ON sync_all_risk_events(day, fingerprint)").run();
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS risk_blacklist (subject_type TEXT NOT NULL, subject_value TEXT NOT NULL, reason TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT, PRIMARY KEY(subject_type, subject_value))").run();
 
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS account_confidence_queue (account_id TEXT PRIMARY KEY, first_reporter_key_hash TEXT NOT NULL, first_status_code INTEGER NOT NULL, first_reason TEXT, first_reported_at TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'pending', replay_count INTEGER NOT NULL DEFAULT 0, confirm_count INTEGER NOT NULL DEFAULT 0, reject_count INTEGER NOT NULL DEFAULT 0, last_replayed_to_key_hash TEXT, last_replayed_at TEXT, last_feedback_key_hash TEXT, last_feedback_status_code INTEGER, last_feedback_note TEXT, last_feedback_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)").run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_account_confidence_queue_state ON account_confidence_queue(state)").run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_account_confidence_queue_updated_at ON account_confidence_queue(updated_at)").run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_account_confidence_queue_reporter ON account_confidence_queue(first_reporter_key_hash)").run();
+
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS account_confidence_replays (id INTEGER PRIMARY KEY AUTOINCREMENT, account_id TEXT NOT NULL, replayed_to_key_hash TEXT NOT NULL, replayed_at TEXT NOT NULL, source_reporter_key_hash TEXT, source_status_code INTEGER, source_reason TEXT)").run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_account_confidence_replays_account_id ON account_confidence_replays(account_id)").run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_account_confidence_replays_replayed_to ON account_confidence_replays(replayed_to_key_hash)").run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_account_confidence_replays_replayed_at ON account_confidence_replays(replayed_at)").run();
+
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS account_v2_sleep (account_id TEXT PRIMARY KEY, eligible_after TEXT NOT NULL, last_status_code INTEGER, updated_at TEXT NOT NULL)").run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_account_v2_sleep_eligible_after ON account_v2_sleep(eligible_after)").run();
+
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS user_daily_untrust_events (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, day TEXT NOT NULL, score INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL, UNIQUE(user_id, day))").run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_user_daily_untrust_events_user_day ON user_daily_untrust_events(user_id, day)").run();
+
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS user_ban_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, reason TEXT NOT NULL, detail TEXT, created_at TEXT NOT NULL)").run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_user_ban_audit_user_id ON user_ban_audit(user_id)").run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_user_ban_audit_created_at ON user_ban_audit(created_at)").run();
+
   try {
     await env.DB.prepare("ALTER TABLE users_v2 ADD COLUMN account_limit_delta INTEGER NOT NULL DEFAULT 0").run();
   } catch {
@@ -122,6 +142,139 @@ async function setAbuseIssueMultiplier(env: Env, multiplier: number): Promise<nu
   return v;
 }
 
+async function getSyncAllDailyLimit(env: Env): Promise<number> {
+  const row = await env.DB.prepare("SELECT v FROM system_settings WHERE k='sync_all_daily_limit'").first<{ v: string }>();
+  const n = Math.trunc(Number(row?.v || "300"));
+  return Math.max(1, Math.min(2000, n || 300));
+}
+
+async function setSyncAllDailyLimit(env: Env, limit: number): Promise<number> {
+  const v = Math.max(1, Math.min(2000, Math.trunc(Number(limit || 0))));
+  const now = utcNowIso();
+  await env.DB
+    .prepare("INSERT INTO system_settings(k,v,updated_at) VALUES('sync_all_daily_limit',?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v, updated_at=excluded.updated_at")
+    .bind(String(v), now)
+    .run();
+  return v;
+}
+
+async function getConfidenceReplayPercent(env: Env): Promise<number> {
+  const row = await env.DB.prepare("SELECT v FROM system_settings WHERE k='confidence_replay_percent'").first<{ v: string }>();
+  const n = Math.trunc(Number(row?.v || "20"));
+  return Math.max(0, Math.min(80, n));
+}
+
+async function getDailyUntrustBanThreshold(env: Env): Promise<number> {
+  const row = await env.DB.prepare("SELECT v FROM system_settings WHERE k='daily_untrust_ban_threshold'").first<{ v: string }>();
+  const n = Math.trunc(Number(row?.v || "10"));
+  return Math.max(1, Math.min(100, n));
+}
+
+async function setConfidenceReplayPercent(env: Env, percent: number): Promise<number> {
+  const v = Math.max(0, Math.min(80, Math.trunc(Number(percent || 0))));
+  const now = utcNowIso();
+  await env.DB
+    .prepare("INSERT INTO system_settings(k,v,updated_at) VALUES('confidence_replay_percent',?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v, updated_at=excluded.updated_at")
+    .bind(String(v), now)
+    .run();
+  return v;
+}
+
+async function setDailyUntrustBanThreshold(env: Env, threshold: number): Promise<number> {
+  const v = Math.max(1, Math.min(100, Math.trunc(Number(threshold || 0))));
+  const now = utcNowIso();
+  await env.DB
+    .prepare("INSERT INTO system_settings(k,v,updated_at) VALUES('daily_untrust_ban_threshold',?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v, updated_at=excluded.updated_at")
+    .bind(String(v), now)
+    .run();
+  return v;
+}
+
+function isRepairableEmailDomain(email: string): boolean {
+  const s = String(email || "").trim().toLowerCase();
+  const i = s.lastIndexOf("@");
+  if (i < 0) return false;
+  const d = s.slice(i + 1);
+  if (!d) return false;
+  if (d === "mail.aiaimimi.com") return true;
+  if (d === "mail.chatgpt.org.uk") return true;
+  if (d.endsWith(".aiaimimi.com")) return true;
+  return false;
+}
+
+function plusDaysIso(baseIso: string, days: number): string {
+  const d = new Date(baseIso || Date.now());
+  const t = Number.isFinite(d.getTime()) ? d.getTime() : Date.now();
+  return new Date(t + days * 24 * 60 * 60 * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+async function releaseSleepAccountsToPublic(env: Env, nowIso: string): Promise<number> {
+  const due = await env.DB.prepare("SELECT account_id FROM account_v2_sleep WHERE eligible_after <= ? LIMIT 2000")
+    .bind(nowIso)
+    .all<{ account_id: string }>();
+  const ids = (due.results || []).map((r) => String(r.account_id || "").trim()).filter(Boolean);
+  if (!ids.length) return 0;
+
+  let changed = 0;
+  for (const aid of ids) {
+    const r = await env.DB.prepare("UPDATE accounts_v2 SET owner='-1', updated_at=? WHERE account_id=? AND owner='-4'")
+      .bind(nowIso, aid)
+      .run();
+    changed += Number(r.meta?.changes || 0);
+    await env.DB.prepare("DELETE FROM account_v2_sleep WHERE account_id=?").bind(aid).run();
+  }
+  return changed;
+}
+
+async function addReporterUntrustAndMaybeBan(env: Env, keyHash: string, nowIso: string, detail: string): Promise<{ score: number; banned: boolean; threshold: number }> {
+  const row = await env.DB.prepare("SELECT user_id FROM user_keys_v2 WHERE key_hash=? LIMIT 1").bind(keyHash).first<{ user_id: string }>();
+  if (!row?.user_id) return { score: 0, banned: false, threshold: await getDailyUntrustBanThreshold(env) };
+
+  const day = nowIso.slice(0, 10);
+  await env.DB.prepare("INSERT INTO user_daily_untrust_events(user_id,day,score,updated_at) VALUES(?,?,1,?) ON CONFLICT(user_id,day) DO UPDATE SET score=score+1, updated_at=excluded.updated_at")
+    .bind(row.user_id, day, nowIso)
+    .run();
+
+  const sRow = await env.DB.prepare("SELECT score FROM user_daily_untrust_events WHERE user_id=? AND day=?")
+    .bind(row.user_id, day)
+    .first<{ score: number }>();
+  const score = Number(sRow?.score || 0);
+  const threshold = await getDailyUntrustBanThreshold(env);
+
+  if (score >= threshold) {
+    await env.DB.prepare("UPDATE users_v2 SET disabled=1, updated_at=? WHERE id=?").bind(nowIso, row.user_id).run();
+    await env.DB.prepare("UPDATE user_keys_v2 SET enabled=0, updated_at=? WHERE user_id=?").bind(nowIso, row.user_id).run();
+    await env.DB.prepare("INSERT INTO user_ban_audit(user_id,reason,detail,created_at) VALUES(?,?,?,?)")
+      .bind(row.user_id, "daily_untrust_threshold_exceeded", detail, nowIso)
+      .run();
+    return { score, banned: true, threshold };
+  }
+
+  return { score, banned: false, threshold };
+}
+
+async function ensureUserKeyV2ByHash(env: Env, keyHash: string, displayName?: string): Promise<string> {
+  const now = utcNowIso();
+  const ex = await env.DB.prepare("SELECT user_id FROM user_keys_v2 WHERE key_hash=? LIMIT 1").bind(keyHash).first<{ user_id: string }>();
+  if (ex?.user_id) {
+    await env.DB.prepare("UPDATE user_keys_v2 SET enabled=1, updated_at=? WHERE key_hash=?").bind(now, keyHash).run();
+    await env.DB.prepare("UPDATE users_v2 SET disabled=0, updated_at=? WHERE id=?").bind(now, ex.user_id).run();
+    return ex.user_id;
+  }
+
+  const userId = `u_${keyHash}`;
+  const safeDisplay = (displayName && displayName.trim()) ? displayName.trim() : `user:${keyHash.slice(0, 8)}`;
+  await env.DB
+    .prepare("INSERT OR IGNORE INTO users_v2(id,display_name,roles,current_account_ids,daily_refill_limit,account_limit_delta,disabled,created_at,updated_at) VALUES(?,?,?,?,200,0,0,?,?)")
+    .bind(userId, safeDisplay, "user", "[]", now, now)
+    .run();
+  await env.DB
+    .prepare("INSERT OR IGNORE INTO user_keys_v2(key_hash,user_id,role,enabled,created_at,updated_at) VALUES(?,?,?,1,?,?)")
+    .bind(keyHash, userId, "user", now, now)
+    .run();
+  return userId;
+}
+
 async function ensureTestKeysInDb(env: Env): Promise<void> {
   const now = utcNowIso();
 
@@ -137,6 +290,7 @@ async function ensureTestKeysInDb(env: Env): Promise<void> {
     await env.DB.prepare("INSERT OR IGNORE INTO user_keys(key_hash,label,enabled,created_at) VALUES(?,?,1,?)")
       .bind(h, label, now)
       .run();
+    await ensureUserKeyV2ByHash(env, h, label);
   };
 
   // 维修者 key：复用 upload 权限（与热心群众同凭据模型）
@@ -650,7 +804,7 @@ async function requireUserKey(req: Request, env: Env): Promise<{ raw: string; ha
   const raw = readUserKey(req);
   if (!raw) throw new Response("missing X-User-Key", { status: 401 });
   const h = await sha256Hex(raw);
-  const row = await env.DB.prepare("SELECT enabled FROM user_keys WHERE key_hash=?").bind(h).first<{ enabled: number }>();
+  const row = await env.DB.prepare("SELECT enabled FROM user_keys_v2 WHERE key_hash=? AND role='user' LIMIT 1").bind(h).first<{ enabled: number }>();
   if (!row || Number(row.enabled) !== 1) throw new Response("invalid user key", { status: 403 });
   return { raw, hash: h };
 }
@@ -1027,12 +1181,14 @@ type RefillReportItemV2 = {
   probed_at?: string;
   owner?: string | number;
   note?: string;
+  /** 来自“待置信区回放”的账号标记（客户端回传） */
+  replay_from_confidence?: boolean;
 };
 
 type RefillTopupBody = {
   target_pool_size: number;
   reports?: RefillReportItemV2[];
-  /** 客户端建议需要服务端复核的账户 id 列表（服务端会二次 wham 快速校验） */
+  /** 兼容旧客户端：已废弃，不再触发服务端 wham 复核 */
   account_ids?: string[];
 };
 
@@ -1135,6 +1291,8 @@ export default {
         const accountsV2Repair = await env.DB.prepare("SELECT COUNT(1) as c FROM accounts_v2 WHERE owner='-2'").first<{ c: number }>();
         const accountsV2Grave = await env.DB.prepare("SELECT COUNT(1) as c FROM accounts_v2 WHERE owner='-3'").first<{ c: number }>();
         const accountsV2Repairing = await env.DB.prepare("SELECT COUNT(1) as c FROM accounts_v2 WHERE owner='-4'").first<{ c: number }>();
+        const accountsV2Confidence = await env.DB.prepare("SELECT COUNT(1) as c FROM accounts_v2 WHERE owner='-5'").first<{ c: number }>();
+        const confidenceQueuePending = await env.DB.prepare("SELECT COUNT(1) as c FROM account_confidence_queue WHERE state='pending'").first<{ c: number }>();
         const usersV2Total = await env.DB.prepare("SELECT COUNT(1) as c FROM users_v2").first<{ c: number }>();
         const userKeysV2Total = await env.DB.prepare("SELECT COUNT(1) as c FROM user_keys_v2").first<{ c: number }>();
         const baseAccountLimit = await getBaseAccountLimit(env);
@@ -1164,6 +1322,8 @@ export default {
           accounts_v2_repair: Number(accountsV2Repair?.c || 0),
           accounts_v2_grave: Number(accountsV2Grave?.c || 0),
           accounts_v2_repairing: Number(accountsV2Repairing?.c || 0),
+          accounts_v2_confidence: Number(accountsV2Confidence?.c || 0),
+          confidence_queue_pending: Number(confidenceQueuePending?.c || 0),
           users_v2_total: Number(usersV2Total?.c || 0),
           user_keys_v2_total: Number(userKeysV2Total?.c || 0),
           platform_base_account_limit: baseAccountLimit,
@@ -1173,6 +1333,53 @@ export default {
           topup_issued_last_24h: Number(topupIssued24h?.c || 0),
           ts: utcNowIso(),
         });
+      }
+
+      if (path === "/admin/confidence/stats" && req.method === "GET") {
+        await requireAdmin(req, env);
+        const pending = await env.DB.prepare("SELECT COUNT(1) as c FROM account_confidence_queue WHERE state='pending'").first<{ c: number }>();
+        const confirmed = await env.DB.prepare("SELECT COUNT(1) as c FROM account_confidence_queue WHERE state='confirmed'").first<{ c: number }>();
+        const rejected = await env.DB.prepare("SELECT COUNT(1) as c FROM account_confidence_queue WHERE state='rejected'").first<{ c: number }>();
+        const avgReplay = await env.DB.prepare("SELECT AVG(replay_count) as a FROM account_confidence_queue").first<{ a: number }>();
+        const avgConfirm = await env.DB.prepare("SELECT AVG(confirm_count) as a FROM account_confidence_queue").first<{ a: number }>();
+        const avgReject = await env.DB.prepare("SELECT AVG(reject_count) as a FROM account_confidence_queue").first<{ a: number }>();
+        const replayPercent = await getConfidenceReplayPercent(env);
+        const banThreshold = await getDailyUntrustBanThreshold(env);
+        const topUntrust = await env.DB
+          .prepare("SELECT user_id,day,score FROM user_daily_untrust_events ORDER BY day DESC, score DESC LIMIT 20")
+          .all<{ user_id: string; day: string; score: number }>();
+
+        return json({
+          ok: true,
+          confidence_queue: {
+            pending: Number(pending?.c || 0),
+            confirmed: Number(confirmed?.c || 0),
+            rejected: Number(rejected?.c || 0),
+            avg_replay_count: Number(avgReplay?.a || 0),
+            avg_confirm_count: Number(avgConfirm?.a || 0),
+            avg_reject_count: Number(avgReject?.a || 0),
+          },
+          controls: {
+            confidence_replay_percent: replayPercent,
+            daily_untrust_ban_threshold: banThreshold,
+          },
+          top_untrust: topUntrust.results || [],
+          ts: utcNowIso(),
+        });
+      }
+
+      if (path === "/admin/confidence/replay-percent" && req.method === "POST") {
+        await requireAdmin(req, env);
+        const body = await parseJson<{ confidence_replay_percent: number }>(req);
+        const v = await setConfidenceReplayPercent(env, Number(body?.confidence_replay_percent || 0));
+        return json({ ok: true, confidence_replay_percent: v });
+      }
+
+      if (path === "/admin/confidence/ban-threshold" && req.method === "POST") {
+        await requireAdmin(req, env);
+        const body = await parseJson<{ daily_untrust_ban_threshold: number }>(req);
+        const v = await setDailyUntrustBanThreshold(env, Number(body?.daily_untrust_ban_threshold || 10));
+        return json({ ok: true, daily_untrust_ban_threshold: v });
       }
 
       if (path === "/admin/limits/base" && req.method === "GET") {
@@ -1285,7 +1492,7 @@ export default {
 
         if (sourceOwners.length === 0) {
           const allOwners = await env.DB
-            .prepare("SELECT owner FROM accounts_v2 WHERE owner NOT IN ('-1','-2','-3','-4') GROUP BY owner ORDER BY owner")
+            .prepare("SELECT owner FROM accounts_v2 WHERE owner NOT IN ('-1','-2','-3','-4','-5') GROUP BY owner ORDER BY owner")
             .all<{ owner: string }>();
           sourceOwners = (allOwners.results || []).map((r) => String(r.owner || "").trim().toLowerCase()).filter((x) => isHexSha256(x));
         }
@@ -1483,7 +1690,7 @@ export default {
 
         const now = utcNowIso();
         const released = await env.DB
-          .prepare("UPDATE accounts_v2 SET owner='-1', updated_at=? WHERE owner NOT IN ('-1','-2','-3','-4')")
+          .prepare("UPDATE accounts_v2 SET owner='-1', updated_at=? WHERE owner NOT IN ('-1','-2','-3','-4','-5')")
           .bind(now)
           .run();
 
@@ -1541,6 +1748,7 @@ export default {
               await env.DB.prepare("INSERT OR IGNORE INTO user_keys(key_hash,label,enabled,created_at) VALUES(?,?,1,?)")
                 .bind(h, label, now)
                 .run();
+              await ensureUserKeyV2ByHash(env, h, label || `admin:issue:${h.slice(0, 8)}`);
             } else {
               // refill key 仍然走加密存储
               const enc = await aesGcmEncryptToB64(env.REFILL_KEYS_MASTER_KEY_B64, k);
@@ -1974,6 +2182,7 @@ export default {
           await env.DB.prepare("INSERT OR IGNORE INTO user_keys(key_hash,label,enabled,created_at) VALUES(?,?,1,?)")
             .bind(h, row.label || null, row.created_at || utcNowIso())
             .run();
+          await ensureUserKeyV2ByHash(env, h, row.label || undefined);
           insertedUser++;
         }
 
@@ -2083,6 +2292,7 @@ export default {
             await env.DB.prepare("INSERT OR IGNORE INTO user_keys(key_hash,label,enabled,created_at) VALUES(?,?,1,?)")
               .bind(h, body.label || null, now)
               .run();
+            await ensureUserKeyV2ByHash(env, h, body.label || undefined);
             inserted++;
           } catch (e: any) {
             errors.push({ key: k, error: String(e?.message || e) });
@@ -2861,6 +3071,7 @@ export default {
             await env.DB.prepare("INSERT OR IGNORE INTO user_keys(key_hash,label,enabled,created_at) VALUES(?,?,1,?)")
               .bind(h, label, now)
               .run();
+            await ensureUserKeyV2ByHash(env, h, label || `upload:pkg:${batchId}:${i}`);
 
             const envText = [
               `SERVER_URL=${serverUrl}`,
@@ -3015,103 +3226,112 @@ export default {
           return accountIds.length;
         };
 
-        // 2) 消费 report：根据探测状态更新 owner
+        // 2) 消费 report：先采信客户端，坏号先入待置信区(-5)，后续靠回放复现判真
         let acceptedReports = 0;
         const reportErrors: Array<{ idx: number; error: string }> = [];
+        const replacedFromRequested: Array<{ old_account_id: string; reason: string }> = [];
 
         for (let i = 0; i < reports.length; i++) {
           const it = reports[i] as RefillReportItemV2;
           const accountId = String(it?.account_id || "").trim();
           const statusCode = typeof it?.status_code === "number" ? Math.trunc(it.status_code) : null;
+          const note = String(it?.note || "").trim();
+          const replayFromConfidence = it?.replay_from_confidence === true;
 
           if (!accountId) {
             reportErrors.push({ idx: i, error: "missing account_id" });
             continue;
           }
 
-          let ownerNext: string | null = null;
-          if (statusCode === 401) ownerNext = "-2";
-          else if (statusCode === 429) ownerNext = "-4";
-          // 2xx 表示账号正常可用，不更改 owner（保持归属用户）
+          if (statusCode !== null && statusCode >= 200 && statusCode < 300) {
+            await env.DB.prepare("UPDATE accounts_v2 SET last_seen_at=? WHERE account_id=?").bind(now, accountId).run();
+            if (replayFromConfidence) {
+              const q = await env.DB.prepare("SELECT account_id,first_reporter_key_hash FROM account_confidence_queue WHERE account_id=? AND state='pending'")
+                .bind(accountId)
+                .first<{ account_id: string; first_reporter_key_hash: string }>();
+              if (q) {
+                await env.DB.prepare("UPDATE account_confidence_queue SET state='rejected', reject_count=reject_count+1, last_feedback_key_hash=?, last_feedback_status_code=?, last_feedback_note=?, last_feedback_at=?, updated_at=? WHERE account_id=?")
+                  .bind(ownerKey, statusCode, note || "replay_ok", now, now, accountId)
+                  .run();
+                await env.DB.prepare("UPDATE accounts_v2 SET owner='-1', updated_at=? WHERE account_id=? AND owner=?")
+                  .bind(now, accountId, ownerKey)
+                  .run();
+                const untrust = await addReporterUntrustAndMaybeBan(env, q.first_reporter_key_hash, now, `replay_rejected account=${accountId} by=${ownerKey}`);
+                replacedFromRequested.push({ old_account_id: accountId, reason: `rejected:score=${untrust.score}/${untrust.threshold}${untrust.banned ? ":banned" : ""}` });
+              }
+            }
+            acceptedReports++;
+            continue;
+          }
 
-          if (ownerNext !== null) {
-            await env.DB
-              .prepare("UPDATE accounts_v2 SET owner=?, updated_at=?, last_seen_at=? WHERE account_id=?")
-              .bind(ownerNext, now, now, accountId)
-              .run();
-          } else if (statusCode !== null && statusCode >= 200 && statusCode < 300) {
-            // 2xx：仅更新 last_seen_at，确认账号活跃
-            await env.DB
-              .prepare("UPDATE accounts_v2 SET last_seen_at=? WHERE account_id=?")
-              .bind(now, accountId)
-              .run();
+          if (statusCode === 401 || statusCode === 429) {
+            if (!replayFromConfidence) {
+              const moved = await env.DB.prepare("UPDATE accounts_v2 SET owner='-5', updated_at=?, last_seen_at=? WHERE account_id=? AND owner=?")
+                .bind(now, now, accountId, ownerKey)
+                .run();
+              if (Number(moved.meta?.changes || 0) === 1) {
+                await env.DB.prepare("INSERT INTO account_confidence_queue(account_id,first_reporter_key_hash,first_status_code,first_reason,first_reported_at,state,replay_count,confirm_count,reject_count,created_at,updated_at) VALUES(?,?,?,?,?,'pending',0,0,0,?,?) ON CONFLICT(account_id) DO UPDATE SET first_reporter_key_hash=excluded.first_reporter_key_hash, first_status_code=excluded.first_status_code, first_reason=excluded.first_reason, first_reported_at=excluded.first_reported_at, state='pending', updated_at=excluded.updated_at")
+                  .bind(accountId, ownerKey, statusCode, note || "client_report", now, now, now)
+                  .run();
+                replacedFromRequested.push({ old_account_id: accountId, reason: `queued:${statusCode}` });
+              }
+            } else {
+              const q = await env.DB.prepare("SELECT account_id,first_status_code,first_reporter_key_hash FROM account_confidence_queue WHERE account_id=? AND state='pending'")
+                .bind(accountId)
+                .first<{ account_id: string; first_status_code: number; first_reporter_key_hash: string }>();
+
+              const consistent = !!q && q.first_status_code === statusCode && q.first_reporter_key_hash !== ownerKey;
+              if (consistent) {
+                await env.DB.prepare("UPDATE account_confidence_queue SET state='confirmed', confirm_count=confirm_count+1, last_feedback_key_hash=?, last_feedback_status_code=?, last_feedback_note=?, last_feedback_at=?, updated_at=? WHERE account_id=?")
+                  .bind(ownerKey, statusCode, note || "replay_confirmed", now, now, accountId)
+                  .run();
+
+                const acc = await env.DB.prepare("SELECT email FROM accounts_v2 WHERE account_id=?").bind(accountId).first<{ email: string }>();
+                if (statusCode === 401) {
+                  const toOwner = isRepairableEmailDomain(String(acc?.email || "")) ? "-2" : "-3";
+                  await env.DB.prepare("UPDATE accounts_v2 SET owner=?, updated_at=?, last_seen_at=? WHERE account_id=?")
+                    .bind(toOwner, now, now, accountId)
+                    .run();
+                } else {
+                  await env.DB.prepare("UPDATE accounts_v2 SET owner='-4', updated_at=?, last_seen_at=? WHERE account_id=?")
+                    .bind(now, now, accountId)
+                    .run();
+                  const eligibleAfter = plusDaysIso(now, 7);
+                  await env.DB.prepare("INSERT INTO account_v2_sleep(account_id,eligible_after,last_status_code,updated_at) VALUES(?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET eligible_after=excluded.eligible_after, last_status_code=excluded.last_status_code, updated_at=excluded.updated_at")
+                    .bind(accountId, eligibleAfter, statusCode, now)
+                    .run();
+                }
+                replacedFromRequested.push({ old_account_id: accountId, reason: `confirmed:${statusCode}` });
+              } else if (q) {
+                await env.DB.prepare("UPDATE account_confidence_queue SET state='rejected', reject_count=reject_count+1, last_feedback_key_hash=?, last_feedback_status_code=?, last_feedback_note=?, last_feedback_at=?, updated_at=? WHERE account_id=?")
+                  .bind(ownerKey, statusCode, note || "replay_inconsistent", now, now, accountId)
+                  .run();
+                await env.DB.prepare("UPDATE accounts_v2 SET owner='-1', updated_at=? WHERE account_id=?")
+                  .bind(now, accountId)
+                  .run();
+                const untrust = await addReporterUntrustAndMaybeBan(env, q.first_reporter_key_hash, now, `replay_inconsistent account=${accountId} status=${statusCode} by=${ownerKey}`);
+                replacedFromRequested.push({ old_account_id: accountId, reason: `rejected:score=${untrust.score}/${untrust.threshold}${untrust.banned ? ":banned" : ""}` });
+              }
+            }
+            acceptedReports++;
+            continue;
           }
 
           acceptedReports++;
         }
 
-        // 3) 取号：仅发放公有池(-1)和本人私有池(owner==ownerKey)，墓地(-3)永不下发
+        await releaseSleepAccountsToPublic(env, now);
+
+        // 3) 取号：发放公有池(-1) + 按比例混入待置信区(-5)回放
         const baseAccountLimit = await getBaseAccountLimit(env);
         const delta = Math.trunc(Number(userRow.account_limit_delta || 0));
         const effectiveAccountLimit = Math.max(1, Math.min(500, baseAccountLimit + delta));
         const abuseIssueMultiplier = await getAbuseIssueMultiplier(env);
         const abuseIssueThreshold = Math.max(1, Math.floor(abuseIssueMultiplier * effectiveAccountLimit));
 
-        const ownedRow = await env.DB.prepare("SELECT COUNT(1) AS c FROM accounts_v2 WHERE owner=?").bind(ownerKey).first<{ c: number }>();
-        const currentOwned = Number(ownedRow?.c || 0);
-
-        // rawWant removed: 实际发放量由 desiredToLimit 决定，不使用客户端 target
-
-        // 4) 服务端二次复核客户端提交的 account_ids：判定是否需要续杯（401/429）
-        // 额外规则：若 note=r2_object_not_found，直接硬删除该“JSON凭证账户”（accounts_v2），并记审计。
-        const replacedFromRequested: Array<{ old_account_id: string; reason: string }> = [];
-        const deletedMissingR2FromRequested: Array<{ old_account_id: string; reason: string }> = [];
-        if (requestedAccountIds.length > 0) {
-          for (const accountId of requestedAccountIds) {
-            const owned = await env.DB
-              .prepare("SELECT account_id,r2_url FROM accounts_v2 WHERE account_id=? AND owner=?")
-              .bind(accountId, ownerKey)
-              .first<{ account_id: string; r2_url: string | null }>();
-            if (!owned) continue;
-
-            let status: number | null = null;
-            let note = "";
-            try {
-              const p = await probeWhamStatusFromR2(env, owned.account_id, owned.r2_url);
-              status = p.status;
-              note = p.note;
-            } catch (e: any) {
-              status = null;
-              note = `probe_error:${String(e?.message || e)}`;
-            }
-
-            if (note === "r2_object_not_found") {
-              await env.DB.prepare("DELETE FROM accounts_v2 WHERE account_id=?")
-                .bind(owned.account_id)
-                .run();
-              deletedMissingR2FromRequested.push({ old_account_id: owned.account_id, reason: note });
-              continue;
-            }
-
-            if (status === 401 || status === 429) {
-              const repairOwner = status === 401 ? "-2" : "-4";
-              await env.DB.prepare("UPDATE accounts_v2 SET owner=?, updated_at=?, last_seen_at=? WHERE account_id=? AND owner=?")
-                .bind(repairOwner, now, now, owned.account_id, ownerKey)
-                .run();
-              replacedFromRequested.push({ old_account_id: owned.account_id, reason: `${status}:${note || "need_refill"}` });
-            }
-          }
-        }
-
-        // 复核后重新计算持有量与容量（支持“同量替换”）
         const ownedRowNow = await env.DB.prepare("SELECT COUNT(1) AS c FROM accounts_v2 WHERE owner=?").bind(ownerKey).first<{ c: number }>();
         const currentOwnedNow = Number(ownedRowNow?.c || 0);
-        const remainingCapacityNow = Math.max(0, effectiveAccountLimit - currentOwnedNow);
 
-        // 分发策略：
-        // - 未携带 account_ids：直接补到当前可持有上限
-        // - 携带 account_ids：先剔除坏号，再按“剔除后持有量”补到当前可持有上限
-        //   （若上限被下调且仍超持，则仅删除不补发）
         const desiredToLimit = Math.max(0, effectiveAccountLimit - currentOwnedNow);
         const wantFinal = Math.max(0, Math.min(500, desiredToLimit));
 
@@ -3150,12 +3370,21 @@ export default {
           });
         }
 
-        const rows = wantFinal > 0
+        const replayPercent = await getConfidenceReplayPercent(env);
+        const replayBudget = Math.max(0, Math.min(wantFinal, Math.floor((wantFinal * replayPercent) / 100)));
+
+        const replayRows = replayBudget > 0
           ? await env.DB
-              .prepare(
-                "SELECT account_id,email,password,r2_url,owner FROM accounts_v2 WHERE owner='-1' AND owner <> '-3' ORDER BY RANDOM() LIMIT ?",
-              )
-              .bind(wantFinal * 8)
+              .prepare("SELECT a.account_id,a.email,a.password,a.r2_url,a.owner,q.first_reporter_key_hash,q.first_status_code,q.first_reason FROM accounts_v2 a JOIN account_confidence_queue q ON q.account_id=a.account_id WHERE a.owner='-5' AND q.state='pending' ORDER BY RANDOM() LIMIT ?")
+              .bind(replayBudget * 4)
+              .all<{ account_id: string; email: string; password: string; r2_url: string | null; owner: string; first_reporter_key_hash: string; first_status_code: number; first_reason: string | null }>()
+          : { results: [] as Array<{ account_id: string; email: string; password: string; r2_url: string | null; owner: string; first_reporter_key_hash: string; first_status_code: number; first_reason: string | null }> };
+
+        const publicNeed = Math.max(0, wantFinal - replayBudget);
+        const rows = publicNeed > 0
+          ? await env.DB
+              .prepare("SELECT account_id,email,password,r2_url,owner FROM accounts_v2 WHERE owner='-1' ORDER BY RANDOM() LIMIT ?")
+              .bind(publicNeed * 8)
               .all<{ account_id: string; email: string; password: string; r2_url: string | null; owner: string }>()
           : { results: [] as Array<{ account_id: string; email: string; password: string; r2_url: string | null; owner: string }> };
 
@@ -3216,59 +3445,20 @@ export default {
           account_id: string;
           owner: string;
           download_url: string;
+          replay_from_confidence?: boolean;
         }> = [];
         const issueErrors: Array<{ account_id: string; error: string }> = [];
-        for (const d of deletedMissingR2FromRequested) {
-          issueErrors.push({ account_id: d.old_account_id, error: `missing_r2_object_deleted:${d.reason}` });
-        }
         const stamp = receivedAt.replace(/[-:TZ]/g, "");
 
-        for (let i = 0; i < (rows.results || []).length && accountsOut.length < wantFinal; i++) {
-          const r = (rows.results || [])[i];
-
-          // 仅从公有池抢占，并发安全
-          const claim = await env.DB
-            .prepare("UPDATE accounts_v2 SET owner=?, updated_at=?, last_refilled_at=? WHERE account_id=? AND owner='-1'")
-            .bind(ownerKey, now, now, r.account_id)
-            .run();
-          if ((claim.meta?.changes || 0) !== 1) continue;
-          r.owner = ownerKey;
-
-          // 一重快速校验：公有池候选若 401/429，直接移入修补池并继续找
-          let pickedStatus: number | null = null;
-          let pickedNote = "";
-          try {
-            const p = await probeWhamStatusFromR2(env, r.account_id, r.r2_url);
-            pickedStatus = p.status;
-            pickedNote = p.note;
-          } catch (e: any) {
-            pickedStatus = null;
-            pickedNote = `probe_error:${String(e?.message || e)}`;
-          }
-
-          if (pickedNote === "r2_object_not_found") {
-            await env.DB.prepare("DELETE FROM accounts_v2 WHERE account_id=? AND owner=?")
-              .bind(r.account_id, ownerKey)
-              .run();
-            issueErrors.push({ account_id: r.account_id, error: `missing_r2_object_deleted:${pickedNote}` });
-            continue;
-          }
-
-          if (pickedStatus === 401 || pickedStatus === 429) {
-            const repairOwner = pickedStatus === 401 ? "-2" : "-4";
-            await env.DB.prepare("UPDATE accounts_v2 SET owner=?, updated_at=?, last_seen_at=? WHERE account_id=? AND owner=?")
-              .bind(repairOwner, now, now, r.account_id, ownerKey)
-              .run();
-            issueErrors.push({ account_id: r.account_id, error: `public_candidate_rejected:${pickedStatus}:${pickedNote || "need_refill"}` });
-            continue;
-          }
-
+        const emitAccount = async (
+          r: { account_id: string; email: string; password: string; r2_url: string | null; owner: string },
+          replayFromConfidence: boolean,
+        ) => {
           const fileName = `codex-${String(r.account_id || "").trim()}.json`;
-
           let r2Key = extractR2Key(String(r.r2_url || ""));
           if (!r2Key) {
             r2Key = `refill/topup-generated/${stamp}/${r.account_id}.json`;
-            const fallbackObj = {
+            const fallbackObj: Record<string, unknown> = {
               account_id: String(r.account_id || ""),
               email: String(r.email || ""),
               password: String(r.password || ""),
@@ -3276,6 +3466,9 @@ export default {
               generated_at: now,
               generated_by: "v1/refill/topup",
             };
+            if (replayFromConfidence) {
+              fallbackObj._refill_replay = { from_confidence: true, delivered_at: now };
+            }
             await env.BUCKET.put(r2Key, JSON.stringify(fallbackObj, null, 2), {
               httpMetadata: { contentType: "application/json; charset=utf-8" },
             });
@@ -3288,7 +3481,37 @@ export default {
             account_id: String(r.account_id || ""),
             owner: String(r.owner || ownerKey),
             download_url: downloadUrl,
+            replay_from_confidence: replayFromConfidence || undefined,
           });
+        };
+
+        for (let i = 0; i < (replayRows.results || []).length && accountsOut.length < wantFinal; i++) {
+          const r = (replayRows.results || [])[i];
+          const claim = await env.DB
+            .prepare("UPDATE accounts_v2 SET owner=?, updated_at=?, last_refilled_at=? WHERE account_id=? AND owner='-5'")
+            .bind(ownerKey, now, now, r.account_id)
+            .run();
+          if ((claim.meta?.changes || 0) !== 1) continue;
+
+          await env.DB.prepare("UPDATE account_confidence_queue SET replay_count=replay_count+1,last_replayed_to_key_hash=?,last_replayed_at=?,updated_at=? WHERE account_id=?")
+            .bind(ownerKey, now, now, r.account_id)
+            .run();
+          await env.DB.prepare("INSERT INTO account_confidence_replays(account_id,replayed_to_key_hash,replayed_at,source_reporter_key_hash,source_status_code,source_reason) VALUES(?,?,?,?,?,?)")
+            .bind(r.account_id, ownerKey, now, r.first_reporter_key_hash, r.first_status_code, String(r.first_reason || ""))
+            .run();
+
+          await emitAccount(r, true);
+        }
+
+        for (let i = 0; i < (rows.results || []).length && accountsOut.length < wantFinal; i++) {
+          const r = (rows.results || [])[i];
+          const claim = await env.DB
+            .prepare("UPDATE accounts_v2 SET owner=?, updated_at=?, last_refilled_at=? WHERE account_id=? AND owner='-1'")
+            .bind(ownerKey, now, now, r.account_id)
+            .run();
+          if ((claim.meta?.changes || 0) !== 1) continue;
+          r.owner = ownerKey;
+          await emitAccount(r, false);
         }
 
         // 4) 当日续杯计数 + 超限自动禁用
@@ -3327,6 +3550,7 @@ export default {
         }
 
         const syncedOwnedCount = await refreshUserCurrentAccountIds();
+        const issuedReplayCount = accountsOut.filter((x) => x.replay_from_confidence === true).length;
 
         return json({
           ok: true,
@@ -3353,6 +3577,8 @@ export default {
           },
           ttl_minutes: ttlMinutes,
           expires_at: expiresAt,
+          confidence_replay_percent: replayPercent,
+          issued_replay_count: issuedReplayCount,
           accounts: accountsOut,
           received_at: receivedAt,
         });
@@ -3444,7 +3670,7 @@ export default {
           .bind(userKeyRow.user_id, day)
           .first<{ sync_count: number }>();
         const syncAllUsedToday = Number(syncRow?.sync_count || 0);
-        const syncAllLimit = 10;
+        const syncAllLimit = await getSyncAllDailyLimit(env);
 
         if (syncAllUsedToday >= syncAllLimit) {
           await env.DB.prepare("UPDATE users_v2 SET disabled=1, updated_at=? WHERE id=?").bind(receivedAt, userKeyRow.user_id).run();
