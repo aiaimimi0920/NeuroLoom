@@ -1,4 +1,10 @@
 @echo off
+if /I not "%~1"=="--_utf8" (
+  chcp 65001 >nul
+  "%ComSpec%" /d /c ""%~f0" --_utf8 %*"
+  exit /b %errorlevel%
+)
+shift /1
 setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
 
@@ -163,7 +169,7 @@ set /p _IN_INTERVAL=请输入续杯间隔（分钟，最低 10，默认 30）:
 if "!_IN_INTERVAL!"=="" set "_IN_INTERVAL=30"
 for /f "delims=0123456789" %%I in ("!_IN_INTERVAL!") do set "_IN_INTERVAL=30"
 if !_IN_INTERVAL! LSS 10 (
-  echo [WARN] 续杯间隔过低，已强制调整为 10 分钟。
+  echo [WARN] 续杯间隔过低，已强制调整为 1 分钟。
   set "_IN_INTERVAL=10"
 )
 set "_HOLD=!_DEF_HOLD!"
@@ -213,25 +219,30 @@ for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%ACTIVE_CFG%") do (
 if "!_INTERVAL!"=="" set "_INTERVAL=30"
 for /f "delims=0123456789" %%I in ("!_INTERVAL!") do set "_INTERVAL=30"
 if !_INTERVAL! LSS 10 (
-  echo [WARN] 配置中的续杯间隔过低，已强制调整为 10 分钟。
+  echo [WARN] 配置中的续杯间隔过低，已强制调整为 1 分钟。
   set "_INTERVAL=10"
 )
 
-REM 生成定时任务入口 .bat（必须用系统原生编码，不能用 UTF-8；否则 CMD 读取时中文乱码）
+REM 生成定时任务入口 .bat（UTF-8 编码，首行 chcp 65001 确保后续中文正确解析）
 REM 注意：不再调用 _内部_自动清理.bat（单次续杯.bat 已内含探测+清理+补齐全流程）
 set "TASK_ENTRY_BAT=!SCRIPT_DIR!_定时任务_入口.bat"
-cmd /c "chcp 936 >nul & (echo @echo off & echo cd /d "%%~dp0" & echo chcp 65001 ^>nul & echo call 单次续杯.bat --from-task) > "!TASK_ENTRY_BAT!""
+call :GEN_ENTRY_BAT "!TASK_ENTRY_BAT!"
 
 REM 检测 conhost --headless 支持（Win10 1903+），不支持则回退 PowerShell
 call :BUILD_SILENT_TR "!TASK_ENTRY_BAT!"
 
 echo.
 echo [INFO] 正在创建/更新计划任务：%REFILL_TASK%
-schtasks /Create /F /TN "%REFILL_TASK%" /SC MINUTE /MO !_INTERVAL! /TR "!SILENT_TR!" /RL HIGHEST
+REM 尝试以 HIGHEST 创建；若失败（非管理员）则回退到 LIMITED
+schtasks /Create /F /TN "%REFILL_TASK%" /SC MINUTE /MO !_INTERVAL! /TR "!SILENT_TR!" /RL HIGHEST >nul 2>nul
 if errorlevel 1 (
-  echo [WARN] 创建失败（可能需要管理员权限）。
-  pause
-  goto :MENU
+  echo [INFO] 非管理员权限，以普通权限创建计划任务...
+  schtasks /Create /F /TN "%REFILL_TASK%" /SC MINUTE /MO !_INTERVAL! /TR "!SILENT_TR!"
+  if errorlevel 1 (
+    echo [WARN] 创建计划任务失败。
+    pause
+    goto :MENU
+  )
 )
 
 REM 清理旧的独立自动清理任务（若存在）
@@ -302,6 +313,24 @@ for /f "usebackq delims=" %%L in (`powershell -NoProfile -Command ^
   "'INFO: cleaned_old_tasks=' + $del"`) do echo %%L
 endlocal & exit /b 0
 
+:GEN_ENTRY_BAT
+REM 生成定时任务入口 .bat（UTF-8 + 锁文件防重复 + 10分钟超时）
+setlocal EnableDelayedExpansion
+set "_BAT=%~1"
+> "!_BAT!" echo @echo off
+>> "!_BAT!" echo chcp 65001 ^>nul
+>> "!_BAT!" echo cd /d "%%~dp0"
+>> "!_BAT!" echo set "LOCKFILE=%%~dp0_task.lock"
+>> "!_BAT!" echo if not exist "%%LOCKFILE%%" goto :RUN
+>> "!_BAT!" echo powershell -NoProfile -Command "if(((Get-Date)-(Get-Item -LiteralPath '%%LOCKFILE%%').LastWriteTime).TotalMinutes -lt 10){exit 1}" ^>nul 2^>nul
+>> "!_BAT!" echo if errorlevel 1 exit /b 0
+>> "!_BAT!" echo del "%%LOCKFILE%%" ^>nul 2^>nul
+>> "!_BAT!" echo :RUN
+>> "!_BAT!" echo echo %%date%% %%time%% ^> "%%LOCKFILE%%"
+>> "!_BAT!" echo call 单次续杯.bat --from-task
+>> "!_BAT!" echo del "%%LOCKFILE%%" ^>nul 2^>nul
+endlocal & exit /b 0
+
 :BUILD_SILENT_TR
 REM 构建静默执行的 /TR 命令：优先 conhost --headless（零闪烁），回退 PowerShell（微闪烁）
 setlocal EnableDelayedExpansion
@@ -341,11 +370,9 @@ for /f "delims=0123456789" %%I in ("!_INTERVAL!") do set "_INTERVAL=30"
 if !_INTERVAL! LSS 10 set "_INTERVAL=10"
 REM 复用/重建定时任务入口（不再调用 _内部_自动清理.bat）
 set "TASK_ENTRY_BAT=!SCRIPT_DIR!_定时任务_入口.bat"
-if not exist "!TASK_ENTRY_BAT!" (
-  cmd /c "chcp 936 >nul & (echo @echo off & echo cd /d "%%~dp0" & echo chcp 65001 ^>nul & echo call 单次续杯.bat --from-task) > "!TASK_ENTRY_BAT!""
-)
+if not exist "!TASK_ENTRY_BAT!" call :GEN_ENTRY_BAT "!TASK_ENTRY_BAT!"
 call :BUILD_SILENT_TR "!TASK_ENTRY_BAT!"
-schtasks /Create /F /TN "%REFILL_TASK%" /SC MINUTE /MO !_INTERVAL! /TR "!SILENT_TR!" /RL HIGHEST
+schtasks /Create /F /TN "%REFILL_TASK%" /SC MINUTE /MO !_INTERVAL! /TR "!SILENT_TR!"
 schtasks /Delete /F /TN "%CLEAN_TASK%" >nul 2>nul
 echo [INFO] 已按手动续杯时间重置下次自动续杯时间
 call :CLEANUP_OLD_TASKS
