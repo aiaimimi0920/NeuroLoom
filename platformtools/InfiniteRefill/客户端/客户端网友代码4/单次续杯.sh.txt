@@ -1,0 +1,1255 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+CFG_ENV="$SCRIPT_DIR/无限续杯配置.env"
+ROOT_CFG_ENV="$ROOT_DIR/无限续杯配置.env"
+FINAL_REPORT="$SCRIPT_DIR/out/最终续杯报告.json"
+
+PYTHON_BIN=""
+
+ensure_cmd() {
+  local cmd="$1"
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "[ERROR] 缺少命令：$cmd"
+    exit 2
+  fi
+}
+
+ensure_python() {
+  if command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="python3"
+    return 0
+  fi
+  if command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+    return 0
+  fi
+  echo "[ERROR] 缺少 Python（需要 python3 或 python）"
+  exit 2
+}
+
+trim_spaces() {
+  local s="$1"
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  printf '%s' "$s"
+}
+
+is_uint() {
+  local v="$1"
+  [[ "$v" =~ ^[0-9]+$ ]]
+}
+
+load_env_file() {
+  local file="$1"
+  local line key val
+  [[ -f "$file" ]] || return 0
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    [[ -z "$line" ]] && continue
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ "$line" != *=* ]] && continue
+
+    key="${line%%=*}"
+    val="${line#*=}"
+    key="$(trim_spaces "$key")"
+
+    case "$key" in
+      SERVER_URL|USER_KEY|ACCOUNTS_DIR|TARGET_POOL_SIZE|TOTAL_HOLD_LIMIT|SYNC_TARGET_DIR|WHAM_PROXY_MODE|WHAM_CONNECT_TIMEOUT|WHAM_MAX_TIME|TOPUP_CONNECT_TIMEOUT|TOPUP_MAX_TIME|TOPUP_RETRY|TOPUP_RETRY_DELAY|RUN_OUTPUT_MODE|PROBE_PARALLEL)
+        printf -v "$key" '%s' "$val"
+        ;;
+    esac
+  done <"$file"
+}
+
+safe_uint_default() {
+  local v="$1"
+  local def="$2"
+  local min="$3"
+
+  if ! is_uint "$v"; then
+    printf '%s' "$def"
+    return 0
+  fi
+  if [[ "$v" -lt "$min" ]]; then
+    printf '%s' "$def"
+    return 0
+  fi
+  printf '%s' "$v"
+}
+
+to_lower() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+sha256_hex() {
+  local text="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    printf '%s' "$text" | sha256sum | awk '{print $1}'
+    return 0
+  fi
+  if command -v shasum >/dev/null 2>&1; then
+    printf '%s' "$text" | shasum -a 256 | awk '{print $1}'
+    return 0
+  fi
+  printf '%s' "$text" | openssl dgst -sha256 | awk '{print $NF}'
+}
+
+normalize_invalid_status() {
+  local raw="$1"
+  local body="$2"
+  local n="$raw"
+  local q0="0"
+
+  if [[ -z "$n" || ! "$n" =~ ^[0-9]{3}$ ]]; then
+    n="000"
+  fi
+
+  if [[ "$n" == "000" || "$n" == "401" || "$n" == "429" ]]; then
+    printf '%s' "$n"
+    return 0
+  fi
+
+  if [[ "${n:0:1}" != "2" ]]; then
+    printf '%s' "$n"
+    return 0
+  fi
+
+  q0="$($PYTHON_BIN - "$body" <<'PY' 2>/dev/null || echo 0
+import json
+import sys
+
+body = sys.argv[1]
+q = 0
+try:
+    with open(body, 'r', encoding='utf-8', errors='ignore') as f:
+        obj = json.load(f)
+except Exception:
+    print(0)
+    raise SystemExit(0)
+
+rl = obj.get('rate_limit')
+if isinstance(rl, dict):
+    if rl.get('allowed') is False:
+        q = 1
+    if rl.get('limit_reached') is True:
+        q = 1
+    pw = rl.get('primary_window')
+    if isinstance(pw, dict):
+        try:
+            if float(pw.get('used_percent', 0)) >= 100:
+                q = 1
+        except Exception:
+            pass
+
+for k in ('allowed', 'limit_reached', 'is_available'):
+    v = obj.get(k)
+    if v is False or v == 0:
+        q = 1
+
+print(q)
+PY
+)"
+
+  if [[ "$q0" == "1" ]]; then
+    printf '429'
+  else
+    printf '%s' "$n"
+  fi
+}
+
+ensure_sync_links() {
+  local target_raw="$1"
+  local accounts_dir="$2"
+  local fallback target
+  local manifest
+  local linked=0
+  local removed=0
+  local tmp_test
+
+  [[ -n "$target_raw" ]] || return 0
+  [[ -n "$accounts_dir" ]] || accounts_dir="$SCRIPT_DIR/accounts"
+
+  mkdir -p "$accounts_dir" >/dev/null 2>&1 || true
+
+  fallback="$HOME/.cli-proxy-api"
+  target="$target_raw"
+
+  mkdir -p "$target" >/dev/null 2>&1 || true
+  tmp_test="$target/.write_test.tmp"
+  if ! (printf 'ok' >"$tmp_test" 2>/dev/null && rm -f "$tmp_test" 2>/dev/null); then
+    mkdir -p "$fallback" >/dev/null 2>&1 || true
+    tmp_test="$fallback/.write_test.tmp"
+    if printf 'ok' >"$tmp_test" 2>/dev/null; then
+      rm -f "$tmp_test" 2>/dev/null || true
+      echo "[WARN] sync target 不可写，已回退到: $fallback"
+      target="$fallback"
+    else
+      echo "[WARN] sync target 不可写，已跳过同步: $target_raw"
+      return 0
+    fi
+  fi
+
+  manifest="$target/.infinite_refill_sync_manifest.txt"
+
+  local files=()
+  local f base
+  for f in "$accounts_dir"/codex-*.json; do
+    [[ -f "$f" ]] || continue
+    files+=("$f")
+  done
+  if [[ ${#files[@]} -eq 0 ]]; then
+    for f in "$accounts_dir"/*.json; do
+      [[ -f "$f" ]] || continue
+      files+=("$f")
+    done
+  fi
+
+  local names=()
+  local i j
+  for ((i = 0; i < ${#files[@]}; i++)); do
+    f="${files[$i]}"
+    base="$(basename "$f")"
+    names+=("$base")
+  done
+
+  if [[ -f "$manifest" ]]; then
+    while IFS= read -r base || [[ -n "$base" ]]; do
+      [[ -n "$base" ]] || continue
+      local exists_now=0
+      for ((j = 0; j < ${#names[@]}; j++)); do
+        f="${names[$j]}"
+        if [[ "$f" == "$base" ]]; then
+          exists_now=1
+          break
+        fi
+      done
+      if [[ "$exists_now" == "0" ]]; then
+        local tp="$target/$base"
+        if [[ -L "$tp" ]]; then
+          rm -f "$tp" >/dev/null 2>&1 || true
+          removed=$((removed + 1))
+        fi
+      fi
+    done <"$manifest"
+  fi
+
+  for ((i = 0; i < ${#files[@]}; i++)); do
+    f="${files[$i]}"
+    base="$(basename "$f")"
+    local tp="$target/$base"
+    if [[ -L "$tp" ]]; then
+      rm -f "$tp" >/dev/null 2>&1 || true
+    elif [[ -e "$tp" ]]; then
+      continue
+    fi
+    ln -s "$f" "$tp" >/dev/null 2>&1 || true
+    if [[ -L "$tp" ]]; then
+      linked=$((linked + 1))
+    fi
+  done
+
+  : >"$manifest"
+  for ((i = 0; i < ${#names[@]}; i++)); do
+    base="${names[$i]}"
+    printf '%s\n' "$base" >>"$manifest"
+  done
+
+  if [[ "$linked" -gt 0 ]]; then
+    echo "INFO: linked=$linked; removed=$removed; target=$target"
+  else
+    echo "WARN: linked=0; removed=$removed; source=$accounts_dir; target=$target"
+  fi
+}
+
+upsert_env_key() {
+  local file="$1"
+  local key="$2"
+  local value="$3"
+
+  [[ -n "$file" && -n "$key" ]] || return 0
+  [[ -f "$file" ]] || return 0
+
+  "$PYTHON_BIN" - "$file" "$key" "$value" <<'PY' >/dev/null 2>&1 || true
+import io
+import os
+import sys
+
+path, key, val = sys.argv[1], sys.argv[2], sys.argv[3]
+
+try:
+    with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+        lines = f.read().splitlines()
+except Exception:
+    raise SystemExit(0)
+
+out = []
+done = False
+prefix = key + '='
+for ln in lines:
+    if ln.lstrip().startswith(prefix):
+        out.append(prefix + val)
+        done = True
+    else:
+        out.append(ln)
+
+if not done:
+    out.append(prefix + val)
+
+with open(path, 'w', encoding='utf-8', newline='\n') as f:
+    f.write('\n'.join(out))
+    f.write('\n')
+PY
+}
+
+write_final_report() {
+  local mode="$1"
+  local status="$2"
+  local total="$3"
+  local probed="$4"
+  local net="$5"
+  local invalid="$6"
+  local out_dir="$7"
+
+  mkdir -p "$SCRIPT_DIR/out" >/dev/null 2>&1 || true
+
+  "$PYTHON_BIN" - "$FINAL_REPORT" "$mode" "$status" "$total" "$probed" "$net" "$invalid" "$out_dir" <<'PY' >/dev/null 2>&1 || true
+import json
+import os
+import sys
+from datetime import datetime
+
+out_file, mode, status, total, probed, net, invalid, out_dir = sys.argv[1:9]
+
+obj = {
+    "generated_at": datetime.now().astimezone().isoformat(timespec='seconds'),
+    "mode": mode,
+    "status": status,
+    "total": int(total),
+    "probed_ok": int(probed),
+    "net_fail": int(net),
+    "invalid_401_429": int(invalid),
+    "out_dir": out_dir,
+    "final_report": out_file,
+}
+
+with open(out_file, 'w', encoding='utf-8') as f:
+    json.dump(obj, f, ensure_ascii=False, indent=2)
+    f.write('\n')
+PY
+}
+
+probe_one_worker() {
+  local file="$1"
+  local base="$2"
+  local prefix="$3"
+  local wham_proxy_mode="$4"
+  local wham_connect_timeout="$5"
+  local wham_max_time="$6"
+
+  local type=""
+  local token=""
+  local aid=""
+  local email=""
+
+  {
+    echo "[DIAG] FILE=$file"
+    echo "[DIAG] BASE=$base"
+    if [[ ! -f "$file" ]]; then
+      echo "[DIAG] input_missing=$file"
+    fi
+  } >"$prefix.diag"
+
+  local parsed
+  parsed="$($PYTHON_BIN - "$file" <<'PY' 2>/dev/null || true
+import json
+import sys
+
+path = sys.argv[1]
+try:
+    with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+        obj = json.load(f)
+except Exception:
+    print('')
+    print('')
+    print('')
+    print('')
+    raise SystemExit(0)
+
+print(str(obj.get('type') or ''))
+print(str(obj.get('access_token') or ''))
+print(str(obj.get('account_id') or ''))
+print(str(obj.get('email') or ''))
+PY
+)"
+
+  local idx=0
+  while IFS= read -r line; do
+    idx=$((idx + 1))
+    case "$idx" in
+      1) type="$line" ;;
+      2) token="$line" ;;
+      3) aid="$line" ;;
+      4) email="$line" ;;
+    esac
+  done <<EOF_PARSED
+$parsed
+EOF_PARSED
+
+  if [[ "$type" != "codex" ]] || [[ -z "$token" ]]; then
+    printf '0|0|0\n' >"$prefix.meta"
+    : >"$prefix.done"
+    return 0
+  fi
+
+  local status=""
+  local wham_body="$prefix.wham"
+  local ua="codex_cli_rs/0.76.0 (macOS/Linux)"
+  local wham_direct=0
+
+  if [[ "$(to_lower "$wham_proxy_mode")" == "direct" ]]; then
+    wham_direct=1
+  fi
+
+  if [[ -n "$aid" ]]; then
+    if [[ "$wham_direct" == "1" ]]; then
+      status="$(curl -s --noproxy '*' --connect-timeout "$wham_connect_timeout" --max-time "$wham_max_time" \
+        -o "$wham_body" -w '%{http_code}' \
+        -H "Authorization: Bearer $token" \
+        -H "Chatgpt-Account-Id: $aid" \
+        -H 'Accept: application/json, text/plain, */*' \
+        -H "User-Agent: $ua" \
+        'https://chatgpt.com/backend-api/wham/usage' 2>/dev/null || true)"
+    else
+      status="$(curl -s --connect-timeout "$wham_connect_timeout" --max-time "$wham_max_time" \
+        -o "$wham_body" -w '%{http_code}' \
+        -H "Authorization: Bearer $token" \
+        -H "Chatgpt-Account-Id: $aid" \
+        -H 'Accept: application/json, text/plain, */*' \
+        -H "User-Agent: $ua" \
+        'https://chatgpt.com/backend-api/wham/usage' 2>/dev/null || true)"
+    fi
+  else
+    if [[ "$wham_direct" == "1" ]]; then
+      status="$(curl -s --noproxy '*' --connect-timeout "$wham_connect_timeout" --max-time "$wham_max_time" \
+        -o "$wham_body" -w '%{http_code}' \
+        -H "Authorization: Bearer $token" \
+        -H 'Accept: application/json, text/plain, */*' \
+        -H "User-Agent: $ua" \
+        'https://chatgpt.com/backend-api/wham/usage' 2>/dev/null || true)"
+    else
+      status="$(curl -s --connect-timeout "$wham_connect_timeout" --max-time "$wham_max_time" \
+        -o "$wham_body" -w '%{http_code}' \
+        -H "Authorization: Bearer $token" \
+        -H 'Accept: application/json, text/plain, */*' \
+        -H "User-Agent: $ua" \
+        'https://chatgpt.com/backend-api/wham/usage' 2>/dev/null || true)"
+    fi
+  fi
+
+  if [[ -z "$status" || ! "$status" =~ ^[0-9]{3}$ ]]; then
+    status="000"
+  fi
+
+  if [[ "$status" == "000" ]]; then
+    if [[ -n "$aid" ]]; then
+      status="$(curl -s --noproxy '*' --connect-timeout "$wham_connect_timeout" --max-time "$wham_max_time" \
+        -o "$wham_body" -w '%{http_code}' \
+        -H "Authorization: Bearer $token" \
+        -H "Chatgpt-Account-Id: $aid" \
+        -H 'Accept: application/json, text/plain, */*' \
+        -H "User-Agent: $ua" \
+        'https://chatgpt.com/backend-api/wham/usage' 2>/dev/null || true)"
+    else
+      status="$(curl -s --noproxy '*' --connect-timeout "$wham_connect_timeout" --max-time "$wham_max_time" \
+        -o "$wham_body" -w '%{http_code}' \
+        -H "Authorization: Bearer $token" \
+        -H 'Accept: application/json, text/plain, */*' \
+        -H "User-Agent: $ua" \
+        'https://chatgpt.com/backend-api/wham/usage' 2>/dev/null || true)"
+    fi
+    if [[ -z "$status" || ! "$status" =~ ^[0-9]{3}$ ]]; then
+      status="000"
+    fi
+  fi
+
+  status="$(normalize_invalid_status "$status" "$wham_body")"
+
+  if [[ "$status" == "000" ]]; then
+    printf '0|1|0\n' >"$prefix.meta"
+    printf '%s\n' "$base" >"$prefix.net"
+    : >"$prefix.done"
+    return 0
+  fi
+
+  local now ident email_hash
+  now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if [[ -n "$email" ]]; then
+    ident="email:$(printf '%s' "$email" | tr '[:upper:]' '[:lower:]')"
+  else
+    ident="account_id:$aid"
+  fi
+  email_hash="$(sha256_hex "$ident")"
+
+  if ! "$PYTHON_BIN" - "$prefix.rep" "$base" "$email_hash" "$aid" "$status" "$now" <<'PY' >/dev/null 2>&1; then
+import json
+import sys
+
+path, base, email_hash, aid, status, now = sys.argv[1:7]
+obj = {
+    "file_name": base,
+    "email_hash": email_hash,
+    "account_id": aid,
+    "status_code": int(status),
+    "probed_at": now,
+}
+with open(path, 'w', encoding='utf-8') as f:
+    json.dump(obj, f, ensure_ascii=False, separators=(',', ':'))
+    f.write('\n')
+PY
+    printf '{"file_name":"%s","email_hash":"%s","account_id":"%s","status_code":%s,"probed_at":"%s"}\n' \
+      "$base" "$email_hash" "$aid" "$status" "$now" >"$prefix.rep"
+  fi
+
+  local inv=0
+  if [[ "$status" == "401" || "$status" == "429" ]]; then
+    inv=1
+  fi
+  printf '1|0|%s\n' "$inv" >"$prefix.meta"
+  : >"$prefix.done"
+}
+
+run_sync_all() {
+  local ts tmp_base pre_list keep_list
+
+  ts="$(date +%Y%m%d-%H%M%S)"
+  tmp_base="${TMPDIR:-/tmp}"
+  mkdir -p "$tmp_base" >/dev/null 2>&1 || true
+
+  if [[ "$(to_lower "$RUN_OUTPUT_MODE")" == "compact" ]]; then
+    OUT_DIR="$SCRIPT_DIR/out/latest-syncall"
+    rm -rf "$OUT_DIR" >/dev/null 2>&1 || true
+  else
+    OUT_DIR="$tmp_base/InfiniteRefill-syncall-$ts"
+  fi
+
+  RESP_JSON="$OUT_DIR/sync_all_response.json"
+  pre_list="$OUT_DIR/sync_all_before_files.txt"
+  keep_list="$OUT_DIR/sync_all_keep_files.txt"
+
+  mkdir -p "$OUT_DIR" >/dev/null 2>&1 || true
+
+  : >"$pre_list"
+  local f base
+  for f in "$ACCOUNTS_DIR"/*; do
+    [[ -f "$f" ]] || continue
+    base="$(basename "$f")"
+    printf '%s\n' "$base" >>"$pre_list"
+  done
+
+  echo "[INFO] 全量同步：POST $SERVER_URL/v1/refill/sync-all"
+  if ! curl -sS --connect-timeout 8 --max-time 30 --noproxy '*' \
+    -X POST "$SERVER_URL/v1/refill/sync-all" \
+    -H "X-User-Key: $USER_KEY" \
+    -H 'Content-Type: application/json' \
+    --data-binary '{}' >"$RESP_JSON"; then
+    echo "[ERROR] 请求失败（可能是本机 TLS/代理网络问题）"
+    return 2
+  fi
+
+  local parse_log="$OUT_DIR/sync_all_parse.log"
+  if ! "$PYTHON_BIN" - "$RESP_JSON" "$ACCOUNTS_DIR" "$keep_list" >"$parse_log" <<'PY'; then
+import json
+import os
+import re
+import sys
+import urllib.request
+import uuid
+
+resp_path, accounts_dir, keep_path = sys.argv[1:4]
+
+try:
+    with open(resp_path, 'r', encoding='utf-8', errors='ignore') as f:
+        data = json.load(f)
+except Exception:
+    print('[ERROR] bad response json')
+    raise SystemExit(2)
+
+if not data.get('ok'):
+    err = data.get('error', '')
+    if isinstance(err, list):
+        err = '; '.join(str(x) for x in err)
+    err_s = str(err)
+    err_low = err_s.lower()
+    if 'not-found' in err_low or 'not_found' in err_low:
+        print('[ERROR] sync-all 接口不存在：请先部署最新版服务端（包含 /v1/refill/sync-all）')
+    elif 'invalid user key' in err_low or 'missing x-user-key' in err_low:
+        print('[ERROR] 用户密钥无效：请在【设置/更新无限续杯配置】里重新填写正确 USER_KEY')
+    else:
+        print('[ERROR] sync-all failed: ' + err_s)
+    raise SystemExit(2)
+
+accounts = data.get('accounts') or []
+written = 0
+keep = []
+os.makedirs(accounts_dir, exist_ok=True)
+
+for acc in accounts:
+    aid = str(acc.get('account_id') or '').strip()
+    if aid and re.match(r'^[A-Za-z0-9._-]+$', aid):
+        file_name = 'codex-' + aid + '.json'
+    else:
+        file_name = 'codex-' + str(uuid.uuid4()) + '.json'
+
+    dst = os.path.join(accounts_dir, file_name)
+    payload = None
+
+    auth_json = acc.get('auth_json')
+    if auth_json is not None:
+        payload = auth_json
+    else:
+        dl = str(acc.get('download_url') or '').strip()
+        if dl:
+            try:
+                with urllib.request.urlopen(dl, timeout=30) as r:
+                    body = r.read().decode('utf-8', errors='ignore')
+                payload = json.loads(body)
+            except Exception:
+                payload = None
+
+    if payload is None:
+        continue
+
+    with open(dst, 'w', encoding='utf-8', newline='\n') as f:
+        f.write(json.dumps(payload, ensure_ascii=False, separators=(',', ':')))
+        f.write('\n')
+
+    keep.append(file_name)
+    written += 1
+
+with open(keep_path, 'w', encoding='utf-8', newline='\n') as f:
+    for name in keep:
+        f.write(name + '\n')
+
+print('[INFO] 已同步账号：' + str(written))
+PY
+    cat "$parse_log" || true
+    return 2
+  fi
+
+  cat "$parse_log" || true
+
+  local deleted=0
+  if [[ -f "$pre_list" ]]; then
+    while IFS= read -r base || [[ -n "$base" ]]; do
+      [[ -n "$base" ]] || continue
+      if [[ -f "$keep_list" ]] && grep -Fxq "$base" "$keep_list"; then
+        continue
+      fi
+      if [[ -f "$ACCOUNTS_DIR/$base" ]]; then
+        rm -f "$ACCOUNTS_DIR/$base" >/dev/null 2>&1 || true
+        if [[ ! -f "$ACCOUNTS_DIR/$base" ]]; then
+          deleted=$((deleted + 1))
+        fi
+      fi
+    done <"$pre_list"
+  fi
+  echo "[INFO] sync-all 清理旧文件: $deleted"
+
+  if [[ -n "$SYNC_TARGET_DIR" ]]; then
+    ensure_sync_links "$SYNC_TARGET_DIR" "$ACCOUNTS_DIR"
+  fi
+
+  echo "[OK] 全量同步完成"
+  write_final_report "sync-all" "ok" "0" "0" "0" "0" "$OUT_DIR"
+  return 0
+}
+
+wait_for_probe_slot() {
+  local probe_dir="$1"
+  local launched="$2"
+  local limit="$3"
+
+  while true; do
+    local running done_count
+    running="$(jobs -pr | wc -l | tr -d ' ')"
+    done_count="$(find "$probe_dir" -maxdepth 1 -type f -name '*.meta' 2>/dev/null | wc -l | tr -d ' ')"
+    if [[ "$MODE_FROM_TASK" == "0" ]]; then
+      echo "[PROBE] 进度 ${done_count}/${launched}（运行中=${running}，并行上限=${limit}）"
+    fi
+    if [[ "$running" -lt "$limit" ]]; then
+      break
+    fi
+    sleep 1
+  done
+}
+
+wait_for_probe_all() {
+  local probe_dir="$1"
+  local total="$2"
+  local last_done="-1"
+  local stagnant_rounds=0
+  while true; do
+    local done_count running
+    done_count="$(find "$probe_dir" -maxdepth 1 -type f -name '*.meta' 2>/dev/null | wc -l | tr -d ' ')"
+    running="$(jobs -pr | wc -l | tr -d ' ')"
+    is_uint "$done_count" || done_count=0
+    is_uint "$running" || running=0
+    if [[ "$MODE_FROM_TASK" == "0" ]]; then
+      echo "[PROBE] 汇总中：${done_count}/${total}"
+    fi
+    if [[ "$done_count" -ge "$total" ]]; then
+      if [[ "$MODE_FROM_TASK" == "0" ]]; then
+        echo "[PROBE] 探测完成：${total}/${total}"
+      fi
+      break
+    fi
+    if [[ "$running" -eq 0 ]]; then
+      if [[ "$done_count" == "$last_done" ]]; then
+        stagnant_rounds=$((stagnant_rounds + 1))
+      else
+        stagnant_rounds=0
+      fi
+      if [[ "$stagnant_rounds" -ge 2 ]]; then
+        echo "[WARN] 探测子进程已全部退出，但结果不足：${done_count}/${total}。将按已有结果继续。"
+        break
+      fi
+    else
+      stagnant_rounds=0
+    fi
+    last_done="$done_count"
+    sleep 1
+  done
+}
+
+ensure_cmd curl
+ensure_python
+
+if [[ "${1:-}" == "--probe-one-worker" ]]; then
+  probe_one_worker "${2:-}" "${3:-}" "${4:-}" "${5:-auto}" "${6:-5}" "${7:-15}"
+  exit 0
+fi
+
+MODE_SYNC_ALL=0
+MODE_FROM_TASK=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --sync-all)
+      MODE_SYNC_ALL=1
+      shift
+      ;;
+    --from-task)
+      MODE_FROM_TASK=1
+      shift
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+SERVER_URL=""
+USER_KEY=""
+ACCOUNTS_DIR="$SCRIPT_DIR/accounts"
+TARGET_POOL_SIZE="10"
+TOTAL_HOLD_LIMIT="50"
+SYNC_TARGET_DIR=""
+WHAM_PROXY_MODE="auto"
+WHAM_CONNECT_TIMEOUT="5"
+WHAM_MAX_TIME="15"
+TOPUP_CONNECT_TIMEOUT="10"
+TOPUP_MAX_TIME="180"
+TOPUP_RETRY="3"
+TOPUP_RETRY_DELAY="3"
+RUN_OUTPUT_MODE="compact"
+PROBE_PARALLEL="6"
+
+load_env_file "$ROOT_CFG_ENV"
+load_env_file "$CFG_ENV"
+
+if [[ -n "${1:-}" ]]; then SERVER_URL="$1"; fi
+if [[ -n "${2:-}" ]]; then USER_KEY="$2"; fi
+
+if [[ -z "$SERVER_URL" ]]; then
+  echo "[ERROR] 未配置 SERVER_URL。请先运行：\"$SCRIPT_DIR/无限续杯.sh\""
+  exit 2
+fi
+if [[ -z "$USER_KEY" ]]; then
+  echo "[ERROR] 未配置 USER_KEY。"
+  exit 2
+fi
+
+if [[ -z "$ACCOUNTS_DIR" ]]; then
+  ACCOUNTS_DIR="$SCRIPT_DIR/accounts"
+fi
+mkdir -p "$ACCOUNTS_DIR" >/dev/null 2>&1 || true
+if [[ ! -d "$ACCOUNTS_DIR" ]]; then
+  echo "[ERROR] 账户目录不存在且创建失败：$ACCOUNTS_DIR"
+  exit 3
+fi
+
+TOPUP_CONNECT_TIMEOUT="$(safe_uint_default "$TOPUP_CONNECT_TIMEOUT" "10" "1")"
+TOPUP_MAX_TIME="$(safe_uint_default "$TOPUP_MAX_TIME" "180" "30")"
+TOPUP_RETRY="$(safe_uint_default "$TOPUP_RETRY" "3" "0")"
+TOPUP_RETRY_DELAY="$(safe_uint_default "$TOPUP_RETRY_DELAY" "3" "1")"
+WHAM_CONNECT_TIMEOUT="$(safe_uint_default "$WHAM_CONNECT_TIMEOUT" "5" "1")"
+WHAM_MAX_TIME="$(safe_uint_default "$WHAM_MAX_TIME" "15" "5")"
+PROBE_PARALLEL="$(safe_uint_default "$PROBE_PARALLEL" "6" "1")"
+
+if [[ "$MODE_FROM_TASK" == "0" ]]; then
+  echo "[INFO] 服务器地址=$SERVER_URL"
+  echo "[INFO] accounts-dir=$ACCOUNTS_DIR"
+  echo "[INFO] 目标账户数=$TARGET_POOL_SIZE 总持有上限=$TOTAL_HOLD_LIMIT 触发规则=存在失效账号即续杯"
+  echo "[DIAG] script=$0"
+  echo "[DIAG] script_dir=$SCRIPT_DIR"
+fi
+
+if [[ "$MODE_SYNC_ALL" == "1" ]]; then
+  run_sync_all
+  exit $?
+fi
+
+TS="$(date +%Y%m%d-%H%M%S)"
+OUT_DIR="$SCRIPT_DIR/out/单次续杯-$TS"
+REPORT_JSONL="$OUT_DIR/reports.jsonl"
+RESP_JSON="$OUT_DIR/topup_response.json"
+BODY_JSON="$OUT_DIR/topup_body.json"
+BACKUP_DIR="$OUT_DIR/backup"
+NETFAIL_LOG="$OUT_DIR/probe_netfail.log"
+PROBE_DIR="$OUT_DIR/probe_jobs"
+
+if [[ "$(to_lower "$RUN_OUTPUT_MODE")" == "compact" ]]; then
+  OUT_DIR="$SCRIPT_DIR/out/latest"
+  REPORT_JSONL="$OUT_DIR/reports.jsonl"
+  RESP_JSON="$OUT_DIR/topup_response.json"
+  BODY_JSON="$OUT_DIR/topup_body.json"
+  BACKUP_DIR="$OUT_DIR/backup"
+  NETFAIL_LOG="$OUT_DIR/probe_netfail.log"
+  PROBE_DIR="$OUT_DIR/probe_jobs"
+  rm -rf "$OUT_DIR" >/dev/null 2>&1 || true
+fi
+
+mkdir -p "$BACKUP_DIR" >/dev/null 2>&1 || true
+mkdir -p "$PROBE_DIR" >/dev/null 2>&1 || true
+mkdir -p "$SCRIPT_DIR/out" >/dev/null 2>&1 || true
+: >"$REPORT_JSONL"
+: >"$NETFAIL_LOG"
+
+TOTAL=0
+PROBED_OK=0
+NET_FAIL=0
+INVALID=0
+INVALID_401=0
+INVALID_429=0
+LAUNCHED=0
+
+if [[ "$MODE_FROM_TASK" == "0" ]]; then
+  echo "[INFO] 开始探测账号状态（并行=${PROBE_PARALLEL}）..."
+fi
+
+for f in "$ACCOUNTS_DIR"/*.json; do
+  [[ -f "$f" ]] || continue
+  TOTAL=$((TOTAL + 1))
+  LAUNCHED=$((LAUNCHED + 1))
+  base="$(basename "$f")"
+  prefix="$PROBE_DIR/$TOTAL"
+
+  if [[ "$MODE_FROM_TASK" == "0" ]]; then
+    echo "[PROBE] 启动 $TOTAL: $base"
+    echo "[DIAG] probe_cmd=bash \"$0\" --probe-one-worker \"$f\" \"$base\" \"$prefix\" \"$WHAM_PROXY_MODE\" \"$WHAM_CONNECT_TIMEOUT\" \"$WHAM_MAX_TIME\""
+  fi
+
+  bash "$0" --probe-one-worker "$f" "$base" "$prefix" "$WHAM_PROXY_MODE" "$WHAM_CONNECT_TIMEOUT" "$WHAM_MAX_TIME" &
+
+  running_now="$(jobs -pr | wc -l | tr -d ' ')"
+  if [[ "$running_now" -ge "$PROBE_PARALLEL" ]]; then
+    wait_for_probe_slot "$PROBE_DIR" "$LAUNCHED" "$PROBE_PARALLEL"
+  fi
+done
+
+if [[ "$LAUNCHED" -gt 0 ]]; then
+  wait_for_probe_all "$PROBE_DIR" "$LAUNCHED"
+  wait || true
+
+  : >"$REPORT_JSONL"
+  for f in "$PROBE_DIR"/*.rep; do
+    [[ -f "$f" ]] || continue
+    cat "$f" >>"$REPORT_JSONL"
+  done
+
+  : >"$NETFAIL_LOG"
+  for f in "$PROBE_DIR"/*.net; do
+    [[ -f "$f" ]] || continue
+    cat "$f" >>"$NETFAIL_LOG"
+  done
+
+  META_COUNT=0
+  for f in "$PROBE_DIR"/*.meta; do
+    [[ -f "$f" ]] || continue
+    META_COUNT=$((META_COUNT + 1))
+    line="$(cat "$f" 2>/dev/null || true)"
+    a="${line%%|*}"
+    rest="${line#*|}"
+    b="${rest%%|*}"
+    c="${rest##*|}"
+    is_uint "$a" || a=0
+    is_uint "$b" || b=0
+    is_uint "$c" || c=0
+    PROBED_OK=$((PROBED_OK + a))
+    NET_FAIL=$((NET_FAIL + b))
+    INVALID=$((INVALID + c))
+  done
+  if [[ "$LAUNCHED" -gt "$META_COUNT" ]]; then
+    MISSING_META=$((LAUNCHED - META_COUNT))
+    NET_FAIL=$((NET_FAIL + MISSING_META))
+    echo "[WARN] 有 ${MISSING_META} 个探测任务未产出结果，已按网络失败计入。"
+  fi
+
+  INVALID_401=0
+  INVALID_429=0
+  for f in "$PROBE_DIR"/*.rep; do
+    [[ -f "$f" ]] || continue
+    if grep -q '"status_code":401' "$f" 2>/dev/null; then
+      INVALID_401=$((INVALID_401 + 1))
+    fi
+    if grep -q '"status_code":429' "$f" 2>/dev/null; then
+      INVALID_429=$((INVALID_429 + 1))
+    fi
+  done
+
+  INVALID=$((INVALID_401 + INVALID_429))
+fi
+
+AVAILABLE_EST=$((TOTAL - INVALID))
+
+HOLD_LIMIT="$TOTAL_HOLD_LIMIT"
+if ! is_uint "$HOLD_LIMIT" || [[ "$HOLD_LIMIT" -lt 1 ]]; then
+  HOLD_LIMIT=50
+fi
+
+REQUEST_TARGET=$((HOLD_LIMIT - AVAILABLE_EST))
+if [[ "$REQUEST_TARGET" -lt 0 ]]; then
+  REQUEST_TARGET=0
+fi
+
+echo
+echo "[INFO] 统计：total=$TOTAL available_est=$AVAILABLE_EST probed_ok=$PROBED_OK net_fail=$NET_FAIL invalid_401=$INVALID_401 invalid_429=$INVALID_429 invalid(401/429)=$INVALID hold_limit=$HOLD_LIMIT request_target=$REQUEST_TARGET"
+if [[ "$TOTAL" -eq 0 ]]; then
+  echo "[WARN] accounts-dir 下未发现 .json 文件：$ACCOUNTS_DIR"
+fi
+
+NEED_TRIGGER=0
+if [[ "$INVALID" -gt 0 ]]; then NEED_TRIGGER=1; fi
+if [[ "$INVALID_401" -gt 0 ]]; then NEED_TRIGGER=1; fi
+if [[ "$INVALID_429" -gt 0 ]]; then NEED_TRIGGER=1; fi
+if is_uint "$TARGET_POOL_SIZE" && [[ "$TOTAL" -lt "$TARGET_POOL_SIZE" ]]; then NEED_TRIGGER=1; fi
+if [[ "$HOLD_LIMIT" -gt 0 && "$AVAILABLE_EST" -lt "$HOLD_LIMIT" ]]; then NEED_TRIGGER=1; fi
+
+if [[ "$NEED_TRIGGER" == "0" ]]; then
+  echo "[OK] 未达到续杯条件：无需 topup"
+  write_final_report "topup" "not_triggered" "$TOTAL" "$PROBED_OK" "$NET_FAIL" "$INVALID" "$OUT_DIR"
+  exit 0
+fi
+
+if [[ "$REQUEST_TARGET" -eq 0 ]]; then
+  echo "[OK] 无需续杯：持有量已达上限（available_est=${AVAILABLE_EST} hold_limit=${HOLD_LIMIT}）"
+  write_final_report "topup" "at_limit" "$TOTAL" "$PROBED_OK" "$NET_FAIL" "$INVALID" "$OUT_DIR"
+  exit 0
+fi
+
+if ! "$PYTHON_BIN" - "$PROBE_DIR" "$BODY_JSON" "$REQUEST_TARGET" >"$OUT_DIR/topup_body_build.log" 2>"$OUT_DIR/topup_body_error.log" <<'PY'; then
+import json
+import os
+import sys
+
+probe_dir, body_path, target = sys.argv[1], sys.argv[2], int(sys.argv[3])
+items = []
+
+if os.path.isdir(probe_dir):
+    for name in sorted(os.listdir(probe_dir)):
+        if not name.endswith('.rep'):
+            continue
+        path = os.path.join(probe_dir, name)
+        try:
+            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                txt = f.read().strip()
+            if not txt:
+                continue
+            items.append(json.loads(txt))
+        except Exception:
+            pass
+
+body = {
+    'target_pool_size': target,
+    'reports': items,
+}
+
+os.makedirs(os.path.dirname(body_path), exist_ok=True)
+with open(body_path, 'w', encoding='utf-8', newline='\n') as f:
+    json.dump(body, f, ensure_ascii=False, separators=(',', ':'))
+    f.write('\n')
+PY
+  echo "[WARN] topup body 生成失败，尝试使用兜底 body：$BODY_JSON"
+  if [[ -f "$OUT_DIR/topup_body_error.log" ]]; then
+    cat "$OUT_DIR/topup_body_error.log"
+  fi
+  printf '{"target_pool_size":%s,"reports":[]}\n' "$REQUEST_TARGET" >"$BODY_JSON"
+fi
+
+if [[ ! -f "$BODY_JSON" ]]; then
+  echo "[ERROR] 兜底 body 仍生成失败：$BODY_JSON"
+  exit 2
+fi
+
+BODY_REPORTS=0
+BODY_INVALID=0
+counts="$($PYTHON_BIN - "$BODY_JSON" <<'PY' 2>/dev/null || echo '0|0'
+import json
+import sys
+
+path = sys.argv[1]
+n = 0
+bad = 0
+try:
+    with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+        obj = json.load(f)
+    reports = obj.get('reports') or []
+    n = len(reports)
+    for r in reports:
+        try:
+            s = int(r.get('status_code', 0))
+            if s in (401, 429):
+                bad += 1
+        except Exception:
+            pass
+except Exception:
+    pass
+print(f"{n}|{bad}")
+PY
+)"
+BODY_REPORTS="${counts%%|*}"
+BODY_INVALID="${counts##*|}"
+is_uint "$BODY_REPORTS" || BODY_REPORTS=0
+is_uint "$BODY_INVALID" || BODY_INVALID=0
+
+echo "[INFO] 上报报告条数：${BODY_REPORTS}（失效401/429=${BODY_INVALID}）"
+
+echo "[INFO] 触发 topup：POST $SERVER_URL/v1/refill/topup"
+if ! curl -sS --connect-timeout "$TOPUP_CONNECT_TIMEOUT" --max-time "$TOPUP_MAX_TIME" \
+  --retry "$TOPUP_RETRY" --retry-all-errors --retry-delay "$TOPUP_RETRY_DELAY" --noproxy '*' \
+  -X POST "$SERVER_URL/v1/refill/topup" \
+  -H "X-User-Key: $USER_KEY" \
+  -H 'Content-Type: application/json' \
+  --data-binary "@$BODY_JSON" >"$RESP_JSON"; then
+  echo "[ERROR] topup 请求失败（可能是服务端超时/网络抖动）"
+  exit 2
+fi
+
+if [[ ! -s "$RESP_JSON" ]]; then
+  echo "[ERROR] topup 响应为空：$RESP_JSON"
+  exit 2
+fi
+
+$PYTHON_BIN - "$RESP_JSON" <<'PY' 2>/dev/null || true
+import json
+import sys
+
+path = sys.argv[1]
+try:
+    with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+        data = json.load(f)
+except Exception:
+    raise SystemExit(0)
+
+for i, a in enumerate(data.get('accounts') or [], start=1):
+    if i > 5:
+        break
+    name = str(a.get('file_name') or '(null)')
+    print(f"[DIAG] server account[{i}] file_name={name}")
+PY
+
+WRITTEN_COUNT=0
+SERVER_HOLD_LIMIT=""
+PARSE_FAILED=0
+PARSE_ERR_MSG=""
+
+parse_result="$($PYTHON_BIN - "$RESP_JSON" "$ACCOUNTS_DIR" <<'PY' 2>&1 || true
+import json
+import os
+import re
+import sys
+import urllib.request
+import uuid
+
+resp_path, accounts_dir = sys.argv[1], sys.argv[2]
+
+try:
+    with open(resp_path, 'r', encoding='utf-8', errors='ignore') as f:
+        r = json.load(f)
+except Exception:
+    print('ERROR=bad response json')
+    raise SystemExit(2)
+
+if not r.get('ok'):
+    print('ERROR=' + str(r.get('error', '')))
+    raise SystemExit(2)
+
+os.makedirs(accounts_dir, exist_ok=True)
+written = 0
+
+for a in (r.get('accounts') or []):
+    aid = str(a.get('account_id') or '').strip()
+    if aid and re.match(r'^[A-Za-z0-9._-]+$', aid):
+        fn = 'codex-' + aid + '.json'
+    else:
+        fn = 'codex-' + str(uuid.uuid4()) + '.json'
+
+    dst = os.path.join(accounts_dir, fn)
+
+    auth_json = a.get('auth_json', None)
+    if auth_json is not None:
+        with open(dst, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(json.dumps(auth_json, ensure_ascii=False, separators=(',', ':')))
+            f.write('\n')
+        written += 1
+        continue
+
+    dl = str(a.get('download_url') or '').strip()
+    if dl:
+        try:
+            with urllib.request.urlopen(dl, timeout=30) as resp:
+                raw = resp.read().decode('utf-8', errors='ignore')
+            obj = json.loads(raw)
+            with open(dst, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(json.dumps(obj, ensure_ascii=False, separators=(',', ':')))
+                f.write('\n')
+            written += 1
+        except Exception:
+            pass
+
+print('WRITTEN=' + str(written))
+
+limit = None
+try:
+    limit = int(r.get('total_hold_limit'))
+except Exception:
+    limit = None
+if limit is None or limit <= 0:
+    try:
+        limit = int((r.get('account_limit') or {}).get('effective_account_limit'))
+    except Exception:
+        limit = None
+if limit is not None and limit > 0:
+    print('TOTAL_HOLD_LIMIT=' + str(limit))
+PY
+)"
+
+while IFS='=' read -r key val; do
+  case "$key" in
+    ERROR)
+      PARSE_FAILED=1
+      PARSE_ERR_MSG="$val"
+      ;;
+    WRITTEN)
+      WRITTEN_COUNT="$val"
+      ;;
+    TOTAL_HOLD_LIMIT)
+      SERVER_HOLD_LIMIT="$val"
+      ;;
+  esac
+done <<EOF_PARSE
+$parse_result
+EOF_PARSE
+
+if grep -q '^ERROR=' <<EOF_ERR
+$parse_result
+EOF_ERR
+then
+  PARSE_FAILED=1
+fi
+
+if [[ "$PARSE_FAILED" == "1" ]]; then
+  echo "[ERROR] topup failed: $PARSE_ERR_MSG"
+  echo "[DEBUG] topup_response.json 前20行："
+  sed -n '1,20p' "$RESP_JSON" || true
+  exit 2
+fi
+
+is_uint "$WRITTEN_COUNT" || WRITTEN_COUNT=0
+echo "[INFO] 写入新账号：$WRITTEN_COUNT"
+
+if [[ -n "$SERVER_HOLD_LIMIT" ]]; then
+  echo "[INFO] 服务端下发总持有上限：$SERVER_HOLD_LIMIT"
+  upsert_env_key "$CFG_ENV" "TOTAL_HOLD_LIMIT" "$SERVER_HOLD_LIMIT"
+  upsert_env_key "$ROOT_CFG_ENV" "TOTAL_HOLD_LIMIT" "$SERVER_HOLD_LIMIT"
+fi
+
+DEL_COUNT="$($PYTHON_BIN - "$PROBE_DIR" "$ACCOUNTS_DIR" "$BACKUP_DIR" <<'PY' 2>/dev/null || echo 0
+import json
+import os
+import shutil
+import sys
+
+probe_dir, accounts_dir, backup_dir = sys.argv[1], sys.argv[2], sys.argv[3]
+del_count = 0
+
+if not os.path.isdir(probe_dir):
+    print(0)
+    raise SystemExit(0)
+
+os.makedirs(backup_dir, exist_ok=True)
+
+for name in os.listdir(probe_dir):
+    if not name.endswith('.rep'):
+        continue
+    path = os.path.join(probe_dir, name)
+    try:
+        with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+            o = json.load(f)
+        sc = int(o.get('status_code', 0))
+    except Exception:
+        continue
+
+    if sc not in (401, 429):
+        continue
+
+    fn = str(o.get('file_name') or '')
+    if not fn:
+        continue
+
+    src = os.path.join(accounts_dir, fn)
+    if not os.path.exists(src):
+        continue
+
+    try:
+        shutil.copy2(src, os.path.join(backup_dir, fn))
+    except Exception:
+        pass
+
+    try:
+        os.remove(src)
+    except Exception:
+        pass
+
+    if not os.path.exists(src):
+        del_count += 1
+
+print(del_count)
+PY
+)"
+is_uint "$DEL_COUNT" || DEL_COUNT=0
+
+echo "[INFO] 已删除失效账号文件：$DEL_COUNT"
+
+SYNC_NEEDED=$((WRITTEN_COUNT + DEL_COUNT))
+if [[ -n "$SYNC_TARGET_DIR" && "$SYNC_NEEDED" -gt 0 ]]; then
+  ensure_sync_links "$SYNC_TARGET_DIR" "$ACCOUNTS_DIR"
+fi
+
+echo "[OK] 已完成单次续杯：新账号已写入 accounts-dir；失效(401/429)文件已备份并删除。"
+echo "      输出：$OUT_DIR"
+write_final_report "topup" "triggered" "$TOTAL" "$PROBED_OK" "$NET_FAIL" "$INVALID" "$OUT_DIR"
+exit 0

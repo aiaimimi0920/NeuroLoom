@@ -99,3 +99,70 @@
 - 数据回滚：若有备份，可通过管理接口导入；无备份则重新上传账号数据。
 
 > 建议：每次执行批量清库前，先导出一次备份。
+
+## 7) v2 owner 语义兼容迁移（0009）
+
+新增迁移文件：
+
+- [`migrations/0009_refill_owner_compat.sql`](migrations/0009_refill_owner_compat.sql)
+- [`migrations/0009_refill_owner_compat_rollback.sql`](migrations/0009_refill_owner_compat_rollback.sql)
+
+执行迁移（示例）：
+
+```bash
+npx wrangler d1 execute refill_server_v2 --remote --file ./migrations/0009_refill_owner_compat.sql
+```
+
+执行回滚（示例）：
+
+```bash
+npx wrangler d1 execute refill_server_v2 --remote --file ./migrations/0009_refill_owner_compat_rollback.sql
+```
+
+## 8) 新增管理接口（待置信区）
+
+- `GET /admin/confidence/stats`
+  - 返回待置信区库存、判真/判伪计数、平均复现次数、不可信度榜单
+- `POST /admin/confidence/replay-percent`
+  - 设置混入比例 `confidence_replay_percent`（0~80）
+- `POST /admin/confidence/ban-threshold`
+  - 设置日封禁阈值 `daily_untrust_ban_threshold`（1~100）
+
+## 9) 集成冒烟脚本
+
+新增：[`tools/test_refill_confidence_flow.py`](tools/test_refill_confidence_flow.py)
+
+用途：
+
+- 验证“先采信 -> 回放 -> 判真/判伪”最小链路
+
+运行前环境变量：
+
+- `SERVER_URL`
+- `USER_KEY_A`
+- `USER_KEY_B`
+- `ADMIN_TOKEN`（可选）
+
+运行：
+
+```bash
+python ./tools/test_refill_confidence_flow.py
+```
+
+## 10) 灰度发布建议（从小流量到全量）
+
+1. 第 1 阶段（灰度 5%~10%）
+   - `confidence_replay_percent=5~10`
+   - 每 1 小时观察 `/admin/confidence/stats`
+2. 第 2 阶段（灰度 20%）
+   - 提升 `confidence_replay_percent=20`
+   - 观察误杀率（rejected / pending）与封禁触发频率
+3. 第 3 阶段（全量）
+   - 维持 20% 或按数据上调
+   - 固定巡检项：
+     - `confidence_queue_pending`
+     - `accounts_v2_confidence`
+     - `top_untrust`
+4. 异常回退
+   - 先把 `confidence_replay_percent` 调为 `0`
+   - 必要时执行 [`0009_refill_owner_compat_rollback.sql`](migrations/0009_refill_owner_compat_rollback.sql)

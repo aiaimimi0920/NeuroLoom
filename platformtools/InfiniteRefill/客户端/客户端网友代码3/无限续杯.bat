@@ -175,19 +175,11 @@ if !间隔分钟! LSS 10 (
 )
 
 call :CALC_START_TIME !间隔分钟!
-REM 生成定时任务入口脚本（避免 schtasks /TR 引号/中文路径兼容问题）
-set "TASK_ENTRY=!SCRIPT_DIR!_定时任务_入口.bat"
->"!TASK_ENTRY!" (
-  echo @echo off
-  echo chcp 65001 ^>nul
-  echo call "!SCRIPT_DIR!_内部_自动清理.bat" apply nopause
-  echo call "!SCRIPT_DIR!单次续杯.bat" --from-task
-)
+set "TR=powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command ""& '%SCRIPT_DIR%_内部_自动清理.bat' apply nopause; & '%SCRIPT_DIR%单次续杯.bat' --from-task"""
 
 echo.
 echo [INFO] 正在创建/更新计划任务（串行：先清理后续杯）：%REFILL_TASK%
-echo [DIAG] TASK_ENTRY=!TASK_ENTRY!
-schtasks /Create /F /TN "%REFILL_TASK%" /SC MINUTE /MO !间隔分钟! /ST !TASK_START! /TR "\"!TASK_ENTRY!\"" /RL HIGHEST
+schtasks /Create /F /TN "%REFILL_TASK%" /SC MINUTE /MO !间隔分钟! /ST !TASK_START! /TR "!TR!" /RL HIGHEST >nul 2>nul
 if errorlevel 1 (
   echo [WARN] 创建失败（可能需要管理员权限）。
   pause
@@ -218,7 +210,7 @@ for /f "usebackq delims=" %%L in (`powershell -NoProfile -Command ^
   "$canWrite={ param($p) try{ if(-not (Test-Path -LiteralPath $p)){ New-Item -ItemType Directory -Path $p -Force | Out-Null }; $t=Join-Path $p '.write_test.tmp'; Set-Content -LiteralPath $t -Value 'ok' -Encoding ASCII; Remove-Item -LiteralPath $t -Force -ErrorAction SilentlyContinue; $true } catch { $false } };" ^
   "$target=$targetRaw; if(-not (& $canWrite $target)){ if(& $canWrite $fallback){ Write-Output ('[WARN] sync target 不可写，已回退到: ' + $fallback); $target=$fallback } else { Write-Output ('[WARN] sync target 不可写，已跳过同步: ' + $targetRaw); exit 0 } };" ^
   "$manifest=Join-Path $target '.infinite_refill_sync_manifest.txt';" ^
-  "$src=@(Get-ChildItem -LiteralPath $accounts -Filter 'codex-*.json' -File -ErrorAction SilentlyContinue); if($src.Count -eq 0){$src=@(Get-ChildItem -LiteralPath $accounts -Filter '*.json' -File -ErrorAction SilentlyContinue)};" ^
+  "$src=@(Get-ChildItem -LiteralPath $accounts -Filter '无限续杯-*.json' -File -ErrorAction SilentlyContinue); if($src.Count -eq 0){$src=@(Get-ChildItem -LiteralPath $accounts -Filter '*.json' -File -ErrorAction SilentlyContinue)};" ^
   "$names=@(); foreach($f in $src){ $names += $f.Name };" ^
   "$old=@(); if(Test-Path -LiteralPath $manifest){ $old=@(Get-Content -LiteralPath $manifest -ErrorAction SilentlyContinue | Where-Object { $_ -and $_.Trim() -ne '' }) };" ^
   "$removed=0; foreach($n in $old){ if($names -notcontains $n){ $tp=Join-Path $target $n; if(Test-Path -LiteralPath $tp){ $it=Get-Item -LiteralPath $tp -Force -ErrorAction SilentlyContinue; if($it -and (($it.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)){ Remove-Item -LiteralPath $tp -Force -ErrorAction SilentlyContinue; $removed++ } } } };" ^
@@ -291,17 +283,8 @@ if not "%ACTIVE_CFG%"=="" if exist "%ACTIVE_CFG%" (
 for /f "delims=0123456789" %%I in ("!间隔分钟!") do set "间隔分钟=30"
 if !间隔分钟! LSS 10 set "间隔分钟=10"
 call :CALC_START_TIME !间隔分钟!
-REM 复用定时任务入口脚本（已由 ENABLE_TASK 生成）
-set "TASK_ENTRY=!SCRIPT_DIR!_定时任务_入口.bat"
-if not exist "!TASK_ENTRY!" (
-  >"!TASK_ENTRY!" (
-    echo @echo off
-    echo chcp 65001 ^>nul
-    echo call "!SCRIPT_DIR!_内部_自动清理.bat" apply nopause
-    echo call "!SCRIPT_DIR!单次续杯.bat" --from-task
-  )
-)
-schtasks /Create /F /TN "%REFILL_TASK%" /SC MINUTE /MO !间隔分钟! /ST !TASK_START! /TR "\"!TASK_ENTRY!\"" /RL HIGHEST
+set "TR=powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command ""& '%SCRIPT_DIR%_内部_自动清理.bat' apply nopause; & '%SCRIPT_DIR%单次续杯.bat' --from-task"""
+schtasks /Create /F /TN "%REFILL_TASK%" /SC MINUTE /MO !间隔分钟! /ST !TASK_START! /TR "!TR!" /RL HIGHEST >nul 2>nul
 schtasks /Delete /F /TN "%CLEAN_TASK%" >nul 2>nul
 echo [INFO] 已按手动续杯时间重置下次自动续杯时间：!TASK_START!（后台串行：先清理后续杯）
 call :CLEANUP_OLD_TASKS

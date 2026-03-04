@@ -1,0 +1,443 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+USER_CFG="$SCRIPT_DIR/无限续杯配置.env"
+ROOT_CFG="$ROOT_DIR/无限续杯配置.env"
+
+PYTHON_BIN=""
+
+ensure_cmd() {
+  local cmd="$1"
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "[ERROR] 缺少命令：$cmd"
+    exit 2
+  fi
+}
+
+ensure_python() {
+  if command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="python3"
+    return
+  fi
+  if command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+    return
+  fi
+  echo "[ERROR] 缺少 Python（需要 python3 或 python）"
+  exit 2
+}
+
+trim_spaces() {
+  local s="$1"
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  printf '%s' "$s"
+}
+
+is_uint() {
+  local v="$1"
+  [[ "$v" =~ ^[0-9]+$ ]]
+}
+
+safe_uint_default() {
+  local v="$1"
+  local def="$2"
+  local min="$3"
+
+  if ! is_uint "$v"; then
+    printf '%s' "$def"
+    return
+  fi
+  if [[ "$v" -lt "$min" ]]; then
+    printf '%s' "$def"
+    return
+  fi
+  printf '%s' "$v"
+}
+
+load_env_file() {
+  local file="$1"
+  local line key val
+  [[ -f "$file" ]] || return 0
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    [[ -z "$line" ]] && continue
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ "$line" != *=* ]] && continue
+
+    key="${line%%=*}"
+    val="${line#*=}"
+    key="$(trim_spaces "$key")"
+
+    case "$key" in
+      ACCOUNTS_DIR|CLEAN_DELETE_STATUSES|CLEAN_EXPIRED_DAYS|SERVER_URL|USER_KEY|TARGET_POOL_SIZE|AUTO_REFILL_AFTER_CLEAN)
+        printf -v "$key" '%s' "$val"
+        ;;
+    esac
+  done <"$file"
+}
+
+status_in_list() {
+  local code="$1"
+  local csv="${CLEAN_DELETE_STATUSES:-401,429}"
+  local norm
+
+  norm=",$(printf '%s' "$csv" | tr ' ' ',' | sed -E 's/,+/,/g; s/^,+//; s/,+$//'),"
+  [[ "$norm" == *",$code,"* ]]
+}
+
+file_mtime_epoch() {
+  local f="$1"
+  if stat -f %m "$f" >/dev/null 2>&1; then
+    stat -f %m "$f"
+    return 0
+  fi
+  if stat -c %Y "$f" >/dev/null 2>&1; then
+    stat -c %Y "$f"
+    return 0
+  fi
+  return 1
+}
+
+normalize_invalid_status() {
+  local raw="$1"
+  local body="$2"
+  local n="$raw"
+  local q0="0"
+
+  if [[ -z "$n" || ! "$n" =~ ^[0-9]{3}$ ]]; then
+    n="000"
+  fi
+
+  if [[ "$n" == "000" || "$n" == "401" || "$n" == "429" ]]; then
+    printf '%s' "$n"
+    return 0
+  fi
+
+  if [[ "${n:0:1}" != "2" ]]; then
+    printf '%s' "$n"
+    return 0
+  fi
+
+  q0="$($PYTHON_BIN - "$body" <<'PY' 2>/dev/null || echo 0
+import json
+import sys
+
+body = sys.argv[1]
+q = 0
+try:
+    with open(body, 'r', encoding='utf-8', errors='ignore') as f:
+        obj = json.load(f)
+except Exception:
+    print(0)
+    raise SystemExit(0)
+
+rl = obj.get('rate_limit')
+if isinstance(rl, dict):
+    if rl.get('allowed') is False:
+        q = 1
+    if rl.get('limit_reached') is True:
+        q = 1
+    pw = rl.get('primary_window')
+    if isinstance(pw, dict):
+        try:
+            if float(pw.get('used_percent', 0)) >= 100:
+                q = 1
+        except Exception:
+            pass
+
+for k in ('allowed', 'limit_reached', 'is_available'):
+    v = obj.get(k)
+    if v is False or v == 0:
+        q = 1
+
+print(q)
+PY
+)"
+
+  if [[ "$q0" == "1" ]]; then
+    printf '429'
+  else
+    printf '%s' "$n"
+  fi
+}
+
+process_one_file() {
+  local file="$1"
+  local base="$2"
+  local parsed idx line
+  local type=""
+  local token=""
+  local aid=""
+
+  parsed="$($PYTHON_BIN - "$file" <<'PY' 2>/dev/null || true
+import json
+import sys
+
+path = sys.argv[1]
+try:
+    with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+        obj = json.load(f)
+except Exception:
+    print('')
+    print('')
+    print('')
+    raise SystemExit(0)
+
+print(str(obj.get('type') or ''))
+print(str(obj.get('access_token') or ''))
+print(str(obj.get('account_id') or ''))
+PY
+)"
+
+  idx=0
+  while IFS= read -r line; do
+    idx=$((idx + 1))
+    case "$idx" in
+      1) type="$line" ;;
+      2) token="$line" ;;
+      3) aid="$line" ;;
+    esac
+  done <<EOF_PARSED
+$parsed
+EOF_PARSED
+
+  if [[ "$type" != "codex" ]]; then
+    echo "[SKIP] $base (type=$type)" >>"$REPORT"
+    return 0
+  fi
+
+  if [[ -z "$token" ]]; then
+    echo "[SKIP] $base (missing access_token)" >>"$REPORT"
+    return 0
+  fi
+
+  local wham_body="$OUT_DIR/_wham_body.tmp"
+  local status=""
+  local ua='codex_cli_rs/0.76.0 (macOS/Linux)'
+
+  if [[ -n "$aid" ]]; then
+    status="$(curl -sS -o "$wham_body" -w '%{http_code}' \
+      -H "Authorization: Bearer $token" \
+      -H "Chatgpt-Account-Id: $aid" \
+      -H 'Accept: application/json, text/plain, */*' \
+      -H "User-Agent: $ua" \
+      'https://chatgpt.com/backend-api/wham/usage' || true)"
+  else
+    status="$(curl -sS -o "$wham_body" -w '%{http_code}' \
+      -H "Authorization: Bearer $token" \
+      -H 'Accept: application/json, text/plain, */*' \
+      -H "User-Agent: $ua" \
+      'https://chatgpt.com/backend-api/wham/usage' || true)"
+  fi
+
+  if [[ -z "$status" || ! "$status" =~ ^[0-9]{3}$ ]]; then
+    status="000"
+  fi
+
+  status="$(normalize_invalid_status "$status" "$wham_body")"
+
+  if [[ "$status" == "000" ]]; then
+    NET_FAIL=$((NET_FAIL + 1))
+    echo "[NETFAIL] $base status=000" >>"$REPORT"
+    return 0
+  fi
+
+  PROBED_OK=$((PROBED_OK + 1))
+  echo "[PROBE] $base status=$status" >>"$REPORT"
+
+  local delete_reason=""
+  if status_in_list "$status"; then
+    delete_reason="status=$status"
+  fi
+
+  local exp_days age_days mtime now_epoch
+  exp_days="${CLEAN_EXPIRED_DAYS:-30}"
+  if is_uint "$exp_days" && [[ "$exp_days" -gt 0 ]]; then
+    mtime="$(file_mtime_epoch "$file" 2>/dev/null || echo 0)"
+    now_epoch="$(date +%s)"
+    if is_uint "$mtime" && [[ "$mtime" -gt 0 ]]; then
+      age_days=$(( (now_epoch - mtime) / 86400 ))
+      if [[ "$age_days" -ge "$exp_days" ]]; then
+        if [[ -n "$delete_reason" ]]; then
+          delete_reason="$delete_reason,expired=${age_days}d"
+        else
+          delete_reason="expired=${age_days}d"
+        fi
+      fi
+    fi
+  fi
+
+  if [[ -n "$delete_reason" ]]; then
+    CAND=$((CAND + 1))
+    echo "$file # $delete_reason" >>"$PLAN"
+
+    if [[ "$APPLY" == "1" ]]; then
+      cp -f "$file" "$BACKUP/$base" >/dev/null 2>&1 || true
+      rm -f "$file" >/dev/null 2>&1 || true
+      if [[ ! -f "$file" ]]; then
+        DELETED=$((DELETED + 1))
+        echo "[DEL]  $base reason=$delete_reason" >>"$REPORT"
+      else
+        echo "[FAIL] $base reason=$delete_reason" >>"$REPORT"
+      fi
+    fi
+  fi
+}
+
+auto_refill_after_clean() {
+  local target auto_refill remain missing
+  local out_refill body resp
+
+  target="${TARGET_POOL_SIZE:-10}"
+  auto_refill="${AUTO_REFILL_AFTER_CLEAN:-0}"
+
+  target="$(safe_uint_default "$target" "10" "1")"
+
+  remain=0
+  local f t
+  for f in "$ACCOUNTS_DIR"/*.json; do
+    [[ -f "$f" ]] || continue
+    t="$($PYTHON_BIN - "$f" <<'PY' 2>/dev/null || true
+import json
+import sys
+
+path = sys.argv[1]
+try:
+    with open(path, 'r', encoding='utf-8', errors='ignore') as fh:
+        obj = json.load(fh)
+    print(str(obj.get('type') or ''))
+except Exception:
+    print('')
+PY
+)"
+    if [[ "$t" == "codex" ]]; then
+      remain=$((remain + 1))
+    fi
+  done
+
+  missing=$((target - remain))
+  if [[ "$missing" -le 0 ]]; then
+    echo "[INFO] 清理后剩余=${remain} 目标=${target}：无需补齐"
+    return 0
+  fi
+
+  echo "[INFO] 清理后剩余=${remain} 目标=${target}：缺口=${missing}"
+
+  if [[ "$auto_refill" != "1" ]]; then
+    echo "[INFO] 未开启自动补齐（AUTO_REFILL_AFTER_CLEAN=1 才会自动续杯）"
+    return 0
+  fi
+
+  if [[ -z "${SERVER_URL:-}" ]]; then
+    echo "[WARN] 未配置 SERVER_URL，无法自动补齐"
+    return 0
+  fi
+  if [[ -z "${USER_KEY:-}" ]]; then
+    echo "[WARN] 未配置 USER_KEY，无法自动补齐"
+    return 0
+  fi
+
+  mkdir -p "$SCRIPT_DIR/out" >/dev/null 2>&1 || true
+  out_refill="$SCRIPT_DIR/out/清理后补齐结果.jsonl"
+  body="$SCRIPT_DIR/out/_topup_body.json"
+
+  printf '{"target_pool_size":%s,"reports":[]}\n' "$target" >"$body"
+
+  echo "[INFO] 开始补齐：请求一次 topup（目标=${target}），结果写入：$out_refill"
+  resp="$(curl -sS -X POST "$SERVER_URL/v1/refill/topup" \
+    -H "X-User-Key: $USER_KEY" \
+    -H 'Content-Type: application/json' \
+    --data-binary "@$body" || true)"
+  if [[ -n "$resp" ]]; then
+    printf '%s\n' "$resp" >>"$out_refill"
+  fi
+
+  echo "[OK] 已触发补齐请求"
+}
+
+ensure_cmd curl
+ensure_python
+
+APPLY=0
+NOPAUSE=0
+if [[ "${1:-}" == "apply" || "${2:-}" == "apply" || "${3:-}" == "apply" ]]; then
+  APPLY=1
+fi
+if [[ "${1:-}" == "nopause" || "${2:-}" == "nopause" || "${3:-}" == "nopause" ]]; then
+  NOPAUSE=1
+fi
+
+ACCOUNTS_DIR="$SCRIPT_DIR/accounts"
+CLEAN_DELETE_STATUSES="401,429"
+CLEAN_EXPIRED_DAYS="30"
+SERVER_URL=""
+USER_KEY=""
+TARGET_POOL_SIZE="10"
+AUTO_REFILL_AFTER_CLEAN="0"
+
+load_env_file "$ROOT_CFG"
+load_env_file "$USER_CFG"
+
+if [[ -z "$ACCOUNTS_DIR" ]]; then
+  ACCOUNTS_DIR="$SCRIPT_DIR/accounts"
+fi
+mkdir -p "$ACCOUNTS_DIR" >/dev/null 2>&1 || true
+if [[ ! -d "$ACCOUNTS_DIR" ]]; then
+  echo "[ERROR] 账户目录不存在且创建失败：$ACCOUNTS_DIR"
+  exit 3
+fi
+
+CLEAN_EXPIRED_DAYS="$(safe_uint_default "$CLEAN_EXPIRED_DAYS" "30" "0")"
+
+echo "Config:      \"$USER_CFG\""
+echo "AccountsDir: \"$ACCOUNTS_DIR\""
+echo "DeleteStatus:\"$CLEAN_DELETE_STATUSES\""
+echo "ExpiredDays:\"$CLEAN_EXPIRED_DAYS\""
+if [[ "$APPLY" == "1" ]]; then
+  echo "Apply:      true  (会删除命中状态/过期文件；会先备份)"
+else
+  echo "Apply:      false (DryRun：只生成计划，不删除)"
+fi
+echo
+
+TS="$(date +%Y%m%d-%H%M%S)"
+OUT_DIR="$SCRIPT_DIR/out/清理-失效-$TS"
+PLAN="$OUT_DIR/计划删除-失效.txt"
+REPORT="$OUT_DIR/报告.txt"
+BACKUP="$OUT_DIR/backup"
+
+mkdir -p "$BACKUP" >/dev/null 2>&1 || true
+: >"$PLAN"
+: >"$REPORT"
+
+echo "[INFO] 输出目录：\"$OUT_DIR\""
+
+TOTAL=0
+PROBED_OK=0
+NET_FAIL=0
+CAND=0
+DELETED=0
+
+for f in "$ACCOUNTS_DIR"/*.json; do
+  [[ -f "$f" ]] || continue
+  TOTAL=$((TOTAL + 1))
+  process_one_file "$f" "$(basename "$f")"
+done
+
+echo
+echo "[DONE] total=$TOTAL probed_ok=$PROBED_OK net_fail=$NET_FAIL candidates_matched=$CAND deleted=$DELETED"
+echo "计划文件：\"$PLAN\""
+echo "报告文件：\"$REPORT\""
+echo
+
+if [[ "$APPLY" == "1" && "$DELETED" != "0" ]]; then
+  auto_refill_after_clean
+fi
+
+# bash 脚本无需 pause；保留参数仅兼容 bat 调用方式。
+_="${NOPAUSE}"
+exit 0

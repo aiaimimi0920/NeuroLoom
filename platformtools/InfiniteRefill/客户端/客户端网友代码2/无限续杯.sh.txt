@@ -1,0 +1,775 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+CFG="$SCRIPT_DIR/无限续杯配置.env"
+ROOT_CFG="$ROOT_DIR/无限续杯配置.env"
+
+REFILL_TASK="无限续杯_定时任务"
+CLEAN_TASK="自动清理_定时任务"
+CRON_MARK_BEGIN="# >>> infinite_refill_managed >>>"
+CRON_MARK_END="# <<< infinite_refill_managed <<<"
+TASK_STATE_FILE="$SCRIPT_DIR/.infinite_refill_task_state.env"
+TASK_LOCK_DIR="$SCRIPT_DIR/.infinite_refill_task.lock"
+TASK_LOG_DIR="$SCRIPT_DIR/logs"
+TASK_LOG_FILE="$TASK_LOG_DIR/无限续杯_task.log"
+
+PYTHON_BIN=""
+ACTIVE_CFG=""
+
+ensure_cmd() {
+  local cmd="$1"
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "[ERROR] 缺少命令：$cmd"
+    return 1
+  fi
+  return 0
+}
+
+ensure_python() {
+  if command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="python3"
+    return 0
+  fi
+  if command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+    return 0
+  fi
+  echo "[ERROR] 缺少 Python（需要 python3 或 python）"
+  exit 2
+}
+
+trim_spaces() {
+  local s="$1"
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  printf '%s' "$s"
+}
+
+is_uint() {
+  local v="$1"
+  [[ "$v" =~ ^[0-9]+$ ]]
+}
+
+safe_uint_default() {
+  local v="$1"
+  local def="$2"
+  local min="$3"
+
+  if ! is_uint "$v"; then
+    printf '%s' "$def"
+    return
+  fi
+  if [[ "$v" -lt "$min" ]]; then
+    printf '%s' "$def"
+    return
+  fi
+  printf '%s' "$v"
+}
+log_ts() {
+  local level="$1"
+  shift || true
+  local ts
+  ts="$(date '+%Y-%m-%d %H:%M:%S%z')"
+  printf '[%s] [%s] %s\n' "$ts" "$level" "$*"
+}
+
+
+is_under_dir() {
+  local path="$1"
+  local base="$2"
+  [[ -n "$path" && -n "$base" ]] || return 1
+  case "$path" in
+    "$base"|"$base"/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+check_task_location_guard() {
+  local abs_script_dir
+  abs_script_dir="$(cd "$SCRIPT_DIR" && pwd -P)"
+
+  local protected_dirs=(
+    "$HOME/Downloads"
+    "$HOME/Desktop"
+    "$HOME/Documents"
+  )
+
+  local d abs_d
+  for d in "${protected_dirs[@]}"; do
+    [[ -d "$d" ]] || continue
+    abs_d="$(cd "$d" && pwd -P)"
+    if is_under_dir "$abs_script_dir" "$abs_d"; then
+      echo "[ERROR] 当前目录受 macOS 隐私保护限制，cron 可能无法执行脚本。"
+      echo "        当前目录：$abs_script_dir"
+      echo "        受保护目录：$abs_d"
+      echo "        请将项目迁移到非受保护目录后再开启定时任务，例如："
+      echo "        $HOME/workspace/无限续杯V0_0_1"
+      return 1
+    fi
+  done
+
+  return 0
+}
+
+create_cfg_template() {
+  local file="$1"
+  cat >"$file" <<EOF_CFG
+# 无限续杯配置（简化模板）
+# 注意：请勿分享/上传此文件（含密钥）。
+SERVER_URL=
+USER_KEY=
+ACCOUNTS_DIR=$SCRIPT_DIR/accounts
+TARGET_POOL_SIZE=10
+TOTAL_HOLD_LIMIT=50
+INTERVAL_MINUTES=30
+SYNC_TARGET_DIR=
+EOF_CFG
+}
+
+resolve_active_cfg() {
+  mkdir -p "$SCRIPT_DIR" >/dev/null 2>&1 || true
+
+  ACTIVE_CFG=""
+  if [[ -f "$CFG" ]]; then
+    ACTIVE_CFG="$CFG"
+  fi
+  if [[ -z "$ACTIVE_CFG" && -f "$ROOT_CFG" ]]; then
+    ACTIVE_CFG="$ROOT_CFG"
+  fi
+  if [[ -z "$ACTIVE_CFG" ]]; then
+    create_cfg_template "$CFG"
+    ACTIVE_CFG="$CFG"
+  fi
+}
+
+read_cfg_value() {
+  local file="$1"
+  local key_need="$2"
+  local line key val
+  local out=""
+
+  [[ -f "$file" ]] || {
+    printf ''
+    return
+  }
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    [[ -z "$line" ]] && continue
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ "$line" != *=* ]] && continue
+
+    key="${line%%=*}"
+    val="${line#*=}"
+    key="$(trim_spaces "$key")"
+
+    if [[ "$key" == "$key_need" ]]; then
+      out="$val"
+    fi
+  done <"$file"
+
+  printf '%s' "$out"
+}
+
+ensure_sync_links() {
+  local target_raw="$1"
+  local accounts_dir="$2"
+  local fallback target
+  local manifest
+  local linked=0
+  local removed=0
+  local tmp_test
+
+  [[ -n "$target_raw" ]] || return 0
+  [[ -n "$accounts_dir" ]] || accounts_dir="$SCRIPT_DIR/accounts"
+
+  mkdir -p "$accounts_dir" >/dev/null 2>&1 || true
+
+  fallback="$HOME/.cli-proxy-api"
+  target="$target_raw"
+
+  mkdir -p "$target" >/dev/null 2>&1 || true
+  tmp_test="$target/.write_test.tmp"
+  if ! (printf 'ok' >"$tmp_test" 2>/dev/null && rm -f "$tmp_test" 2>/dev/null); then
+    mkdir -p "$fallback" >/dev/null 2>&1 || true
+    tmp_test="$fallback/.write_test.tmp"
+    if printf 'ok' >"$tmp_test" 2>/dev/null; then
+      rm -f "$tmp_test" 2>/dev/null || true
+      echo "[WARN] sync target 不可写，已回退到: $fallback"
+      target="$fallback"
+    else
+      echo "[WARN] sync target 不可写，已跳过同步: $target_raw"
+      return 0
+    fi
+  fi
+
+  manifest="$target/.infinite_refill_sync_manifest.txt"
+
+  local files=()
+  local f base
+  for f in "$accounts_dir"/codex-*.json; do
+    [[ -f "$f" ]] || continue
+    files+=("$f")
+  done
+  if [[ ${#files[@]} -eq 0 ]]; then
+    for f in "$accounts_dir"/*.json; do
+      [[ -f "$f" ]] || continue
+      files+=("$f")
+    done
+  fi
+
+  local names=()
+  local i j
+  for ((i = 0; i < ${#files[@]}; i++)); do
+    f="${files[$i]}"
+    base="$(basename "$f")"
+    names+=("$base")
+  done
+
+  if [[ -f "$manifest" ]]; then
+    while IFS= read -r base || [[ -n "$base" ]]; do
+      [[ -n "$base" ]] || continue
+      local exists_now=0
+      for ((j = 0; j < ${#names[@]}; j++)); do
+        f="${names[$j]}"
+        if [[ "$f" == "$base" ]]; then
+          exists_now=1
+          break
+        fi
+      done
+      if [[ "$exists_now" == "0" ]]; then
+        local tp="$target/$base"
+        if [[ -L "$tp" ]]; then
+          rm -f "$tp" >/dev/null 2>&1 || true
+          removed=$((removed + 1))
+        fi
+      fi
+    done <"$manifest"
+  fi
+
+  for ((i = 0; i < ${#files[@]}; i++)); do
+    f="${files[$i]}"
+    base="$(basename "$f")"
+    local tp="$target/$base"
+    if [[ -L "$tp" ]]; then
+      rm -f "$tp" >/dev/null 2>&1 || true
+    elif [[ -e "$tp" ]]; then
+      continue
+    fi
+    ln -s "$f" "$tp" >/dev/null 2>&1 || true
+    if [[ -L "$tp" ]]; then
+      linked=$((linked + 1))
+    fi
+  done
+
+  : >"$manifest"
+  for ((i = 0; i < ${#names[@]}; i++)); do
+    base="${names[$i]}"
+    printf '%s\n' "$base" >>"$manifest"
+  done
+
+  if [[ "$linked" -gt 0 ]]; then
+    echo "OK: linked=$linked; removed=$removed; target=$target"
+  else
+    echo "WARN: linked=0; removed=$removed; source=$accounts_dir; target=$target"
+  fi
+}
+
+format_epoch_hhmm() {
+  local epoch="$1"
+  if date -r "$epoch" +%H:%M >/dev/null 2>&1; then
+    date -r "$epoch" +%H:%M
+    return
+  fi
+  date -d "@$epoch" +%H:%M 2>/dev/null || printf 'N/A'
+}
+
+write_task_state() {
+  local interval="$1"
+  local next_epoch="$2"
+  cat >"$TASK_STATE_FILE" <<EOF_STATE
+INTERVAL_MINUTES=$interval
+NEXT_RUN_EPOCH=$next_epoch
+ACTIVE_CFG=$ACTIVE_CFG
+EOF_STATE
+}
+
+read_task_state() {
+  local key val line
+  INTERVAL_MINUTES_STATE="30"
+  NEXT_RUN_EPOCH_STATE="0"
+
+  [[ -f "$TASK_STATE_FILE" ]] || return 1
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ "$line" != *=* ]] && continue
+    key="${line%%=*}"
+    val="${line#*=}"
+    case "$key" in
+      INTERVAL_MINUTES) INTERVAL_MINUTES_STATE="$val" ;;
+      NEXT_RUN_EPOCH) NEXT_RUN_EPOCH_STATE="$val" ;;
+    esac
+  done <"$TASK_STATE_FILE"
+
+  INTERVAL_MINUTES_STATE="$(safe_uint_default "$INTERVAL_MINUTES_STATE" "30" "10")"
+  NEXT_RUN_EPOCH_STATE="$(safe_uint_default "$NEXT_RUN_EPOCH_STATE" "0" "0")"
+  return 0
+}
+
+is_task_enabled() {
+  if ! ensure_cmd crontab >/dev/null 2>&1; then
+    return 1
+  fi
+  crontab -l 2>/dev/null | grep -F "$CRON_MARK_BEGIN" >/dev/null 2>&1
+}
+
+cleanup_old_tasks() {
+  if ! ensure_cmd crontab >/dev/null 2>&1; then
+    echo "[WARN] 系统未安装 crontab，无法管理定时任务。"
+    return 0
+  fi
+
+  local current cleaned
+  current="$(crontab -l 2>/dev/null || true)"
+
+  cleaned="$($PYTHON_BIN - "$CRON_MARK_BEGIN" "$CRON_MARK_END" <<'PY'
+import sys
+
+begin = sys.argv[1]
+end = sys.argv[2]
+text = sys.stdin.read().splitlines()
+
+out = []
+skip = False
+for ln in text:
+    if ln.strip() == begin:
+        skip = True
+        continue
+    if ln.strip() == end:
+        skip = False
+        continue
+    if skip:
+        continue
+
+    low = ln.lower()
+    if '单次续杯.sh --from-task' in ln:
+        continue
+    if '_内部_自动清理.sh apply' in ln:
+        continue
+    if '无限续杯_定时任务' in ln:
+        continue
+    if '自动清理_定时任务' in ln:
+        continue
+
+    out.append(ln)
+
+print('\n'.join(out))
+PY
+<<<"$current")"
+
+  if [[ -z "${cleaned//$'\n'/}" ]]; then
+    crontab -r >/dev/null 2>&1 || true
+  else
+    printf '%s\n' "$cleaned" | crontab -
+  fi
+
+  echo "INFO: cleaned_old_tasks=1"
+}
+
+install_task_cron() {
+  if ! ensure_cmd crontab >/dev/null 2>&1; then
+    echo "[WARN] 系统未安装 crontab，无法开启定时任务。"
+    return 1
+  fi
+
+  cleanup_old_tasks
+
+  local current block cmd new_cron
+  current="$(crontab -l 2>/dev/null || true)"
+  cmd="* * * * * mkdir -p '$TASK_LOG_DIR' && bash '$SCRIPT_DIR/无限续杯.sh' --task-tick >>'$TASK_LOG_FILE' 2>&1 # ${REFILL_TASK}"
+
+  block="$CRON_MARK_BEGIN
+$cmd
+$CRON_MARK_END"
+
+  if [[ -n "${current//$'\n'/}" ]]; then
+    new_cron="$current
+$block"
+  else
+    new_cron="$block"
+  fi
+
+  printf '%s\n' "$new_cron" | crontab -
+  return 0
+}
+
+reset_task_after_manual() {
+  if ! is_task_enabled; then
+    return 0
+  fi
+
+  local interval now next hhmm
+  interval="$(read_cfg_value "$ACTIVE_CFG" "INTERVAL_MINUTES")"
+  interval="$(safe_uint_default "$interval" "30" "10")"
+
+  now="$(date +%s)"
+  next=$((now + interval * 60))
+  write_task_state "$interval" "$next"
+
+  hhmm="$(format_epoch_hhmm "$next")"
+  echo "[INFO] 已按手动续杯时间重置下次自动续杯时间：${hhmm}（后台串行：先清理后续杯）"
+  cleanup_old_tasks
+  install_task_cron >/dev/null 2>&1 || true
+}
+
+task_tick() {
+  if ! read_task_state; then
+    log_ts INFO "task-tick: state file missing, skip"
+    exit 0
+  fi
+
+  local interval now next
+  interval="$INTERVAL_MINUTES_STATE"
+  now="$(date +%s)"
+  next="$NEXT_RUN_EPOCH_STATE"
+
+  if [[ "$now" -lt "$next" ]]; then
+    log_ts INFO "task-tick: not due yet (now=$now next=$next), skip"
+    exit 0
+  fi
+
+  if ! mkdir "$TASK_LOCK_DIR" >/dev/null 2>&1; then
+    log_ts WARN "task-tick: lock exists, skip (lock=$TASK_LOCK_DIR)"
+    exit 0
+  fi
+  trap 'rmdir "$TASK_LOCK_DIR" >/dev/null 2>&1 || true' EXIT
+
+  log_ts INFO "task-tick: start clean+refill"
+  if bash "$SCRIPT_DIR/_内部_自动清理.sh" apply nopause >/dev/null 2>&1; then
+    log_ts INFO "task-tick: clean finished"
+  else
+    log_ts WARN "task-tick: clean failed"
+  fi
+
+  if bash "$SCRIPT_DIR/单次续杯.sh" --from-task >/dev/null 2>&1; then
+    log_ts INFO "task-tick: refill finished"
+  else
+    log_ts WARN "task-tick: refill failed"
+  fi
+
+  now="$(date +%s)"
+  next=$((now + interval * 60))
+  write_task_state "$interval" "$next"
+  log_ts INFO "task-tick: done, next=$next"
+
+  exit 0
+}
+
+
+configure_settings() {
+  local default_server default_key default_accounts default_hold_limit
+  local old_derived_accounts
+  local server key sync_dir interval total_hold
+  local detected_sync
+
+  echo
+  echo "====== 设置无限续杯配置 ======"
+
+  default_server="$(read_cfg_value "$ACTIVE_CFG" "SERVER_URL")"
+  default_key="$(read_cfg_value "$ACTIVE_CFG" "USER_KEY")"
+  default_accounts="$(read_cfg_value "$ACTIVE_CFG" "ACCOUNTS_DIR")"
+  default_hold_limit="$(read_cfg_value "$ACTIVE_CFG" "TOTAL_HOLD_LIMIT")"
+
+  if [[ -z "$default_accounts" ]]; then
+    default_accounts="$SCRIPT_DIR/accounts"
+  fi
+  if [[ -z "$default_hold_limit" ]]; then
+    default_hold_limit="50"
+  fi
+
+  old_derived_accounts="$ROOT_DIR/accounts"
+  if [[ "$default_accounts" == "$old_derived_accounts" ]]; then
+    default_accounts="$SCRIPT_DIR/accounts"
+  fi
+
+  if [[ ! -d "$default_accounts" ]]; then
+    local d
+    for d in "$SCRIPT_DIR"/*; do
+      [[ -d "$d/accounts" ]] || continue
+      default_accounts="$d/accounts"
+      break
+    done
+  fi
+  mkdir -p "$default_accounts" >/dev/null 2>&1 || true
+
+  printf '请输入服务器地址（填空则使用默认值：%s）: ' "$default_server"
+  read -r server
+  if [[ -z "$server" ]]; then server="$default_server"; fi
+
+  printf '请输入用户密钥（填空则使用默认值：%s）: ' "$default_key"
+  read -r key
+  if [[ -z "$key" ]]; then key="$default_key"; fi
+
+  if [[ -d "$HOME/.cli-proxy-api" ]]; then
+    detected_sync="$HOME/.cli-proxy-api"
+  elif [[ -d "$HOME/cli-proxy-api" ]]; then
+    detected_sync="$HOME/cli-proxy-api"
+  else
+    detected_sync="$HOME/.cli-proxy-api"
+  fi
+
+  echo "[INFO] 检测到默认同步目录：$detected_sync"
+  printf '请输入同步目录（留空则不同步；默认建议：%s）: ' "$detected_sync"
+  read -r sync_dir
+
+  printf '请输入续杯间隔（分钟，最低 10，默认 30）: '
+  read -r interval
+  if [[ -z "$interval" ]]; then interval="30"; fi
+  interval="$(safe_uint_default "$interval" "30" "10")"
+
+  total_hold="$(safe_uint_default "$default_hold_limit" "50" "1")"
+
+  if [[ -z "$server" ]]; then
+    echo "[ERROR] 服务器地址不能为空"
+    return 1
+  fi
+  if [[ -z "$key" ]]; then
+    echo "[ERROR] 用户密钥不能为空"
+    return 1
+  fi
+
+  if [[ -z "$ACTIVE_CFG" ]]; then
+    ACTIVE_CFG="$CFG"
+  fi
+
+  cat >"$ACTIVE_CFG" <<EOF_CFG
+# 无限续杯配置（简化模板）
+# 注意：请勿分享/上传此文件（含密钥）。
+SERVER_URL=$server
+USER_KEY=$key
+ACCOUNTS_DIR=$default_accounts
+TARGET_POOL_SIZE=10
+TOTAL_HOLD_LIMIT=$total_hold
+INTERVAL_MINUTES=$interval
+SYNC_TARGET_DIR=$sync_dir
+EOF_CFG
+
+  echo "[OK] 已保存：\"$ACTIVE_CFG\""
+  ensure_sync_links "$sync_dir" "$default_accounts"
+  return 0
+}
+
+enable_task() {
+  local interval sync_dir accounts_dir now next
+
+  if ! check_task_location_guard; then
+    return 1
+  fi
+
+  echo "[INFO] 清理历史/遗漏定时任务（仅保留当前任务名）..."
+  cleanup_old_tasks
+
+  interval="$(read_cfg_value "$ACTIVE_CFG" "INTERVAL_MINUTES")"
+  sync_dir="$(read_cfg_value "$ACTIVE_CFG" "SYNC_TARGET_DIR")"
+  accounts_dir="$(read_cfg_value "$ACTIVE_CFG" "ACCOUNTS_DIR")"
+
+  if [[ -z "$accounts_dir" ]]; then
+    accounts_dir="$SCRIPT_DIR/accounts"
+  fi
+
+  interval="$(safe_uint_default "$interval" "30" "10")"
+
+  now="$(date +%s)"
+  next=$((now + interval * 60))
+  write_task_state "$interval" "$next"
+
+  echo
+  echo "[INFO] 正在创建/更新计划任务（串行：先清理后续杯）：${REFILL_TASK}"
+  if ! install_task_cron; then
+    echo "[WARN] 创建失败（可能需要安装 crontab 并授予权限）。"
+    return 1
+  fi
+
+  echo "[OK] 已创建/更新：${REFILL_TASK}（每 ${interval} 分钟执行一次，后台串行先清理后续杯）"
+  ensure_sync_links "$sync_dir" "$accounts_dir"
+
+  echo "[INFO] 再次清理历史/遗漏定时任务..."
+  cleanup_old_tasks
+  install_task_cron >/dev/null 2>&1 || true
+  return 0
+}
+
+disable_task() {
+  echo
+  echo "[INFO] 正在关闭计划任务：${REFILL_TASK}"
+  cleanup_old_tasks
+  rm -f "$TASK_STATE_FILE" >/dev/null 2>&1 || true
+
+  if is_task_enabled; then
+    echo "[WARN] 关闭失败（可能需要权限）。"
+  else
+    echo "[OK] 已关闭：${REFILL_TASK}"
+  fi
+
+  echo "[INFO] 清理遗留任务：${CLEAN_TASK}"
+  echo "[INFO] 再次清理历史/遗漏定时任务..."
+  cleanup_old_tasks
+}
+
+run_once() {
+  if bash "$SCRIPT_DIR/单次续杯.sh"; then
+    reset_task_after_manual
+    return 0
+  fi
+  return 1
+}
+
+sync_all() {
+  bash "$SCRIPT_DIR/单次续杯.sh" --sync-all
+}
+
+task_diagnose() {
+  local state_file log_file
+  state_file="$TASK_STATE_FILE"
+  log_file="$TASK_LOG_FILE"
+
+  echo
+  echo "====== 定时任务诊断 ======"
+  echo "任务名：${REFILL_TASK}"
+  echo "脚本目录：${SCRIPT_DIR}"
+  echo
+
+  echo "[1/5] cron 托管区块"
+  if ensure_cmd crontab >/dev/null 2>&1; then
+    local cron_all managed
+    cron_all="$(crontab -l 2>/dev/null || true)"
+    managed="$(printf '%s\n' "$cron_all" | sed -n "/${CRON_MARK_BEGIN}/,/${CRON_MARK_END}/p")"
+    if [[ -n "${managed//$'\n'/}" ]]; then
+      printf '%s\n' "$managed"
+    else
+      echo "(未找到托管区块)"
+    fi
+  else
+    echo "(系统无 crontab 命令)"
+  fi
+  echo
+
+  echo "[2/5] 任务启用状态"
+  if is_task_enabled; then
+    echo "enabled=true"
+  else
+    echo "enabled=false"
+  fi
+  echo
+
+  echo "[3/5] 状态文件"
+  echo "path=$state_file"
+  if [[ -f "$state_file" ]]; then
+    cat "$state_file"
+    if read_task_state; then
+      local next_epoch next_hhmm next_full
+      next_epoch="$NEXT_RUN_EPOCH_STATE"
+      next_hhmm="$(format_epoch_hhmm "$next_epoch")"
+      if date -r "$next_epoch" '+%Y-%m-%d %H:%M:%S %z' >/dev/null 2>&1; then
+        next_full="$(date -r "$next_epoch" '+%Y-%m-%d %H:%M:%S %z')"
+      else
+        next_full="$(date -d "@$next_epoch" '+%Y-%m-%d %H:%M:%S %z' 2>/dev/null || echo N/A)"
+      fi
+      echo "next_run_hhmm=$next_hhmm"
+      echo "next_run_full=$next_full"
+    fi
+  else
+    echo "(状态文件不存在)"
+  fi
+  echo
+
+  echo "[4/5] 运行锁"
+  if [[ -d "$TASK_LOCK_DIR" ]]; then
+    echo "lock=present path=$TASK_LOCK_DIR"
+  else
+    echo "lock=absent"
+  fi
+  echo
+
+  echo "[5/5] 最近日志"
+  echo "path=$log_file"
+  if [[ -f "$log_file" ]]; then
+    tail -n 40 "$log_file"
+  else
+    echo "(日志文件不存在)"
+  fi
+  echo
+}
+
+menu() {
+  echo
+  echo "====== 无限续杯（配置入口 / macOS/Linux）======"
+  echo "配置文件：\"$ACTIVE_CFG\""
+  echo
+  echo "1) 立即执行一次【单次续杯】（使用已保存配置）"
+  echo "2) 设置/更新【无限续杯配置】（服务器地址/用户密钥/间隔）"
+  echo "3) 开启/更新【定时续杯】计划任务（单任务串行：先清理后续杯）"
+  echo "4) 关闭【定时续杯】计划任务"
+  echo
+  echo "5) 同步所有账号（谨慎：高频调用会触发风控）"
+  echo "6) 查看【定时任务诊断】"
+  echo "7) 退出"
+  echo
+}
+
+ensure_python
+resolve_active_cfg
+
+if [[ "${1:-}" == "--task-tick" ]]; then
+  task_tick
+fi
+
+if [[ "${1:-}" == "--task-diagnose" ]]; then
+  task_diagnose
+  exit 0
+fi
+
+server_url="${1:-}"
+user_key="${2:-}"
+if [[ -n "$server_url" && -n "$user_key" ]]; then
+  bash "$SCRIPT_DIR/单次续杯.sh" "$server_url" "$user_key"
+  exit $?
+fi
+
+while true; do
+  menu
+  printf '请选择 (1-7，默认 3)：'
+  read -r choice
+  choice="${choice:-3}"
+
+  case "$choice" in
+    1)
+      run_once || true
+      ;;
+    2)
+      configure_settings || true
+      ;;
+    3)
+      enable_task || true
+      ;;
+    4)
+      disable_task || true
+      ;;
+    5)
+      sync_all || true
+      ;;
+    6)
+      task_diagnose || true
+      ;;
+    7)
+      exit 0
+      ;;
+    *)
+      echo "[WARN] 无效选择：$choice"
+      ;;
+  esac
+done

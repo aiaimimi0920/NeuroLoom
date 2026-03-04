@@ -3332,8 +3332,16 @@ export default {
         const ownedRowNow = await env.DB.prepare("SELECT COUNT(1) AS c FROM accounts_v2 WHERE owner=?").bind(ownerKey).first<{ c: number }>();
         const currentOwnedNow = Number(ownedRowNow?.c || 0);
 
+        const ownedIdsForSync = await env.DB
+          .prepare("SELECT account_id FROM accounts_v2 WHERE owner=? ORDER BY updated_at DESC, account_id ASC LIMIT 500")
+          .bind(ownerKey)
+          .all<{ account_id: string }>();
+        const ownedIdList = (ownedIdsForSync.results || []).map((x) => String(x.account_id || "").trim()).filter(Boolean);
+        const localIdSet = new Set(requestedAccountIds.map((x) => String(x || "").trim()).filter(Boolean));
+        const missingOwnedIds = localIdSet.size > 0 ? ownedIdList.filter((id) => !localIdSet.has(id)) : [];
+
         const desiredToLimit = Math.max(0, effectiveAccountLimit - currentOwnedNow);
-        const wantFinal = Math.max(0, Math.min(500, desiredToLimit));
+        const wantFinal = Math.max(0, Math.min(500, desiredToLimit + missingOwnedIds.length));
 
         if (wantFinal <= 0) {
           const overHeld = currentOwnedNow > effectiveAccountLimit;
@@ -3371,7 +3379,9 @@ export default {
         }
 
         const replayPercent = await getConfidenceReplayPercent(env);
-        const replayBudget = Math.max(0, Math.min(wantFinal, Math.floor((wantFinal * replayPercent) / 100)));
+        // 回放预算始终向下取整；例如 wantFinal=1 且 20% 时预算为 0（不发回放）
+        const replayBudgetRaw = Math.floor((wantFinal * replayPercent) / 100);
+        const replayBudget = wantFinal <= 1 ? 0 : Math.max(0, Math.min(wantFinal, replayBudgetRaw));
 
         const replayRows = replayBudget > 0
           ? await env.DB
@@ -3387,6 +3397,11 @@ export default {
               .bind(publicNeed * 8)
               .all<{ account_id: string; email: string; password: string; r2_url: string | null; owner: string }>()
           : { results: [] as Array<{ account_id: string; email: string; password: string; r2_url: string | null; owner: string }> };
+
+        const replayCandidates = (replayRows.results || []).length;
+        const publicCandidates = (rows.results || []).length;
+        let replayClaimed = 0;
+        let publicClaimed = 0;
 
         if (!env.R2_ACCESS_KEY_ID || !env.R2_SECRET_ACCESS_KEY) {
           return json({ ok: false, error: "missing_r2_s3_credentials" }, 500);
@@ -3485,7 +3500,21 @@ export default {
           });
         };
 
-        for (let i = 0; i < (replayRows.results || []).length && accountsOut.length < wantFinal; i++) {
+        let resyncDelivered = 0;
+        for (let i = 0; i < missingOwnedIds.length && accountsOut.length < wantFinal; i++) {
+          const aid = String(missingOwnedIds[i] || "").trim();
+          if (!aid) continue;
+          const r = await env.DB
+            .prepare("SELECT account_id,email,password,r2_url,owner FROM accounts_v2 WHERE account_id=? AND owner=? LIMIT 1")
+            .bind(aid, ownerKey)
+            .first<{ account_id: string; email: string; password: string; r2_url: string | null; owner: string }>();
+          if (!r) continue;
+          await emitAccount(r, false);
+          resyncDelivered++;
+        }
+
+        let replayIssued = 0;
+        for (let i = 0; i < (replayRows.results || []).length && accountsOut.length < wantFinal && replayIssued < replayBudget; i++) {
           const r = (replayRows.results || [])[i];
           const claim = await env.DB
             .prepare("UPDATE accounts_v2 SET owner=?, updated_at=?, last_refilled_at=? WHERE account_id=? AND owner='-5'")
@@ -3501,6 +3530,8 @@ export default {
             .run();
 
           await emitAccount(r, true);
+          replayIssued++;
+          replayClaimed++;
         }
 
         for (let i = 0; i < (rows.results || []).length && accountsOut.length < wantFinal; i++) {
@@ -3512,6 +3543,7 @@ export default {
           if ((claim.meta?.changes || 0) !== 1) continue;
           r.owner = ownerKey;
           await emitAccount(r, false);
+          publicClaimed++;
         }
 
         // 4) 当日续杯计数 + 超限自动禁用
@@ -3579,6 +3611,21 @@ export default {
           expires_at: expiresAt,
           confidence_replay_percent: replayPercent,
           issued_replay_count: issuedReplayCount,
+          topup_debug: {
+            current_owned_before: currentOwnedNow,
+            requested_account_ids_count: requestedAccountIds.length,
+            owned_ids_count: ownedIdList.length,
+            missing_owned_ids_count: missingOwnedIds.length,
+            resync_delivered: resyncDelivered,
+            desired_to_limit: desiredToLimit,
+            want_final: wantFinal,
+            replay_budget: replayBudget,
+            replay_candidates: replayCandidates,
+            replay_claimed: replayClaimed,
+            public_need: publicNeed,
+            public_candidates: publicCandidates,
+            public_claimed: publicClaimed,
+          },
           accounts: accountsOut,
           received_at: receivedAt,
         });

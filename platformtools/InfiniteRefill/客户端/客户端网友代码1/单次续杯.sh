@@ -3,8 +3,7 @@ set -euo pipefail
 
 # 单次续杯（探测 -> 上报状态 -> 触发 topup -> 写入新账号 -> 删除失效账号）
 #
-# 依赖：curl
-# JSON 解析（任选其一）：python3（推荐）/ osascript(JXA, macOS 自带) / jq（可选兜底）
+# 依赖：curl、python3
 #
 # 服务端契约：
 # - POST /v1/refill/topup
@@ -15,18 +14,159 @@ set -euo pipefail
 #     {"ok":true,"accounts":[{"file_name":"无限续杯-001.json","download_url":"https://..."}], ...}
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-LIB_SH="$SCRIPT_DIR/json.sh"
-# shellcheck disable=SC1090
-source "$LIB_SH"
+need_cmd() {
+  local cmd="$1"
+  command -v "$cmd" >/dev/null 2>&1 || {
+    echo "[ERROR] 缺少依赖命令：$cmd"
+    exit 127
+  }
+}
+
+need_json_parser() {
+  need_cmd python3
+}
+
+json_auth_fields4() {
+  local f="$1"
+  python3 - "$f" <<'PY'
+import json, sys
+
+path = sys.argv[1]
+try:
+    with open(path, 'r', encoding='utf-8') as fp:
+        obj = json.load(fp)
+except Exception:
+    print('')
+    print('')
+    print('')
+    print('')
+    raise SystemExit(0)
+
+auth = obj.get('auth') if isinstance(obj.get('auth'), dict) else {}
+
+def pick(*vals):
+  for val in vals:
+    if isinstance(val, str) and val:
+      return val
+  return ''
+
+print(pick(auth.get('type'), obj.get('type')))
+print(pick(auth.get('access_token'), obj.get('access_token')))
+print(pick(auth.get('account_id'), obj.get('account_id')))
+print(pick(obj.get('email'), auth.get('email')))
+PY
+}
+
+json_normalize_wham_status() {
+  local raw_status="$1"
+  local body_file="$2"
+
+  if [[ "$raw_status" =~ ^[0-9]{3}$ ]] && [[ "$raw_status" != "000" ]]; then
+    echo "$raw_status"
+    return 0
+  fi
+
+  if [[ -f "$body_file" ]] && grep -Eqi 'quota|rate[[:space:]-_]*limit|too many|insufficient' "$body_file"; then
+    echo "429"
+    return 0
+  fi
+
+  echo "000"
+}
+
+json_topup_write_accounts_from_response() {
+  local resp_json="$1"
+  local accounts_dir="$2"
+  local rows_file
+  rows_file="${TMPDIR:-/tmp}/topup_rows_$$.tsv"
+
+  decode_base64_to_file() {
+    local data="$1"
+    local out_file="$2"
+
+    if printf '%s' "$data" | base64 --decode > "$out_file" 2>/dev/null; then
+      return 0
+    fi
+    if printf '%s' "$data" | base64 -D > "$out_file" 2>/dev/null; then
+      return 0
+    fi
+    return 1
+  }
+
+  python3 - "$resp_json" "$rows_file" <<'PY'
+import base64
+import json
+import sys
+
+resp_path = sys.argv[1]
+rows_path = sys.argv[2]
+
+with open(resp_path, 'r', encoding='utf-8') as fp:
+    data = json.load(fp)
+
+if data.get('ok') is False:
+    raise SystemExit(2)
+
+accounts = data.get('accounts')
+if not isinstance(accounts, list):
+    raise SystemExit(3)
+
+with open(rows_path, 'w', encoding='utf-8') as out:
+    for i, acc in enumerate(accounts, start=1):
+        if not isinstance(acc, dict):
+            continue
+        file_name = acc.get('file_name') or f'无限续杯-{i:03d}.json'
+        download_url = acc.get('download_url') or ''
+        payload = acc.get('account_json')
+        if payload is None:
+            payload = acc.get('json')
+        if payload is None:
+            payload = acc.get('content')
+
+        content_b64 = ''
+        if isinstance(payload, dict):
+            raw = json.dumps(payload, ensure_ascii=False).encode('utf-8')
+            content_b64 = base64.b64encode(raw).decode('ascii')
+        elif isinstance(payload, str) and payload.strip():
+            content_b64 = base64.b64encode(payload.encode('utf-8')).decode('ascii')
+
+        out.write(f"{file_name}\t{download_url}\t{content_b64}\n")
+PY
+
+  mkdir -p "$accounts_dir"
+  local count=0
+  local file_name download_url content_b64 out_path
+  while IFS=$'\t' read -r file_name download_url content_b64; do
+    [[ -n "$file_name" ]] || continue
+    out_path="$accounts_dir/$file_name"
+
+    if [[ -n "$content_b64" ]]; then
+      if ! decode_base64_to_file "$content_b64" "$out_path"; then
+        rm -f "$out_path" 2>/dev/null || true
+        continue
+      fi
+      count=$((count+1))
+      continue
+    fi
+
+    if [[ -n "$download_url" ]]; then
+      if curl -fsSL "$download_url" -o "$out_path"; then
+        count=$((count+1))
+      else
+        rm -f "$out_path" 2>/dev/null || true
+      fi
+    fi
+  done < "$rows_file"
+
+  rm -f "$rows_file" 2>/dev/null || true
+  echo "$count"
+}
 
 need_cmd curl
 need_json_parser
 
-CFG_YAML="$ROOT_DIR/config.yaml"
 CFG_ENV="$SCRIPT_DIR/无限续杯配置.env"
-ROOT_CFG_ENV="$ROOT_DIR/无限续杯配置.env"
 
 MODE_SYNC_ALL=0
 if [[ "${1:-}" == "--sync-all" ]]; then
@@ -39,14 +179,12 @@ USER_KEY="${2:-}"
 ACCOUNTS_DIR="$SCRIPT_DIR/accounts"
 TARGET_POOL_SIZE=10
 TOTAL_HOLD_LIMIT=50
-TRIGGER_REMAINING=2
-SYNC_MODE=none
 SYNC_TARGET_DIR=
+WHAM_CONNECT_TIMEOUT=5
+WHAM_MAX_TIME=15
+TOPUP_CONNECT_TIMEOUT=8
+TOPUP_MAX_TIME=30
 
-if [[ -f "$ROOT_CFG_ENV" ]]; then
-  # shellcheck disable=SC1090
-  source "$ROOT_CFG_ENV" || true
-fi
 if [[ -f "$CFG_ENV" ]]; then
   # shellcheck disable=SC1090
   source "$CFG_ENV" || true
@@ -57,9 +195,11 @@ USER_KEY="${USER_KEY:-${USER_KEY:-}}"
 ACCOUNTS_DIR="${ACCOUNTS_DIR:-$SCRIPT_DIR/accounts}"
 TARGET_POOL_SIZE="${TARGET_POOL_SIZE:-10}"
 TOTAL_HOLD_LIMIT="${TOTAL_HOLD_LIMIT:-50}"
-TRIGGER_REMAINING="${TRIGGER_REMAINING:-2}"
-SYNC_MODE="${SYNC_MODE:-none}"
 SYNC_TARGET_DIR="${SYNC_TARGET_DIR:-}"
+WHAM_CONNECT_TIMEOUT="${WHAM_CONNECT_TIMEOUT:-5}"
+WHAM_MAX_TIME="${WHAM_MAX_TIME:-15}"
+TOPUP_CONNECT_TIMEOUT="${TOPUP_CONNECT_TIMEOUT:-8}"
+TOPUP_MAX_TIME="${TOPUP_MAX_TIME:-30}"
 
 if [[ -z "$SERVER_URL" || -z "$USER_KEY" ]]; then
   echo "[ERROR] 未配置 SERVER_URL/USER_KEY，请先运行：bash \"$SCRIPT_DIR/无限续杯.sh\""
@@ -85,11 +225,10 @@ mkdir -p "$BACKUP_DIR"
 : > "$NETFAIL_LOG"
 
 sync_managed_json() {
-  local mode target
-  mode="$(printf '%s' "$SYNC_MODE" | tr '[:upper:]' '[:lower:]')"
+  local target
   target="$SYNC_TARGET_DIR"
 
-  [[ "$mode" == "none" || -z "$target" ]] && return 0
+  [[ -z "$target" ]] && return 0
   mkdir -p "$target"
 
   shopt -s nullglob
@@ -121,14 +260,12 @@ sync_managed_json() {
     [[ -e "$f" ]] || continue
     base="$(basename "$f")"
     tp="$target/$base"
-    if [[ "$mode" == "symlink" ]]; then
-      if [[ -L "$tp" ]]; then
-        rm -f "$tp" 2>/dev/null || true
-      elif [[ -e "$tp" ]]; then
-        continue
-      fi
-      ln -s "$f" "$tp" 2>/dev/null || true
+    if [[ -L "$tp" ]]; then
+      rm -f "$tp" 2>/dev/null || true
+    elif [[ -e "$tp" ]]; then
+      continue
     fi
+    ln -s "$f" "$tp" 2>/dev/null || true
   done
 
   printf "%s\n" "${names[@]}" > "$manifest"
@@ -141,7 +278,7 @@ if [[ "$MODE_SYNC_ALL" == "1" ]]; then
   mkdir -p "$OUT_DIR"
 
   echo "[INFO] 全量同步：POST $SERVER_URL/v1/refill/sync-all"
-  curl -sS -X POST "$SERVER_URL/v1/refill/sync-all" \
+  curl -sS --connect-timeout "$TOPUP_CONNECT_TIMEOUT" --max-time "$TOPUP_MAX_TIME" -X POST "$SERVER_URL/v1/refill/sync-all" \
     -H "X-User-Key: $USER_KEY" \
     -H "Content-Type: application/json" \
     --data-binary "{}" > "$RESP_JSON"
@@ -159,13 +296,6 @@ if [[ "$MODE_SYNC_ALL" == "1" ]]; then
   sync_managed_json
   echo "[OK] 全量同步完成"
   exit 0
-fi
-
-# managed set: prefer 无限续杯-*.json
-managed_glob=("$ACCOUNTS_DIR"/无限续杯-*.json)
-use_prefix=0
-if [[ -e "${managed_glob[0]}" ]]; then
-  use_prefix=1
 fi
 
 total=0
@@ -192,14 +322,14 @@ probe_one() {
   local status wham_body
   wham_body="$OUT_DIR/.wham.$$.tmp"
   if [[ -n "$aid" ]]; then
-    status="$(curl -sS -o "$wham_body" -w "%{http_code}" \
+    status="$(curl -sS --connect-timeout "$WHAM_CONNECT_TIMEOUT" --max-time "$WHAM_MAX_TIME" -o "$wham_body" -w "%{http_code}" \
       -H "Authorization: Bearer $token" \
       -H "Chatgpt-Account-Id: $aid" \
       -H "Accept: application/json, text/plain, */*" \
       -H "User-Agent: codex_cli_rs/0.76.0 (macOS/Linux)" \
       "https://chatgpt.com/backend-api/wham/usage" || true)"
   else
-    status="$(curl -sS -o "$wham_body" -w "%{http_code}" \
+    status="$(curl -sS --connect-timeout "$WHAM_CONNECT_TIMEOUT" --max-time "$WHAM_MAX_TIME" -o "$wham_body" -w "%{http_code}" \
       -H "Authorization: Bearer $token" \
       -H "Accept: application/json, text/plain, */*" \
       -H "User-Agent: codex_cli_rs/0.76.0 (macOS/Linux)" \
@@ -221,7 +351,7 @@ probe_one() {
 
   local ident
   if [[ -n "$email" ]]; then
-    ident="email:$(printf '%s' "$email" | tr '[:upper:]' '[:lower:]')"
+    ident="email:${email,,}"
   else
     ident="account_id:$aid"
   fi
@@ -243,48 +373,33 @@ probe_one() {
   fi
 }
 
-if [[ "$use_prefix" == "1" ]]; then
-  echo "[INFO] 检测到前缀“无限续杯-*.json”，仅管理这些文件"
-  for f in "$ACCOUNTS_DIR"/无限续杯-*.json; do
-    [[ -f "$f" ]] || continue
-    total=$((total+1))
-    probe_one "$f"
-  done
-else
-  echo "[WARN] 未检测到“无限续杯-*.json”，将退化为管理 accounts-dir 下所有 codex 文件（可能包含你的其它文件）"
-  for f in "$ACCOUNTS_DIR"/*.json; do
-    [[ -f "$f" ]] || continue
-    total=$((total+1))
-    probe_one "$f"
-  done
-fi
+for f in "$ACCOUNTS_DIR"/*.json; do
+  [[ -f "$f" ]] || continue
+  total=$((total+1))
+  probe_one "$f"
+done
 
 available_est=$((total - invalid))
+hold_limit="$TOTAL_HOLD_LIMIT"
+if ! [[ "$hold_limit" =~ ^[0-9]+$ ]] || [[ "$hold_limit" -lt 1 ]]; then
+  hold_limit=50
+fi
 
-# 计算 hold_limit
-hold_limit="${TOTAL_HOLD_LIMIT:-50}"
-if ! [[ "$hold_limit" =~ ^[0-9]+$ ]] || [[ "$hold_limit" -lt 1 ]]; then hold_limit=50; fi
-
-# REQUEST_TARGET = hold_limit - available_est（精确补差，不超发）
-request_target=$((hold_limit - available_est))
-if [[ "$request_target" -lt 0 ]]; then request_target=0; fi
+request_target="$TARGET_POOL_SIZE"
+if [[ "$hold_limit" -gt "$request_target" ]]; then
+  request_target="$hold_limit"
+fi
 
 echo "[INFO] 统计：total=$total available_est=$available_est probed_ok=$probed_ok net_fail=$net_fail invalid(401/429)=$invalid hold_limit=$hold_limit request_target=$request_target"
 
-# 触发规则
+# 规则：网络失败(net_fail)默认按“可用”计入 available_est（即不算 invalid）
 need_trigger=0
 if [[ "$invalid" -gt 0 ]]; then need_trigger=1; fi
 if [[ "$total" -lt "$TARGET_POOL_SIZE" ]]; then need_trigger=1; fi
-if [[ "$hold_limit" -gt 0 ]] && [[ "$available_est" -lt "$hold_limit" ]]; then need_trigger=1; fi
+if [[ "$total" -lt "$hold_limit" ]]; then need_trigger=1; fi
 
 if [[ "$need_trigger" == "0" ]]; then
   echo "[OK] 未达到续杯条件：无需 topup"
-  exit 0
-fi
-
-# 持有量已达上限时提前退出
-if [[ "$request_target" -eq 0 ]]; then
-  echo "[OK] 无需续杯：持有量已达上限（available_est=$available_est hold_limit=$hold_limit）"
   exit 0
 fi
 
@@ -305,7 +420,7 @@ fi
 } > "$BODY_JSON"
 
 echo "[INFO] 触发 topup：POST $SERVER_URL/v1/refill/topup"
-curl -sS -X POST "$SERVER_URL/v1/refill/topup" \
+curl -sS --connect-timeout "$TOPUP_CONNECT_TIMEOUT" --max-time "$TOPUP_MAX_TIME" -X POST "$SERVER_URL/v1/refill/topup" \
   -H "X-User-Key: $USER_KEY" \
   -H "Content-Type: application/json" \
   --data-binary "@$BODY_JSON" > "$RESP_JSON"
@@ -337,7 +452,7 @@ done < "$REPORT_JSONL"
 sync_managed_json
 
 echo "[OK] 已完成单次续杯：新账号已写入 accounts-dir；失效(401/429/周配额耗尽映射429)文件已备份并删除。"
-if [[ "$(printf '%s' "$SYNC_MODE" | tr '[:upper:]' '[:lower:]')" != "none" && -n "$SYNC_TARGET_DIR" ]]; then
-  echo "[OK] 已同步 managed json 到：${SYNC_TARGET_DIR}（mode=${SYNC_MODE}）"
+if [[ -n "$SYNC_TARGET_DIR" ]]; then
+  echo "[OK] 已同步 managed json 到：$SYNC_TARGET_DIR"
 fi
 echo "      输出：$OUT_DIR"
