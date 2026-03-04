@@ -175,11 +175,19 @@ if !间隔分钟! LSS 10 (
 )
 
 call :CALC_START_TIME !间隔分钟!
-set "TR=powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command ""& '%SCRIPT_DIR%_内部_自动清理.bat' apply nopause; & '%SCRIPT_DIR%单次续杯.bat' --from-task"""
+REM 生成定时任务入口脚本（避免 schtasks /TR 引号/中文路径兼容问题）
+set "TASK_ENTRY=!SCRIPT_DIR!_定时任务_入口.bat"
+>"!TASK_ENTRY!" (
+  echo @echo off
+  echo chcp 65001 ^>nul
+  echo call "!SCRIPT_DIR!_内部_自动清理.bat" apply nopause
+  echo call "!SCRIPT_DIR!单次续杯.bat" --from-task
+)
 
 echo.
 echo [INFO] 正在创建/更新计划任务（串行：先清理后续杯）：%REFILL_TASK%
-schtasks /Create /F /TN "%REFILL_TASK%" /SC MINUTE /MO !间隔分钟! /ST !TASK_START! /TR "!TR!" /RL HIGHEST >nul 2>nul
+echo [DIAG] TASK_ENTRY=!TASK_ENTRY!
+schtasks /Create /F /TN "%REFILL_TASK%" /SC MINUTE /MO !间隔分钟! /ST !TASK_START! /TR "\"!TASK_ENTRY!\"" /RL HIGHEST
 if errorlevel 1 (
   echo [WARN] 创建失败（可能需要管理员权限）。
   pause
@@ -283,8 +291,17 @@ if not "%ACTIVE_CFG%"=="" if exist "%ACTIVE_CFG%" (
 for /f "delims=0123456789" %%I in ("!间隔分钟!") do set "间隔分钟=30"
 if !间隔分钟! LSS 10 set "间隔分钟=10"
 call :CALC_START_TIME !间隔分钟!
-set "TR=powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command ""& '%SCRIPT_DIR%_内部_自动清理.bat' apply nopause; & '%SCRIPT_DIR%单次续杯.bat' --from-task"""
-schtasks /Create /F /TN "%REFILL_TASK%" /SC MINUTE /MO !间隔分钟! /ST !TASK_START! /TR "!TR!" /RL HIGHEST >nul 2>nul
+REM 复用定时任务入口脚本（已由 ENABLE_TASK 生成）
+set "TASK_ENTRY=!SCRIPT_DIR!_定时任务_入口.bat"
+if not exist "!TASK_ENTRY!" (
+  >"!TASK_ENTRY!" (
+    echo @echo off
+    echo chcp 65001 ^>nul
+    echo call "!SCRIPT_DIR!_内部_自动清理.bat" apply nopause
+    echo call "!SCRIPT_DIR!单次续杯.bat" --from-task
+  )
+)
+schtasks /Create /F /TN "%REFILL_TASK%" /SC MINUTE /MO !间隔分钟! /ST !TASK_START! /TR "\"!TASK_ENTRY!\"" /RL HIGHEST
 schtasks /Delete /F /TN "%CLEAN_TASK%" >nul 2>nul
 echo [INFO] 已按手动续杯时间重置下次自动续杯时间：!TASK_START!（后台串行：先清理后续杯）
 call :CLEANUP_OLD_TASKS

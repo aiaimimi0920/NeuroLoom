@@ -13,18 +13,23 @@ x-register-common: &register-common
     - ./uploader.py:/app/uploader.py
     - ./repairer.py:/app/repairer.py
     - ../../mailcreate/client:/mailcreate/client:ro
+    - ../../../:/workspace:ro
   environment:
     - DATA_DIR=/data
+    - PYTHONPATH=/workspace
     - DEBUG_TRACE=0
-    - DUMP_PAGE_BODY=0
-    - KEEP_ERROR_ARTIFACTS=0
+    - DUMP_PAGE_BODY=1
+    - KEEP_ERROR_ARTIFACTS=1
+    - MAILCREATE_DOMAIN=mail.aiaimimi.com
+    - MAIL_DOMAIN_HEALTH_ORDER=mail.aiaimimi.com
+    - MAILBOX_PICK_TRIES=1
     - DISABLE_PROXY=0
     - BLOCK_IMAGES=0
     - BLOCK_CSS=0
     - BLOCK_FONTS=0
     - BLOCK_GOOGLE_OPT_GUIDE=2
     - BLOCK_NOISY_HOSTS=2
-    - CONCURRENCY=1
+    - CONCURRENCY=3
     - HEADLESS=1
     - ENABLE_REPAIRER=0
     - SLEEP_MIN=0
@@ -43,15 +48,18 @@ services:
       - DATA_DIR=/data
       - INSTANCE_ID=codex_register_1
       - DEBUG_TRACE=0
-      - DUMP_PAGE_BODY=0
-      - KEEP_ERROR_ARTIFACTS=0
+      - DUMP_PAGE_BODY=1
+      - KEEP_ERROR_ARTIFACTS=1
+      - MAILCREATE_DOMAIN=mail.aiaimimi.com
+      - MAIL_DOMAIN_HEALTH_ORDER=mail.aiaimimi.com
+      - MAILBOX_PICK_TRIES=1
       - DISABLE_PROXY=0
       - BLOCK_IMAGES=0
       - BLOCK_CSS=0
       - BLOCK_FONTS=0
       - BLOCK_GOOGLE_OPT_GUIDE=2
       - BLOCK_NOISY_HOSTS=2
-      - CONCURRENCY=1
+      - CONCURRENCY=3
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0

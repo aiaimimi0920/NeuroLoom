@@ -16,5 +16,15 @@ def run_browser_register(proxy: str | None) -> tuple[str, str, Any, Any]:
     """
 
     driver, proxy_dir = browser_new_driver(proxy)
-    reg_email, res = browser_register(driver, proxy)
-    return reg_email, res, driver, proxy_dir
+    try:
+        reg_email, res = browser_register(driver, proxy)
+        return reg_email, res, driver, proxy_dir
+    except Exception as e:
+        # Keep driver/proxy_dir reachable by caller even when register raises,
+        # so debug mode can keep browser open and block for manual inspection.
+        try:
+            setattr(e, "_nl_driver", driver)
+            setattr(e, "_nl_proxy_dir", proxy_dir)
+        except Exception:
+            pass
+        raise

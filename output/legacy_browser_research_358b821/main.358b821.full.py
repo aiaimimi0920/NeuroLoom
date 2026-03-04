@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import base64
 import hashlib
@@ -36,7 +36,6 @@ import shutil
 import subprocess
 import concurrent.futures
 import threading
-import atexit
 import socket
 import subprocess
 
@@ -3235,14 +3234,9 @@ def worker(worker_id: int):
 
         except RuntimeError as e:
             # Expected blocks, no stack trace needed
-            if driver is None:
-                driver = getattr(e, "_nl_driver", None)
-            if proxy_dir is None:
-                proxy_dir = getattr(e, "_nl_proxy_dir", None)
             fatal_driver_errors = 0
             keep_browser_for_debug = (DEBUG_KEEP_BROWSER_ON_FAIL == 1 and driver is not None)
-            # Debug mode must stop next-round loop even if driver handle is lost.
-            need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1)
+            need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1 and driver is not None)
             # Capture screenshot for debugging
             if driver is not None:
                 try:
@@ -3251,13 +3245,9 @@ def worker(worker_id: int):
                     pass
             print(f"[Worker {worker_id}] [x] {e} (准备换IP重试)")
         except TimeoutException as e:
-            if driver is None:
-                driver = getattr(e, "_nl_driver", None)
-            if proxy_dir is None:
-                proxy_dir = getattr(e, "_nl_proxy_dir", None)
             fatal_driver_errors = 0
             keep_browser_for_debug = (DEBUG_KEEP_BROWSER_ON_FAIL == 1 and driver is not None)
-            need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1)
+            need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1 and driver is not None)
             # Capture screenshot for debugging
             if driver is not None:
                 try:
@@ -3266,10 +3256,6 @@ def worker(worker_id: int):
                     pass
             print(f"[Worker {worker_id}] [x] 页面加载超时，可能遇到风控盾拦截。 (准备换IP重试)")
         except Exception as e:
-            if driver is None:
-                driver = getattr(e, "_nl_driver", None)
-            if proxy_dir is None:
-                proxy_dir = getattr(e, "_nl_proxy_dir", None)
             err_str = str(e)
             is_proxy_eof = (
                 "RemoteDisconnected" in err_str
@@ -3289,7 +3275,7 @@ def worker(worker_id: int):
             if is_proxy_eof:
                 fatal_driver_errors = 0
                 keep_browser_for_debug = (DEBUG_KEEP_BROWSER_ON_FAIL == 1 and driver is not None)
-                need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1)
+                need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1 and driver is not None)
                 # Capture screenshot for proxy EOF errors too
                 if driver is not None:
                     try:
@@ -3301,7 +3287,7 @@ def worker(worker_id: int):
                 import traceback
                 trace_str = traceback.format_exc()
                 keep_browser_for_debug = (DEBUG_KEEP_BROWSER_ON_FAIL == 1 and driver is not None)
-                need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1)
+                need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1 and driver is not None)
                 # Capture screenshot for unexpected errors
                 if driver is not None:
                     try:
@@ -3323,23 +3309,16 @@ def worker(worker_id: int):
                     fatal_driver_errors = 0
 
         finally:
-            if need_wait_for_debug:
-                if driver is not None:
-                    print(
-                        f"[Worker {worker_id}] [debug] 检测到失败，按 DEBUG_WAIT_ON_FAIL=1 进入现场等待。"
-                        f" 浏览器将保持打开，按 Ctrl+C 结束本轮。"
-                    )
-                else:
-                    print(
-                        f"[Worker {worker_id}] [debug] 检测到失败，进入等待（driver 句柄缺失）。"
-                        f" 为防止继续弹窗，按 Ctrl+C 结束本轮。"
-                    )
+            if need_wait_for_debug and driver is not None:
+                print(
+                    f"[Worker {worker_id}] [debug] 检测到失败，按 DEBUG_WAIT_ON_FAIL=1 进入现场等待。"
+                    f" 浏览器将保持打开，按 Ctrl+C 继续。"
+                )
                 try:
                     while True:
                         time.sleep(1.0)
                 except KeyboardInterrupt:
-                    print(f"[Worker {worker_id}] [debug] 收到 Ctrl+C，结束现场等待并停止该 worker（避免再次弹窗）。")
-                    return
+                    print(f"[Worker {worker_id}] [debug] 收到 Ctrl+C，结束现场等待。")
 
             if driver and not keep_browser_for_debug:
                 try:
@@ -3360,39 +3339,6 @@ def worker(worker_id: int):
         time.sleep(sleep_time)
 
 if __name__ == "__main__":
-    # Hard singleton guard for local visible debug mode.
-    # Even if multiple terminals launch this script, only one process may proceed.
-    debug_singleton = (
-        int(os.environ.get("DEBUG_WAIT_ON_FAIL", "0") or "0") == 1
-        and int(os.environ.get("HEADLESS", "1") or "1") == 0
-    )
-    _debug_singleton_lockfile = os.path.join(tempfile.gettempdir(), "codex_register_debug_singleton.lock")
-    _debug_singleton_fd = None
-    if debug_singleton:
-        try:
-            _debug_singleton_fd = os.open(_debug_singleton_lockfile, os.O_CREAT | os.O_EXCL | os.O_RDWR)
-            os.write(_debug_singleton_fd, str(os.getpid()).encode("utf-8", errors="ignore"))
-
-            def _cleanup_debug_singleton_lock() -> None:
-                try:
-                    if _debug_singleton_fd is not None:
-                        os.close(_debug_singleton_fd)
-                except Exception:
-                    pass
-                try:
-                    if os.path.exists(_debug_singleton_lockfile):
-                        os.remove(_debug_singleton_lockfile)
-                except Exception:
-                    pass
-
-            atexit.register(_cleanup_debug_singleton_lock)
-        except FileExistsError:
-            print(f"[debug] singleton lock exists, refuse duplicate process: {_debug_singleton_lockfile}")
-            raise SystemExit(1)
-        except Exception as e:
-            print(f"[debug] singleton lock create failed, refuse start: {e}")
-            raise SystemExit(1)
-
     os.makedirs(DATA_DIR, exist_ok=True)
 
     # Per-instance dirs (safe for multi-container shared volume)

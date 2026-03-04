@@ -17,7 +17,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-LIB_SH="$ROOT_DIR/客户端/_lib/json.sh"
+LIB_SH="$SCRIPT_DIR/json.sh"
 # shellcheck disable=SC1090
 source "$LIB_SH"
 
@@ -84,45 +84,6 @@ mkdir -p "$BACKUP_DIR"
 : > "$REPORT_JSONL"
 : > "$NETFAIL_LOG"
 
-if [[ "$MODE_SYNC_ALL" == "1" ]]; then
-  TS_SYNCALL="$(date -u +%Y%m%d-%H%M%S)"
-  OUT_DIR="${TMPDIR:-/tmp}/InfiniteRefill-syncall-$TS_SYNCALL"
-  RESP_JSON="$OUT_DIR/sync_all_response.json"
-  mkdir -p "$OUT_DIR"
-
-  echo "[INFO] 全量同步：POST $SERVER_URL/v1/refill/sync-all"
-  curl -sS -X POST "$SERVER_URL/v1/refill/sync-all" \
-    -H "X-User-Key: $USER_KEY" \
-    -H "Content-Type: application/json" \
-    --data-binary "{}" > "$RESP_JSON"
-
-  if ! count_new="$(json_topup_write_accounts_from_response "$RESP_JSON" "$ACCOUNTS_DIR" 2>/dev/null)"; then
-    if grep -qi '"error"[[:space:]]*:[[:space:]]*"not-found"\|"error"[[:space:]]*:[[:space:]]*"not_found"' "$RESP_JSON" 2>/dev/null; then
-      echo "[ERROR] sync-all 接口不存在：请先部署最新版服务端（包含 /v1/refill/sync-all）"
-      exit 2
-    fi
-    echo "[ERROR] sync-all failed（原始响应如下）:"
-    cat "$RESP_JSON" || true
-    exit 2
-  fi
-  echo "[INFO] 已同步账号：$count_new"
-  sync_managed_json
-  echo "[OK] 全量同步完成"
-  exit 0
-fi
-
-# managed set: prefer 无限续杯-*.json
-managed_glob=("$ACCOUNTS_DIR"/无限续杯-*.json)
-use_prefix=0
-if [[ -e "${managed_glob[0]}" ]]; then
-  use_prefix=1
-fi
-
-total=0
-probed_ok=0
-net_fail=0
-invalid=0
-
 sync_managed_json() {
   local mode target
   mode="$(printf '%s' "$SYNC_MODE" | tr '[:upper:]' '[:lower:]')"
@@ -172,6 +133,45 @@ sync_managed_json() {
 
   printf "%s\n" "${names[@]}" > "$manifest"
 }
+
+if [[ "$MODE_SYNC_ALL" == "1" ]]; then
+  TS_SYNCALL="$(date -u +%Y%m%d-%H%M%S)"
+  OUT_DIR="${TMPDIR:-/tmp}/InfiniteRefill-syncall-$TS_SYNCALL"
+  RESP_JSON="$OUT_DIR/sync_all_response.json"
+  mkdir -p "$OUT_DIR"
+
+  echo "[INFO] 全量同步：POST $SERVER_URL/v1/refill/sync-all"
+  curl -sS -X POST "$SERVER_URL/v1/refill/sync-all" \
+    -H "X-User-Key: $USER_KEY" \
+    -H "Content-Type: application/json" \
+    --data-binary "{}" > "$RESP_JSON"
+
+  if ! count_new="$(json_topup_write_accounts_from_response "$RESP_JSON" "$ACCOUNTS_DIR" 2>/dev/null)"; then
+    if grep -qi '"error"[[:space:]]*:[[:space:]]*"not-found"\|"error"[[:space:]]*:[[:space:]]*"not_found"' "$RESP_JSON" 2>/dev/null; then
+      echo "[ERROR] sync-all 接口不存在：请先部署最新版服务端（包含 /v1/refill/sync-all）"
+      exit 2
+    fi
+    echo "[ERROR] sync-all failed（原始响应如下）:"
+    cat "$RESP_JSON" || true
+    exit 2
+  fi
+  echo "[INFO] 已同步账号：$count_new"
+  sync_managed_json
+  echo "[OK] 全量同步完成"
+  exit 0
+fi
+
+# managed set: prefer 无限续杯-*.json
+managed_glob=("$ACCOUNTS_DIR"/无限续杯-*.json)
+use_prefix=0
+if [[ -e "${managed_glob[0]}" ]]; then
+  use_prefix=1
+fi
+
+total=0
+probed_ok=0
+net_fail=0
+invalid=0
 
 probe_one() {
   local f="$1"

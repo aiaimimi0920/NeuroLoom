@@ -1,4 +1,4 @@
-# 使用稳定的 Debian 发行版以降低 apt 镜像波动导致的构建失败概率（之前出现 502）
+﻿# 使用稳定的 Debian 发行版以降低 apt 镜像波动导致的构建失败概率（之前出现 502）
 FROM python:3.11-slim-bookworm
 
 # 设置无交互模式，避免 apt-get 卡住
@@ -22,9 +22,7 @@ RUN set -eux; \
         apt-transport-https \
         ca-certificates \
         curl \
-        unzip \
-        chromium \
-        chromium-driver; then \
+        unzip; then \
         break; \
       fi; \
       sleep $((i*3)); \
@@ -49,16 +47,12 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 复制主逻辑脚本 + uploader + stealth evasion scripts
+# 复制主逻辑脚本 + uploader
 COPY main.py .
 COPY uploader.py .
-COPY stealth_scripts/ ./stealth_scripts/
 
-# 设置环境变量
-# - PYTHONUNBUFFERED: 避免 Python 输出被缓冲
-# - PYTHONPATH: 让 /workspace 下的 platformtools 包可被 /app/main.py 直接导入
+# 设置环境变量，避免 Python 输出被缓冲
 ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/workspace
 
 # 启动脚本
 CMD ["python", "main.py"]

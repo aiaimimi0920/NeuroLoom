@@ -1,20 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 设计约束：把【无限续杯】作为"配置任务入口"（macOS/Linux）。
+# 设计约束：把【无限续杯】作为“配置任务入口”（macOS/Linux）。
 # - 不带参数：菜单（可输出 cron 配置行 / 单次续杯 / 自动清理）
 # - 带参数（服务器地址 用户密钥）：直接执行一次【单次续杯】
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CFG="$SCRIPT_DIR/无限续杯配置.env"
-ROOT_CFG="$ROOT_DIR/无限续杯配置.env"
 
-server_url="${1:-}"
-user_key="${2:-}"
+server_url_input="${1:-}"
+user_key_input="${2:-}"
 
-if [[ -n "$server_url" && -n "$user_key" ]]; then
-  bash "$SCRIPT_DIR/单次续杯.sh" "$server_url" "$user_key"
+if [[ -n "$server_url_input" && -n "$user_key_input" ]]; then
+  bash "$SCRIPT_DIR/单次续杯.sh" "$server_url_input" "$user_key_input"
   exit 0
 fi
 
@@ -27,14 +25,11 @@ SERVER_URL=
 USER_KEY=
 ACCOUNTS_DIR=$SCRIPT_DIR/accounts
 TARGET_POOL_SIZE=10
-TRIGGER_REMAINING=2
 INTERVAL_MINUTES=30
 AUTO_REFILL_AFTER_CLEAN=1
 AUTO_CLEAN_INTERVAL_MINUTES=30
-AUTO_CLEAN_APPLY=1
 CLEAN_DELETE_STATUSES=401,429
 CLEAN_EXPIRED_DAYS=30
-SYNC_MODE=none
 SYNC_TARGET_DIR=
 EOF
   fi
@@ -42,23 +37,18 @@ EOF
 
 load_cfg() {
   ensure_cfg
-  if [[ -f "$ROOT_CFG" ]]; then
-    # shellcheck disable=SC1090
-    source "$ROOT_CFG"
-  fi
   # shellcheck disable=SC1090
   source "$CFG"
 }
 
 ensure_sync_links() {
-  local mode target accounts linked=0 removed=0
-  mode="${SYNC_MODE:-none}"
+  local target accounts linked=0 removed=0
   target="${SYNC_TARGET_DIR:-}"
   accounts="${ACCOUNTS_DIR:-$SCRIPT_DIR/accounts}"
   local manifest
   manifest="$target/.infinite_refill_sync_manifest.txt"
 
-  if [[ "$(printf '%s' "$mode" | tr '[:upper:]' '[:lower:]')" != "symlink" || -z "$target" ]]; then
+  if [[ -z "$target" ]]; then
     return 0
   fi
 
@@ -102,13 +92,13 @@ ensure_sync_links() {
   done
 
   printf "%s\n" "${names[@]}" > "$manifest"
-  echo "[OK] 已确保同步软链接：${target}（linked=${linked} removed=${removed}）"
+  echo "[OK] 已确保同步软链接：$target（linked=$linked removed=$removed）"
 }
 
 menu() {
   echo
   echo "====== 无限续杯（配置入口 / macOS/Linux）======"
-  echo "配置文件：${CFG}"
+  echo "配置文件：$CFG"
   echo
   echo "1) 立即执行一次【单次续杯】（使用已保存配置）"
   echo "2) 设置/更新【无限续杯配置】（服务器地址/用户密钥/间隔）"
@@ -121,10 +111,10 @@ menu() {
 
 while true; do
   menu
-  read -r -p "请选择 (1-5，默认 3)：" choice
-  choice="${choice:-3}"
+  read -r -p "请选择 (1-5，默认 3)：" menu_choice
+  menu_choice="${menu_choice:-3}"
 
-  case "$choice" in
+  case "$menu_choice" in
     1)
       bash "$SCRIPT_DIR/单次续杯.sh"
       ;;
@@ -143,10 +133,10 @@ while true; do
       fi
       mkdir -p "$default_accounts_dir"
 
-      read -r -p "请输入服务器地址（填空则使用默认值：${default_server_url}）: " input_server_url
-      input_server_url="${input_server_url:-$default_server_url}"
-      read -r -p "请输入用户密钥（填空则使用默认值：${default_user_key}）: " input_user_key
-      input_user_key="${input_user_key:-$default_user_key}"
+      read -r -p "请输入服务器地址（填空则使用默认值：$default_server_url）: " server_url_input
+      server_url_input="${server_url_input:-$default_server_url}"
+      read -r -p "请输入用户密钥（填空则使用默认值：$default_user_key）: " user_key_input
+      user_key_input="${user_key_input:-$default_user_key}"
 
       detected_sync_dir=""
       if [[ -d "$HOME/.cli-proxy-api" ]]; then
@@ -156,22 +146,20 @@ while true; do
       else
         detected_sync_dir="$HOME/.cli-proxy-api"
       fi
-      echo "[INFO] 检测到默认同步目录：${detected_sync_dir}"
-      read -r -p "是否同步到CLI目录（y/N）: " do_sync
-      if [[ "${do_sync:-N}" =~ ^[Yy]$ ]]; then
-        sync_mode="symlink"
-        read -r -p "请选择同步目录（填空则使用默认值：${detected_sync_dir}）: " sync_dir
-        sync_dir="${sync_dir:-$detected_sync_dir}"
+      echo "[INFO] 检测到默认同步目录：$detected_sync_dir"
+      read -r -p "是否同步到CLI目录（y/N）: " enable_sync_choice
+      if [[ "${enable_sync_choice:-N}" =~ ^[Yy]$ ]]; then
+        read -r -p "请选择同步目录（填空则使用默认值：$detected_sync_dir）: " sync_dir_input
+        sync_dir_input="${sync_dir_input:-$detected_sync_dir}"
       else
-        sync_mode="none"
-        sync_dir=""
+        sync_dir_input=""
       fi
 
-      read -r -p "请输入执行间隔（分钟，默认 30）: " interval_min
-      interval_min="${interval_min:-30}"
-      clean_interval="$interval_min"
+      read -r -p "请输入执行间隔（分钟，默认 30）: " interval_minutes_input
+      interval_minutes_input="${interval_minutes_input:-30}"
+      clean_interval_minutes="$interval_minutes_input"
 
-      if [[ -z "$input_server_url" || -z "$input_user_key" ]]; then
+      if [[ -z "$server_url_input" || -z "$user_key_input" ]]; then
         echo "[ERROR] 服务器地址/用户密钥不能为空"
         continue
       fi
@@ -179,22 +167,19 @@ while true; do
       cat >"$CFG" <<EOF
 # 无限续杯配置（本地文件）
 # 注意：请勿分享/上传此文件。
-SERVER_URL=$input_server_url
-USER_KEY=$input_user_key
+SERVER_URL=$server_url_input
+USER_KEY=$user_key_input
 ACCOUNTS_DIR=$default_accounts_dir
 TARGET_POOL_SIZE=10
-TRIGGER_REMAINING=2
-INTERVAL_MINUTES=$interval_min
+INTERVAL_MINUTES=$interval_minutes_input
 AUTO_REFILL_AFTER_CLEAN=1
-AUTO_CLEAN_INTERVAL_MINUTES=$clean_interval
-AUTO_CLEAN_APPLY=1
+AUTO_CLEAN_INTERVAL_MINUTES=$clean_interval_minutes
 CLEAN_DELETE_STATUSES=401,429
 CLEAN_EXPIRED_DAYS=30
-SYNC_MODE=$sync_mode
-SYNC_TARGET_DIR=$sync_dir
+SYNC_TARGET_DIR=$sync_dir_input
 EOF
       echo "[OK] 已保存：$CFG"
-      SYNC_MODE="$sync_mode" SYNC_TARGET_DIR="$sync_dir" ACCOUNTS_DIR="$default_accounts_dir" ensure_sync_links
+  SYNC_TARGET_DIR="$sync_dir_input" ACCOUNTS_DIR="$default_accounts_dir" ensure_sync_links
       ;;
     3)
       load_cfg
@@ -215,7 +200,7 @@ EOF
       exit 0
       ;;
     *)
-      echo "[WARN] 无效选择：${choice}"
+      echo "[WARN] 无效选择：$menu_choice"
       ;;
   esac
 

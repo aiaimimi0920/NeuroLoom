@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import base64
 import hashlib
@@ -33,12 +33,9 @@ from urllib.parse import urlparse, parse_qs
 from urllib import request
 import tempfile
 import shutil
-import subprocess
 import concurrent.futures
 import threading
-import atexit
 import socket
-import subprocess
 
 write_lock = threading.Lock()
 driver_init_lock = threading.Lock()
@@ -496,69 +493,8 @@ def _dump_page_body(*, driver, kind: str, message: str = "") -> None:
             print("[dump] body.innerText (first 4000 chars):\n" + body_text_snippet)
 
 
-def _checkpoint_screenshot(driver, step: str) -> None:
-    """Save a checkpoint screenshot at the current registration step.
-    Controlled by ENABLE_CHECKPOINT_SCREENSHOT env var (default: 0 = off).
-
-    This captures the browser state while the driver is still alive.
-    Files saved:
-    - checkpoint_latest.png  (always overwritten = last known state)
-    - checkpoint_{step}_{ts}.png  (per-step timestamped copy)
-    """
-    if os.environ.get("ENABLE_CHECKPOINT_SCREENSHOT", "0") != "1":
-        return
-    err_dir = _data_path(ERROR_DIRNAME, INSTANCE_ID)
-    try:
-        os.makedirs(err_dir, exist_ok=True)
-    except Exception:
-        pass
-
-    latest = os.path.join(err_dir, "checkpoint_latest.png")
-    ts = int(time.time())
-    safe_step = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(step or "step"))[:64] or "step"
-    named = os.path.join(err_dir, f"checkpoint_{safe_step}_{ts}.png")
-
-    # Short delay to let page render (prevents blank/white screenshots in headless mode)
-    time.sleep(1.0)
-
-    ok = False
-    for method_name, method_fn in [
-        ("save_screenshot", lambda p: driver.save_screenshot(p)),
-        ("get_screenshot_as_png", lambda p: _write_bytes(p, driver.get_screenshot_as_png())),
-        ("get_screenshot_as_base64", lambda p: _write_bytes(p, base64.b64decode(driver.get_screenshot_as_base64()))),
-    ]:
-        try:
-            method_fn(named)
-            if os.path.exists(named) and os.path.getsize(named) > 0:
-                ok = True
-                break
-        except Exception:
-            continue
-
-    if ok:
-        try:
-            shutil.copy2(named, latest)
-        except Exception:
-            pass
-        _keep_last_n_files(os.path.join(err_dir, f"checkpoint_{safe_step}_*.png"), keep=3)
-    else:
-        # Fallback: save page source HTML as a visual reference
-        try:
-            html_path = os.path.join(err_dir, f"checkpoint_{safe_step}_{ts}.html")
-            with open(html_path, "w", encoding="utf-8") as f:
-                f.write(str(getattr(driver, "page_source", "") or ""))
-            _keep_last_n_files(os.path.join(err_dir, f"checkpoint_{safe_step}_*.html"), keep=3)
-        except Exception:
-            pass
-
-
-def _write_bytes(path: str, data: bytes) -> None:
-    with open(path, "wb") as f:
-        f.write(data)
-
-
 def _save_error_artifacts(*, driver, kind: str, message: str = "") -> None:
-    """Save screenshot + page source + text log, and keep only last 10 of each kind."""
+    """Save screenshot + a tiny text log, and keep only last 10 of each kind."""
     ts = int(time.time())
 
     # Per-instance error dir to avoid cross-container clobbering + retention races.
@@ -569,56 +505,16 @@ def _save_error_artifacts(*, driver, kind: str, message: str = "") -> None:
     except Exception:
         pass
 
-    # --- Screenshot (multiple fallback methods) ---
-    png_path = os.path.join(err_dir, f"error_{kind}_{ts}.png")
-    screenshot_ok = False
-    # Method 1: save_screenshot
     try:
-        driver.save_screenshot(png_path)
-        if os.path.exists(png_path) and os.path.getsize(png_path) > 0:
-            screenshot_ok = True
-    except Exception as e:
-        print(f"[screenshot] save_screenshot failed: {e}")
-    # Method 2: get_screenshot_as_png -> write bytes
-    if not screenshot_ok:
-        try:
-            png_bytes = driver.get_screenshot_as_png()
-            if png_bytes:
-                with open(png_path, "wb") as f:
-                    f.write(png_bytes)
-                screenshot_ok = True
-        except Exception as e:
-            print(f"[screenshot] get_screenshot_as_png failed: {e}")
-    # Method 3: get_screenshot_as_base64 -> decode -> write
-    if not screenshot_ok:
-        try:
-            b64 = driver.get_screenshot_as_base64()
-            if b64:
-                with open(png_path, "wb") as f:
-                    f.write(base64.b64decode(b64))
-                screenshot_ok = True
-        except Exception as e:
-            print(f"[screenshot] get_screenshot_as_base64 failed: {e}")
-
-    if screenshot_ok:
+        # screenshot
+        png = os.path.join(err_dir, f"error_{kind}_{ts}.png")
+        driver.save_screenshot(png)
         _keep_last_n_files(os.path.join(err_dir, f"error_{kind}_*.png"), keep=10)
-        print(f"[screenshot] saved: {png_path}")
-    else:
-        print(f"[screenshot] WARNING: all screenshot methods failed for kind={kind}")
-
-    # --- Page source HTML (always try, useful when screenshot fails) ---
-    try:
-        html_path = os.path.join(err_dir, f"error_{kind}_{ts}.html")
-        page_src = str(getattr(driver, "page_source", "") or "")
-        if page_src:
-            with open(html_path, "w", encoding="utf-8") as f:
-                f.write(page_src)
-            _keep_last_n_files(os.path.join(err_dir, f"error_{kind}_*.html"), keep=10)
     except Exception:
         pass
 
-    # --- Text log (url + msg) ---
     try:
+        # text log (url + msg)
         txt = os.path.join(err_dir, f"error_{kind}_{ts}.txt")
         url = ""
         try:
@@ -718,13 +614,6 @@ if _MAILCREATE_CLIENT_DIR not in sys.path:
     sys.path.insert(0, _MAILCREATE_CLIENT_DIR)
 
 from mailbox_provider import Mailbox, create_mailbox, wait_openai_code as wait_openai_code_by_provider  # type: ignore
-from platformtools.auto_register.codex_register.mailbox_shared import (
-    create_temp_mailbox_shared,
-    wait_openai_code_shared,
-)
-from platformtools.auto_register.codex_register.flows.browser_flow import run_browser_register
-from platformtools.auto_register.codex_register.flows.protocol_flow import run_protocol_register
-from platformtools.auto_register.codex_register.browser_version.main import new_driver as browser_new_driver
 
 MAILBOX_PROVIDER = os.environ.get("MAILBOX_PROVIDER", "auto").strip().lower()
 
@@ -743,15 +632,6 @@ REGISTER_PROXY_REQUIRED = (os.environ.get("REGISTER_PROXY_REQUIRED", "1") or "1"
     "false",
     "no",
 )
-
-# 显式关闭应用内代理池（用于改走容器默认网络路径）。
-DISABLE_PROXY = (os.environ.get("DISABLE_PROXY", "0") or "0").strip().lower() in (
-    "1",
-    "true",
-    "yes",
-    "on",
-)
-REQUIRE_PROXY = REGISTER_PROXY_REQUIRED and (not DISABLE_PROXY)
 
 # Protocol-flow knobs
 PROTOCOL_IMPERSONATE = (os.environ.get("PROTOCOL_IMPERSONATE", "chrome") or "chrome").strip() or "chrome"
@@ -907,15 +787,77 @@ def _pick_mailcreate_with_health() -> Mailbox:
 
 
 def create_temp_mailbox() -> tuple[str, str]:
-    """Create a new temp mailbox via shared mailbox module."""
+    """Create a new temp mailbox.
 
-    return create_temp_mailbox_shared()
+    Returns:
+      (email_address, mailbox_ref)
+
+    mailbox_ref semantics:
+    - mailcreate: address_jwt
+    - gptmail: email
+    """
+
+    provider = (MAILBOX_PROVIDER or "").strip().lower()
+    if provider in ("mailcreate", "self", "local"):
+        mb = _pick_mailcreate_with_health()
+    else:
+        mb: Mailbox = create_mailbox(
+            provider=MAILBOX_PROVIDER,
+            mailcreate_base_url=MAILCREATE_BASE_URL,
+            mailcreate_custom_auth=MAILCREATE_CUSTOM_AUTH,
+            mailcreate_domain=MAILCREATE_DOMAIN,
+            gptmail_base_url=GPTMAIL_BASE_URL,
+            gptmail_api_key=GPTMAIL_API_KEY,
+            gptmail_keys_file=GPTMAIL_KEYS_FILE,
+            gptmail_prefix=GPTMAIL_PREFIX,
+            gptmail_domain=GPTMAIL_DOMAIN,
+        )
+
+        # auto 情况：若最终落到 mailcreate，再做一次随机域优选
+        if getattr(mb, "provider", "") == "mailcreate":
+            try:
+                mb = _pick_mailcreate_with_health()
+            except Exception:
+                pass
+
+    return mb.email, mb.ref
 
 
 def wait_openai_code(*, address_jwt: str, timeout_seconds: int = 180) -> str:
-    """Wait OpenAI OTP via shared mailbox module."""
+    """Wait for OpenAI 6-digit verification code.
 
-    return wait_openai_code_shared(mailbox_ref=address_jwt, timeout_seconds=timeout_seconds)
+    NOTE:
+      `address_jwt` is kept for backward-compatibility naming.
+      It actually means `mailbox_ref` in multi-provider mode.
+    """
+
+    ref = str(address_jwt or "").strip()
+    ref_prefix = ref.split(":", 1)[0] if ":" in ref else "unknown"
+    print(
+        f"[mailbox] wait_openai_code start provider={MAILBOX_PROVIDER} ref_prefix={ref_prefix} "
+        f"mailcreate_auth_set={bool(MAILCREATE_CUSTOM_AUTH)} gptmail_api_key_set={bool(GPTMAIL_API_KEY)}"
+    )
+
+    try:
+        code = wait_openai_code_by_provider(
+            provider=MAILBOX_PROVIDER,
+            mailbox_ref=address_jwt,
+            mailcreate_base_url=MAILCREATE_BASE_URL,
+            mailcreate_custom_auth=MAILCREATE_CUSTOM_AUTH,
+            gptmail_base_url=GPTMAIL_BASE_URL,
+            gptmail_api_key=GPTMAIL_API_KEY,
+            gptmail_keys_file=GPTMAIL_KEYS_FILE,
+            timeout_seconds=timeout_seconds,
+        )
+    except Exception as e:
+        print(
+            f"[mailbox] wait_openai_code fail ref_prefix={ref_prefix} "
+            f"err_type={type(e).__name__} err={e}"
+        )
+        raise
+
+    print(f"[mailbox] wait_openai_code ok ref_prefix={ref_prefix} code_len={len(str(code or ''))}")
+    return code
 
 
 def post(url: str, body: str, header: dict, proxy: str | None=None) -> tuple[str,dict]:
@@ -1656,9 +1598,199 @@ def _follow_redirects_for_callback(*, sess, start_url: str, max_hops: int = 8) -
 
 
 def register_protocol(proxy: str | None = None) -> tuple[str, str]:
-    """Compatibility shim: protocol flow moved to flows/protocol_flow.py."""
+    """Protocol-based register flow (no browser automation).
 
-    return run_protocol_register(proxy)
+    Mirrors the reference flow using curl_cffi session + auth/openai endpoints,
+    then reuses submit_callback_url for token exchange/output JSON format.
+    """
+
+    if curl_requests is None:
+        raise RuntimeError("protocol flow requires curl_cffi; please install curl_cffi")
+
+    proxies = _proxy_dict_for_requests(proxy)
+    sess = curl_requests.Session(
+        proxies=proxies,
+        impersonate=PROTOCOL_IMPERSONATE,
+    )
+
+    if PROTOCOL_CHECK_GEO:
+        try:
+            trace_resp = sess.get("https://cloudflare.com/cdn-cgi/trace", timeout=10)
+            trace_txt = str(getattr(trace_resp, "text", "") or "")
+            loc_m = re.search(r"^loc=(.+)$", trace_txt, re.MULTILINE)
+            ip_m = re.search(r"^ip=(.+)$", trace_txt, re.MULTILINE)
+            loc = (loc_m.group(1) if loc_m else "").strip().upper()
+            ip = (ip_m.group(1) if ip_m else "").strip()
+            if loc:
+                print(f"[protocol] trace loc={loc} ip={ip}")
+            if loc and loc in PROTOCOL_BLOCKED_LOCS:
+                raise RuntimeError(f"protocol flow blocked geo loc={loc}")
+        except RuntimeError:
+            raise
+        except Exception as e:
+            print(f"[protocol] trace check failed: {e}")
+
+    email, address_jwt = get_email(proxy)
+    print("Email obtained:", email)
+
+    oauth = generate_oauth_url()
+    print("OAuth URL:", oauth.auth_url)
+
+    # Hit authorize first to establish cookies (oai-did etc.)
+    sess.get(oauth.auth_url, timeout=PROTOCOL_TIMEOUT_SECONDS)
+
+    did = str(sess.cookies.get("oai-did") or "").strip()
+    if not did:
+        raise RuntimeError("protocol flow missing oai-did cookie")
+
+    # Sentinel token
+    sentinel_req = json.dumps({"p": "", "id": did, "flow": "authorize_continue"}, ensure_ascii=False, separators=(",", ":"))
+    sen_resp = curl_requests.post(
+        "https://sentinel.openai.com/backend-api/sentinel/req",
+        headers={
+            "origin": "https://sentinel.openai.com",
+            "referer": "https://sentinel.openai.com/backend-api/sentinel/frame.html?sv=20260219f9f6",
+            "content-type": "text/plain;charset=UTF-8",
+        },
+        data=sentinel_req,
+        proxies=proxies,
+        impersonate=PROTOCOL_IMPERSONATE,
+        timeout=PROTOCOL_TIMEOUT_SECONDS,
+    )
+    if int(getattr(sen_resp, "status_code", 0) or 0) != 200:
+        raise RuntimeError(f"sentinel req failed: http={sen_resp.status_code}")
+
+    try:
+        sentinel_token = str((sen_resp.json() or {}).get("token") or "").strip()
+    except Exception:
+        sentinel_token = ""
+    if not sentinel_token:
+        raise RuntimeError("sentinel token missing")
+
+    sentinel_header_value = json.dumps(
+        {
+            "p": "",
+            "t": "",
+            "c": sentinel_token,
+            "id": did,
+            "flow": "authorize_continue",
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+    signup_body = json.dumps(
+        {
+            "username": {"value": email, "kind": "email"},
+            "screen_hint": "signup",
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    signup_resp = sess.post(
+        "https://auth.openai.com/api/accounts/authorize/continue",
+        headers={
+            "referer": "https://auth.openai.com/create-account",
+            "accept": "application/json",
+            "content-type": "application/json",
+            "openai-sentinel-token": sentinel_header_value,
+        },
+        data=signup_body,
+        timeout=PROTOCOL_TIMEOUT_SECONDS,
+    )
+    if int(getattr(signup_resp, "status_code", 0) or 0) != 200:
+        raise RuntimeError(f"authorize/continue failed: http={signup_resp.status_code} body={str(getattr(signup_resp, 'text', '') or '')[:300]}")
+
+    pwd = generate_pwd()
+    otp_send_resp = sess.post(
+        "https://auth.openai.com/api/accounts/passwordless/send-otp",
+        headers={
+            "referer": "https://auth.openai.com/create-account/password",
+            "accept": "application/json",
+            "content-type": "application/json",
+        },
+        timeout=PROTOCOL_TIMEOUT_SECONDS,
+    )
+    if int(getattr(otp_send_resp, "status_code", 0) or 0) != 200:
+        raise RuntimeError(f"send-otp failed: http={otp_send_resp.status_code} body={str(getattr(otp_send_resp, 'text', '') or '')[:300]}")
+
+    code = get_oai_code(address_jwt=address_jwt, timeout_seconds=180, proxy=proxy)
+    print("Verification Code:", code)
+
+    otp_verify_resp = sess.post(
+        "https://auth.openai.com/api/accounts/email-otp/validate",
+        headers={
+            "referer": "https://auth.openai.com/email-verification",
+            "accept": "application/json",
+            "content-type": "application/json",
+        },
+        data=json.dumps({"code": str(code)}),
+        timeout=PROTOCOL_TIMEOUT_SECONDS,
+    )
+    if int(getattr(otp_verify_resp, "status_code", 0) or 0) != 200:
+        raise RuntimeError(f"email-otp/validate failed: http={otp_verify_resp.status_code} body={str(getattr(otp_verify_resp, 'text', '') or '')[:300]}")
+
+    first_name, last_name = generate_name()
+    birthdate = "2000-02-20"
+
+    create_account_resp = sess.post(
+        "https://auth.openai.com/api/accounts/create_account",
+        headers={
+            "referer": "https://auth.openai.com/about-you",
+            "accept": "application/json",
+            "content-type": "application/json",
+        },
+        data=json.dumps({"name": f"{first_name} {last_name}", "birthdate": birthdate}),
+        timeout=PROTOCOL_TIMEOUT_SECONDS,
+    )
+    if int(getattr(create_account_resp, "status_code", 0) or 0) != 200:
+        raise RuntimeError(f"create_account failed: http={create_account_resp.status_code} body={str(getattr(create_account_resp, 'text', '') or '')[:400]}")
+
+    auth_cookie = str(sess.cookies.get("oai-client-auth-session") or "").strip()
+    auth_obj = _decode_cookie_json_prefix(auth_cookie)
+    ws_list = auth_obj.get("workspaces") if isinstance(auth_obj, dict) else None
+    workspace_id = ""
+    if isinstance(ws_list, list) and ws_list and isinstance(ws_list[0], dict):
+        workspace_id = str(ws_list[0].get("id") or "").strip()
+    if not workspace_id:
+        raise RuntimeError("workspace id missing in auth session cookie")
+
+    select_resp = sess.post(
+        "https://auth.openai.com/api/accounts/workspace/select",
+        headers={
+            "referer": "https://auth.openai.com/sign-in-with-chatgpt/codex/consent",
+            "content-type": "application/json",
+            "accept": "application/json",
+        },
+        data=json.dumps({"workspace_id": workspace_id}),
+        timeout=PROTOCOL_TIMEOUT_SECONDS,
+    )
+    if int(getattr(select_resp, "status_code", 0) or 0) != 200:
+        raise RuntimeError(f"workspace/select failed: http={select_resp.status_code} body={str(getattr(select_resp, 'text', '') or '')[:300]}")
+
+    try:
+        continue_url = str((select_resp.json() or {}).get("continue_url") or "").strip()
+    except Exception:
+        continue_url = ""
+    if not continue_url:
+        raise RuntimeError("workspace/select missing continue_url")
+
+    callback_url = _follow_redirects_for_callback(sess=sess, start_url=continue_url, max_hops=8)
+
+    reg_email, config_json = submit_callback_url(
+        callback_url=callback_url,
+        expected_state=oauth.state,
+        code_verifier=oauth.code_verifier,
+        redirect_uri=oauth.redirect_uri,
+        proxy=proxy,
+        mailbox_ref=address_jwt,
+        password=pwd,
+        first_name=first_name,
+        last_name=last_name,
+        birthdate=birthdate,
+    )
+
+    return reg_email, config_json
 
 
 AUTH_URL = "https://auth.openai.com/oauth/authorize"
@@ -1765,68 +1897,24 @@ def get_opener(proxy: str | None = None):
     return urllib.request.build_opener(proxy_handler)
 
 def _post_form(url: str, data: Dict[str, str], timeout: int = 30, proxy: str | None = None) -> Dict[str, Any]:
-    """POST form data with Chrome TLS/HTTP2 fingerprint via curl_cffi.
-
-    Strategy: try direct (no proxy) first, then with proxy, then urllib fallback.
-    The token exchange endpoint doesn't need residential IP masking;
-    the proxy is mainly for browser navigation to bypass Cloudflare.
-    """
-    # Build list of (label, proxies_dict) attempts
-    proxy_configs = [("direct", None)]
-    if proxy:
-        proxy_configs.append(("proxy", {"https": proxy, "http": proxy}))
-
-    for attempt in range(4):
-        for label, proxies in proxy_configs:
-            # --- curl_cffi with Chrome impersonation ---
-            try:
-                from curl_cffi import requests as cffi_requests
-                resp = cffi_requests.post(
-                    url,
-                    data=data,
-                    headers={
-                        "Content-Type": "application/x-www-form-urlencoded",
-                        "Accept": "application/json",
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-                    },
-                    impersonate="chrome",
-                    timeout=timeout,
-                    proxies=proxies,
-                    verify=False,
-                )
-                if resp.status_code != 200:
-                    raise RuntimeError(
-                        f"token exchange failed: {resp.status_code}: {resp.text[:500]}"
-                    )
-                print(f"POST token exchange ok via {label} (curl_cffi)")
-                return resp.json()
-            except ImportError:
-                break  # curl_cffi not installed, skip to urllib
-            except RuntimeError:
-                raise
-            except Exception as e:
-                print(f"POST Request error (curl_cffi/{label}, attempt {attempt+1}): {e}")
-                continue  # try next proxy config
-
-        # --- Fallback: urllib (direct only, proxy already failed above) ---
+    body = urllib.parse.urlencode(data).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        method="POST",
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+        },
+    )
+    for _ in range(4):
         try:
-            body = urllib.parse.urlencode(data).encode("utf-8")
-            req = urllib.request.Request(
-                url,
-                data=body,
-                method="POST",
-                headers={
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "Accept": "application/json",
-                },
-            )
-            with urllib.request.build_opener().open(req, timeout=timeout) as resp:
+            with get_opener(proxy).open(req, timeout=timeout) as resp:
                 raw = resp.read()
                 if resp.status != 200:
                     raise RuntimeError(
                         f"token exchange failed: {resp.status}: {raw.decode('utf-8', 'replace')}"
                     )
-                print("POST token exchange ok via urllib (direct)")
                 return json.loads(raw.decode("utf-8"))
         except urllib.error.HTTPError as exc:
             raw = exc.read()
@@ -1834,10 +1922,9 @@ def _post_form(url: str, data: Dict[str, str], timeout: int = 30, proxy: str | N
                 f"token exchange failed: {exc.code}: {raw.decode('utf-8', 'replace')}"
             ) from exc
         except Exception as e:
-            print(f"POST Request error (urllib, attempt {attempt+1}): {e}")
-
-        time.sleep(2)
-
+            print(f"POST Request error: {e}")
+            time.sleep(2)
+            
     raise RuntimeError("Failed to post form after max retries")
 
 
@@ -2060,130 +2147,157 @@ def create_proxy_extension(proxy: str) -> str | None:
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from pathlib import Path
 
-# Updated User-Agent: Chrome 134 (March 2026 stable)
-_CHROME_UA = (
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
-)
+def new_driver(proxy: str | None = None):
+    options = Options()
 
-# ---------------------------------------------------------------------------
-# Stealth evasion scripts (ported from puppeteer-extra-plugin-stealth)
-# ---------------------------------------------------------------------------
-_STEALTH_SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "stealth_scripts")
-_STEALTH_EVASIONS = [
-    "chrome.app",
-    "chrome.csi",
-    "chrome.loadTimes",
-    "chrome.runtime",
-    "iframe.contentWindow",
-    "media.codecs",
-    "navigator.hardwareConcurrency",
-    "navigator.languages",
-    "navigator.permissions",
-    "navigator.plugins",
-    "navigator.webdriver",
-    "sourceurl",
-    "webgl.vendor",
-    "window.outerdimensions",
-]
+    # 匿名模式：开启后使用无痕窗口，减少本地会话残留。
+    anonymous_mode = int(os.environ.get("ANONYMOUS_MODE", "0") or "0")
+    if anonymous_mode == 1:
+        options.add_argument('--incognito')
 
+    # Headless defaults to ON for servers/containers.
+    # Set HEADLESS=0 to show the browser window for debugging/observing repair flow.
+    headless = int(os.environ.get("HEADLESS", "1"))
+    if headless != 0:
+        options.add_argument('--headless')
 
-def _load_stealth_scripts() -> list[str]:
-    """Load all stealth evasion JS scripts from stealth_scripts/ directory."""
-    scripts: list[str] = []
-    for name in _STEALTH_EVASIONS:
-        js_path = os.path.join(_STEALTH_SCRIPTS_DIR, name, "index.js")
-        if os.path.isfile(js_path):
-            try:
-                with open(js_path, "r", encoding="utf-8") as f:
-                    scripts.append(f.read())
-            except Exception:
-                pass
-    return scripts
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--window-size=1920,1080')
+    options.add_argument('--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+    options.add_argument('--enable-features=NetworkService,NetworkServiceInProcess')
+    
+    # Disable background telemetry and optimization guide to save proxy traffic
+    options.add_argument('--disable-features=OptimizationGuideModelDownloading,OptimizationHintsFetching,OptimizationTargetPrediction,OptimizationGuideModelExecution')
+    options.add_argument('--disable-background-networking')
+    options.add_argument('--disable-sync')
+    options.add_argument('--disable-component-update')
+    options.add_argument('--disable-domain-reliability')
+    options.add_argument('--disable-client-side-phishing-detection')
+    options.add_argument('--disable-default-apps')
+    options.add_argument('--no-default-browser-check')
+    options.add_argument('--disable-features=TranslateUI')
 
+    # Hard block a few extremely noisy Chrome background endpoints by loopback.
+    # This prevents wasting proxy traffic on requests like:
+    #   optimizationguide-pa.googleapis.com
+    #
+    # NOTE: This is based on a known-good historical rule set from legacy `tools/oai_register/main.py`.
+    # Controlled via env:
+    #   BLOCK_GOOGLE_OPT_GUIDE=2  (default: 2)
+    #   BLOCK_NOISY_HOSTS=2       (default: 2)
+    host_rule_entries: list[str] = []
 
-# Pre-load stealth scripts at import time so we don't re-read from disk per driver.
-_STEALTH_JS_SOURCES = _load_stealth_scripts()
-if _STEALTH_JS_SOURCES:
-    print(f"[stealth] loaded {len(_STEALTH_JS_SOURCES)} evasion scripts from {_STEALTH_SCRIPTS_DIR}")
-else:
-    print(f"[stealth] WARNING: no evasion scripts found in {_STEALTH_SCRIPTS_DIR}")
+    block_opt = int(os.environ.get("BLOCK_GOOGLE_OPT_GUIDE", "2"))
+    if block_opt == 2:
+        host_rule_entries.extend([
+            "MAP optimizationguide-pa.googleapis.com 127.0.0.1",
+            "MAP optimizationguide-pa.googleapis.com:443 127.0.0.1",
+            "MAP optimizationguide-pa.googleapis.com:80 127.0.0.1",
+        ])
 
+    # Extra background endpoints historically known to burn proxy bandwidth.
+    # Keep this list conservative; enable/disable via env.
+    block_noisy = int(os.environ.get("BLOCK_NOISY_HOSTS", "2"))
+    if block_noisy == 2:
+        host_rule_entries.extend([
+            "MAP update.googleapis.com 127.0.0.1",
+            "MAP browser-intake-datadoghq.com 127.0.0.1",
+            "MAP *.gvt1.com 127.0.0.1",
+            "MAP *.cloudflarestream.com 127.0.0.1",
+        ])
 
-# ---------------------------------------------------------------------------
-# Human-like behavior simulation helpers
-# ---------------------------------------------------------------------------
-def _human_delay(min_s: float = 0.3, max_s: float = 1.5) -> None:
-    """Random sleep to simulate human reaction time."""
-    time.sleep(random.uniform(min_s, max_s))
+    if host_rule_entries:
+        options.add_argument(f"--host-resolver-rules={', '.join(host_rule_entries)}")
 
+    # Anti-detect features for standard selenium
+    options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option('useAutomationExtension', False)
+    
+    # Traffic saver defaults to ON (2) unless explicitly disabled.
+    # 2 = block, 1 = allow
+    block_images = int(os.environ.get("BLOCK_IMAGES", "2"))
+    block_css = int(os.environ.get("BLOCK_CSS", "2"))
+    block_fonts = int(os.environ.get("BLOCK_FONTS", "2"))
+    
+    prefs = {}
+    if block_images == 2:
+        prefs["profile.managed_default_content_settings.images"] = 2
+        options.add_argument('--blink-settings=imagesEnabled=false')
+    if block_css == 2:
+        prefs["profile.managed_default_content_settings.stylesheet"] = 2
+    if block_fonts == 2:
+        prefs["profile.managed_default_content_settings.fonts"] = 2
 
-def _human_mouse_jitter(driver, *, attempts: int = 3) -> None:
-    """Perform small random mouse movements to simulate human presence."""
+    if prefs:
+        print(f"Traffic Saver Mode Active: Images={block_images==2}, CSS={block_css==2}, Fonts={block_fonts==2}")
+        options.add_experimental_option("prefs", prefs)
+    
+    proxy_dir = None
+    if proxy and "@" in proxy:
+        proxy_dir = create_proxy_extension(proxy)
+        if proxy_dir:
+            options.add_argument(f"--load-extension={proxy_dir}")
+            options.add_argument(f"--disable-extensions-except={proxy_dir}")
+    elif proxy:
+        options.add_argument(f'--proxy-server={proxy}')
+
+    # Always bypass localhost loopback for OAuth redirect capture.
+    if proxy:
+        options.add_argument("--proxy-bypass-list=<-loopback>;localhost;127.0.0.1")
+        
+    options.add_argument('--log-level=3')
+    options.add_argument('--disable-crash-reporter')
+    options.add_argument('--disable-in-process-stack-traces')
+    options.page_load_strategy = 'eager' # Don't wait for all resources to download
+    
+    service = Service()
+    driver = webdriver.Chrome(service=service, options=options)
+
+    # Aggressive network blocking (CDP). This is more reliable than prefs alone.
     try:
-        actions = ActionChains(driver)
-        for _ in range(attempts):
-            x_off = random.randint(-80, 80)
-            y_off = random.randint(-40, 40)
-            actions.move_by_offset(x_off, y_off)
-            actions.pause(random.uniform(0.05, 0.15))
-        actions.perform()
+        driver.execute_cdp_cmd("Network.enable", {})
+        blocked_urls: list[str] = []
+        if block_images == 2:
+            blocked_urls.extend([
+                "*.png",
+                "*.jpg",
+                "*.jpeg",
+                "*.gif",
+                "*.webp",
+                "*.avif",
+                "*.svg",
+                "*.ico",
+            ])
+        if block_css == 2:
+            blocked_urls.extend(["*.css"])
+        if block_fonts == 2:
+            blocked_urls.extend([
+                "*.woff",
+                "*.woff2",
+                "*.ttf",
+                "*.otf",
+                "*.eot",
+            ])
+        if blocked_urls:
+            driver.execute_cdp_cmd("Network.setBlockedURLs", {"urls": blocked_urls})
     except Exception:
+        # CDP may fail on some driver builds; prefs still apply.
         pass
 
+    # Execute CDP command to hide webdriver property
+    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+        "source": """
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            })
+        """
+    })
 
-def _human_type(element, text: str, *, per_char_delay: tuple[float, float] = (0.03, 0.10)) -> None:
-    """Type text character by character with human-like delays.
-
-    Only used for short inputs (email, password, verification code).
-    For long inputs (>60 chars), falls back to send_keys.
-    """
-    if len(text) > 60:
-        element.send_keys(text)
-        return
-    for ch in text:
-        element.send_keys(ch)
-        time.sleep(random.uniform(*per_char_delay))
-
-
-def _resolve_chrome_version_main() -> int | None:
-    """Resolve Chrome major version for undetected-chromedriver.
-
-    Priority:
-    1) CHROME_VERSION_MAIN env (manual override)
-    2) Runtime detection from local chrome binary
-    3) None (let uc decide)
-    """
-
-    raw = (os.environ.get("CHROME_VERSION_MAIN") or "").strip()
-    if raw.isdigit():
-        try:
-            v = int(raw)
-            if v > 0:
-                return v
-        except Exception:
-            pass
-
-    for cmd in (
-        ["google-chrome", "--product-version"],
-        ["google-chrome-stable", "--product-version"],
-        ["chromium", "--product-version"],
-    ):
-        try:
-            out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=3)
-            ver = out.decode("utf-8", errors="ignore").strip()
-            m = re.match(r"^(\d+)\.", ver)
-            if m:
-                major = int(m.group(1))
-                if major > 0:
-                    return major
-        except Exception:
-            continue
-
-    return None
-
+    return driver, proxy_dir
 
 def generate_name() -> tuple[str, str]:
     first = ["Neo", "John", "Sarah", "Michael", "Emma", "David", "James", "Robert", "Mary", "William", "Richard", "Thomas", "Charles", "Christopher", "Daniel", "Matthew", "Anthony", "Mark", "Donald", "Steven", "Paul", "Andrew", "Joshua", "Kenneth", "Kevin", "Brian", "George", "Edward", "Ronald", "Timothy"]
@@ -2227,29 +2341,9 @@ def smart_wait(driver, by, value, timeout=20, *, debug_kind: str = "", debug_mes
     if debug_kind:
         _dbg("wait", f"{debug_kind} by={by} value={value!r} timeout={timeout}s", driver=driver)
 
-    challenge_hints = [
-        "verify you are human",
-        "performing security verification",
-        "just a moment",
-        "cloudflare",
-    ]
-
     end_time = time.time() + timeout
     while time.time() < end_time:
         try:
-            # Fail-fast on Cloudflare/verification challenge pages.
-            title_text = str(driver.execute_script("return (document && document.title) ? document.title : '';") or "").lower()
-            body_text = str(
-                driver.execute_script("return (document && document.body) ? (document.body.innerText || '') : '';")
-                or ""
-            ).lower()
-            cur_url = str(getattr(driver, "current_url", "") or "").lower()
-            joined = "\n".join([title_text, body_text, cur_url])
-            if any(h in joined for h in challenge_hints):
-                if debug_kind and "password" in debug_kind.lower():
-                    raise RuntimeError("blocked challenge page before password step")
-                raise RuntimeError("blocked challenge page")
-
             # Check for the "Try again" button and click it if it appears
             try_again_btns = driver.find_elements(
                 By.XPATH,
@@ -2267,19 +2361,8 @@ def smart_wait(driver, by, value, timeout=20, *, debug_kind: str = "", debug_mes
                 if debug_kind:
                     _dbg("wait", f"{debug_kind} ok", driver=driver)
                 return el
-        except Exception as e:
-            if isinstance(e, RuntimeError):
-                if debug_kind:
-                    msg = debug_message or f"wait aborted by fatal ui error for {by}={value}"
-                    try:
-                        _dump_page_body(driver=driver, kind=debug_kind, message=msg)
-                    except Exception:
-                        pass
-                    try:
-                        _save_error_artifacts(driver=driver, kind=debug_kind, message=msg)
-                    except Exception:
-                        pass
-                raise
+        except Exception:
+            pass
         time.sleep(0.5)
 
     if debug_kind:
@@ -2295,6 +2378,767 @@ def smart_wait(driver, by, value, timeout=20, *, debug_kind: str = "", debug_mes
         raise RuntimeError(f"wait failed: {debug_kind}; page dumped")
 
     raise TimeoutException(f"Timeout waiting for {by}={value}")
+
+def register(driver, proxy=None) -> tuple[str, str]:
+    _dbg("register", "start", driver=driver)
+
+    email, address_jwt = get_email(proxy)
+    _dbg("mailbox", f"obtained email={email} ref={address_jwt}", driver=driver)
+    print("Email obtained:", email)
+
+    oauth = generate_oauth_url()
+    url = oauth.auth_url
+    _dbg("oauth", "generated oauth url", driver=driver)
+    print("OAuth URL:", url)
+
+    _dbg("nav", "driver.get(oauth_url)", driver=driver)
+    driver.get(url)
+
+    try:
+        WebDriverWait(driver, 60).until(EC.url_contains("auth.openai.com"))
+        _dbg("page", "reach oai sign up page", driver=driver)
+        print("Reach oai sign up page")
+    except TimeoutException:
+        _dump_page_body(driver=driver, kind="wait_auth_openai", message="URL did not contain auth.openai.com")
+        raise RuntimeError("did not reach auth.openai.com; page dumped")
+
+    # click sign up
+    sign_up_button = smart_wait(
+        driver,
+        By.XPATH,
+        "//*[self::button or self::a][contains(normalize-space(), 'Sign up') or contains(normalize-space(), '注册') or contains(normalize-space(), 'Sign Up') or contains(normalize-space(), 'sign up') or contains(normalize-space(), 'SignUp')]",
+        timeout=20,
+        debug_kind="signup_button",
+        debug_message="sign up button not found",
+    )
+    _dbg("ui", "click sign up", driver=driver)
+    _click_with_debug(driver, sign_up_button, tag="signup_button", note="register click sign up")
+    _dbg("ui", "sign up clicked", driver=driver)
+    print("Sign up clicked")
+
+    # fill email
+    email_input = smart_wait(
+        driver,
+        By.ID,
+        "_r_f_-email",
+        timeout=20,
+        debug_kind="email_input",
+        debug_message="email input not found",
+    )
+    _dbg("ui", "reach email input", driver=driver)
+    email_input.clear()
+    _dbg("ui", f"fill email={email}", driver=driver)
+    print("Reach email input")
+    # Speed: send full string instead of per-char typing.
+    email_input.send_keys(email)
+    email_input.send_keys(Keys.ENTER)
+    _dbg("ui", "email ENTER pressed", driver=driver)
+    print("Enter pressed")
+
+    # fill password
+    pwd_input = smart_wait(
+        driver,
+        By.ID,
+        "_r_u_-new-password",
+        timeout=30,
+        debug_kind="password_input",
+        debug_message=f"password input not found; email={email}",
+    )
+    _dbg("ui", "reach password input", driver=driver)
+    print("Reach password input")
+    pwd = generate_pwd()
+    _dbg("ui", "fill password", driver=driver)
+    # Speed: send full string instead of per-char typing.
+    pwd_input.send_keys(pwd)
+    pwd_input.send_keys(Keys.ENTER)
+    _dbg("ui", "password ENTER pressed", driver=driver)
+    print("Enter pressed")
+    
+    code = get_oai_code(address_jwt=address_jwt, timeout_seconds=180, proxy=proxy)
+    # Dump page + pause shortly to reduce race where code changes due to resend.
+    try:
+        _dbg("mail", f"got verification code={code} mailbox_ref={address_jwt}", driver=driver)
+        _dump_page_body(driver=driver, kind="code_before_fill", message=f"code={code} mailbox_ref={address_jwt}")
+    except Exception:
+        pass
+    time.sleep(1.0)
+    print("Verification Code:", code)
+    try:
+        code_input = smart_wait(
+            driver,
+            By.ID,
+            "_r_4_-code",
+            timeout=10,
+            debug_kind="code_input",
+            debug_message="Timeout waiting for code input",
+        )
+        print("Reach code input")
+
+        # Defensive: ensure the code input is empty.
+        try:
+            code_input.clear()
+        except Exception:
+            try:
+                code_input.send_keys(Keys.CONTROL + "a")
+                code_input.send_keys(Keys.BACKSPACE)
+            except Exception:
+                pass
+
+        # Sanity-check: the page should be sending to the same email.
+        try:
+            page_txt = driver.execute_script("return document && document.body ? document.body.innerText : ''; ")
+            m = re.search(
+                r"sent\s+to\s+([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})",
+                str(page_txt or ""),
+                flags=re.IGNORECASE,
+            )
+            if m:
+                page_email = (m.group(1) or "").strip().lower()
+                if page_email and page_email != (email or "").strip().lower():
+                    _dbg("code", f"page email mismatch page={page_email} expected={email}", driver=driver)
+                    _dump_page_body(driver=driver, kind="code_email_mismatch", message=f"page={page_email} expected={email}")
+        except Exception:
+            pass
+
+        # Speed: send code in one shot.
+        code_input.send_keys(code)
+        code_input.send_keys(Keys.ENTER)
+        print("Enter pressed")
+
+        # If the page shows "Incorrect code", try one resend then re-fetch code.
+        try:
+            time.sleep(1.0)
+            txt = driver.execute_script("return document && document.body ? document.body.innerText : '';")
+            if "incorrect code" in str(txt or "").lower():
+                _dbg("code", "detected incorrect code, trying resend once", driver=driver)
+                _dump_page_body(driver=driver, kind="code_incorrect", message="incorrect code after submit")
+
+                try:
+                    resend_btn = smart_wait(
+                        driver,
+                        By.XPATH,
+                        "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'resend')]",
+                        timeout=10,
+                        debug_kind="resend_button",
+                        debug_message="resend button not found",
+                    )
+                    _click_with_debug(driver, resend_btn, tag="resend_button", note="incorrect code -> resend")
+                    time.sleep(2)
+                except Exception:
+                    pass
+
+                # re-fetch code and submit again (single retry)
+                code2 = get_oai_code(address_jwt=address_jwt, timeout_seconds=180, proxy=proxy)
+                _dbg("mail", f"re-fetched verification code={code2}", driver=driver)
+                try:
+                    _dump_page_body(driver=driver, kind="code_retry", message=f"code2={code2}")
+                except Exception:
+                    pass
+
+                code_input2 = smart_wait(
+                    driver,
+                    By.ID,
+                    "_r_4_-code",
+                    timeout=10,
+                    debug_kind="code_input_retry",
+                    debug_message="code input not found on retry",
+                )
+                try:
+                    code_input2.clear()
+                except Exception:
+                    pass
+                # Speed: send code in one shot.
+                code_input2.send_keys(code2)
+                code_input2.send_keys(Keys.ENTER)
+                time.sleep(1.0)
+        except Exception:
+            pass
+
+    except TimeoutException:
+        print("Reach new code input")
+        code_inputs = WebDriverWait(driver, 10).until(
+            lambda d: d.find_elements(
+                By.CSS_SELECTOR,
+                'div[role="group"] input[inputmode="numeric"][maxlength="1"]'
+            )
+        )
+        for current, digit in zip(code_inputs, code):
+            WebDriverWait(driver, 1).until(EC.element_to_be_clickable(current))
+            _click_with_debug(driver, current, tag="otp_digit_box", note="register segmented otp input")
+            current.clear()
+            current.send_keys(digit)
+        driver.switch_to.active_element.send_keys(Keys.ENTER)
+        
+    first_name, last_name = generate_name()
+    full_name_str = first_name + " " + last_name
+    
+    print("Filling Name and Birthday (robust v4)")
+ 
+    # Default target birthday (stable & adult)
+    birthdate = "1995-01-15"
+    explicit_form_detected = False
+    bday_filled = False
+ 
+    def _force_set_birthday_iso(iso_yyyy_mm_dd: str) -> dict | None:
+        """Force-set the react-aria DateField hidden input used by /about-you.
+
+        NOTE: This can be overwritten by React because the hidden input is
+        controlled by internal state. Prefer `_fill_about_you_birthday_segments()`
+        which simulates real user typing into the contenteditable segments.
+        """
+
+        js = r"""
+        return (function(v){
+          try {
+            const inp = document.querySelector('input[type="hidden"][name="birthday"]');
+            if (!inp) return {ok:false, reason:'no_hidden_birthday'};
+            const prev = inp.value;
+            inp.value = v;
+            try { inp.setAttribute('value', v); } catch (e) {}
+            try { inp.dispatchEvent(new Event('input', {bubbles:true})); } catch (e) {}
+            try { inp.dispatchEvent(new Event('change', {bubbles:true})); } catch (e) {}
+
+            const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || '');
+            if (m) {
+              const group = document.querySelector('div[role="group"][id$="-birthday"]');
+              if (group) {
+                const setSeg = (t, txt) => {
+                  const el = group.querySelector('div[data-type="' + t + '"][contenteditable="true"]');
+                  if (el) {
+                    try { el.textContent = txt; } catch (e) {}
+                    try { el.dispatchEvent(new Event('input', {bubbles:true})); } catch (e) {}
+                    try { el.dispatchEvent(new Event('change', {bubbles:true})); } catch (e) {}
+                  }
+                };
+                setSeg('month', m[2]);
+                setSeg('day', m[3]);
+                setSeg('year', m[1]);
+              }
+            }
+
+            return {ok:true, prev:prev, now:inp.value};
+          } catch (e) {
+            return {ok:false, reason:String(e)};
+          }
+        })(arguments[0]);
+        """
+
+        try:
+            return driver.execute_script(js, iso_yyyy_mm_dd)
+        except Exception:
+            return None
+
+    def _fill_about_you_birthday_segments(*, iso_yyyy_mm_dd: str) -> dict | None:
+        """Fill /about-you birthday by typing into react-aria contenteditable segments.
+
+        This is the only method we've observed that updates the hidden
+        `input[name=birthday]` reliably.
+        """
+
+        try:
+            yyyy, mm, dd = (iso_yyyy_mm_dd or "").split("-")
+        except Exception:
+            return None
+
+        try:
+            group = driver.find_element(By.CSS_SELECTOR, 'div[role="group"][id$="-birthday"]')
+            seg_month = group.find_element(By.CSS_SELECTOR, 'div[contenteditable="true"][data-type="month"]')
+            seg_day = group.find_element(By.CSS_SELECTOR, 'div[contenteditable="true"][data-type="day"]')
+            seg_year = group.find_element(By.CSS_SELECTOR, 'div[contenteditable="true"][data-type="year"]')
+
+            def _type_seg(el, text: str) -> None:
+                try:
+                    el.click()
+                except Exception:
+                    try:
+                        driver.execute_script("arguments[0].focus();", el)
+                    except Exception:
+                        pass
+                try:
+                    el.send_keys(Keys.CONTROL + "a")
+                    el.send_keys(Keys.BACKSPACE)
+                except Exception:
+                    pass
+                for ch in text:
+                    el.send_keys(ch)
+                    time.sleep(0.02)
+
+            # NOTE: react-aria numeric segments sometimes behave like fixed-width fields.
+            # Send the raw digits without leading zeros to reduce weird carry/overflow.
+            _type_seg(seg_month, str(int(mm)))
+            _type_seg(seg_day, str(int(dd)))
+            _type_seg(seg_year, str(int(yyyy)))
+
+            try:
+                seg_year.send_keys(Keys.TAB)
+            except Exception:
+                pass
+
+            hidden_now = driver.execute_script(
+                'var el=document.querySelector("input[type=\\"hidden\\"][name=\\"birthday\\"]"); return el? (el.value||"") : "";'
+            )
+            return {
+                "ok": True,
+                "iso": iso_yyyy_mm_dd,
+                "hidden": str(hidden_now or ""),
+            }
+        except Exception as e:
+            return {"ok": False, "reason": str(e)}
+
+    def _force_submit_about_you_form(*, full_name: str, iso_yyyy_mm_dd: str) -> dict | None:
+        """Force-submit the /about-you form with a guaranteed birthday payload.
+
+        We observed react-aria DateField can display our typed segments but still
+        keeps the hidden `input[name=birthday]` at its default (TODAY), which the
+        server rejects. This function removes the existing hidden birthday input
+        and injects a new one right before submitting the form.
+        """
+
+        js = r"""
+        return (function(nameV, bdayV){
+          try {
+            const form = document.querySelector('form[action="/about-you"]');
+            if (!form) return {ok:false, reason:'no_form'};
+
+            // set name
+            try {
+              const nameInp = form.querySelector('input[name="name"]');
+              if (nameInp) {
+                nameInp.value = nameV || '';
+                try { nameInp.dispatchEvent(new Event('input', {bubbles:true})); } catch (e) {}
+                try { nameInp.dispatchEvent(new Event('change', {bubbles:true})); } catch (e) {}
+              }
+            } catch (e) {}
+
+            // force birthday hidden input
+            let removed = 0;
+            try {
+              const olds = form.querySelectorAll('input[type="hidden"][name="birthday"]');
+              removed = olds ? olds.length : 0;
+              olds && olds.forEach(n => { try { n.remove(); } catch (e) {} });
+            } catch (e) {}
+
+            try {
+              const inp = document.createElement('input');
+              inp.type = 'hidden';
+              inp.name = 'birthday';
+              inp.value = bdayV || '';
+              form.appendChild(inp);
+            } catch (e) {}
+
+            // also ensure consent hidden exists
+            try {
+              const c = form.querySelector('input[type="hidden"][name="isExplicitConsentRequired"]');
+              if (!c) {
+                const ci = document.createElement('input');
+                ci.type = 'hidden';
+                ci.name = 'isExplicitConsentRequired';
+                ci.value = 'false';
+                form.appendChild(ci);
+              }
+            } catch (e) {}
+
+            // submit (simulate real button click; React Router action is required)
+            try {
+              const btn = form.querySelector('button[type="submit"], input[type="submit"]');
+              if (btn) {
+                btn.click();
+              } else {
+                form.submit();
+              }
+            } catch (e) {
+              return {ok:false, reason:'submit_failed:' + String(e), removed:removed};
+            }
+            return {ok:true, removed:removed, birthday:bdayV};
+          } catch (e) {
+            return {ok:false, reason:String(e)};
+          }
+        })(arguments[0], arguments[1]);
+        """;
+
+        try:
+            return driver.execute_script(js, full_name, iso_yyyy_mm_dd)
+        except Exception:
+            return None
+  
+    def _is_visible(el) -> bool:
+        try:
+            return el.is_displayed() and el.is_enabled()
+        except Exception:
+            return False
+
+    def _attrs_text(el) -> str:
+        parts: list[str] = []
+        for k in ("id", "name", "placeholder", "aria-label", "autocomplete", "type"):
+            try:
+                v = (el.get_attribute(k) or "").strip()
+                if v:
+                    parts.append(v)
+            except Exception:
+                pass
+        return " ".join(parts).lower()
+
+    def _safe_focus(el) -> None:
+        try:
+            _click_with_debug(driver, el, tag="safe_focus", note="focus input before typing")
+            return
+        except Exception:
+            pass
+        try:
+            driver.execute_script("arguments[0].focus();", el)
+        except Exception:
+            pass
+
+    def _safe_clear(el) -> None:
+        _safe_focus(el)
+        try:
+            el.send_keys(Keys.CONTROL + "a")
+            el.send_keys(Keys.BACKSPACE)
+        except Exception:
+            pass
+
+    def _set_value_js(el, value: str) -> bool:
+        try:
+            return bool(
+                driver.execute_script(
+                    """
+                    const el = arguments[0];
+                    const value = arguments[1];
+                    try { el.focus(); } catch (e) {}
+                    try { el.value = value; } catch (e) { return false; }
+                    try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
+                    try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+                    return true;
+                    """,
+                    el,
+                    value,
+                )
+            )
+        except Exception:
+            return False
+
+    def _pick_best(elements, keywords: list[str], *, forbid: list[str] | None = None):
+        forbid = forbid or []
+        best = None
+        best_score = 0
+        for el in elements:
+            txt = _attrs_text(el)
+            if any(bad in txt for bad in forbid):
+                continue
+            score = 0
+            for kw in keywords:
+                if kw in txt:
+                    score += 2
+            if score > best_score:
+                best_score = score
+                best = el
+        return best
+
+    try:
+        # Wait for the profile step to render; avoid long fixed sleeps.
+        t_end = time.time() + 20
+        while time.time() < t_end:
+            if driver.find_elements(By.CSS_SELECTOR, "input, select"):
+                break
+            time.sleep(0.5)
+
+        inputs = [el for el in driver.find_elements(By.CSS_SELECTOR, "input") if _is_visible(el)]
+        selects = [el for el in driver.find_elements(By.CSS_SELECTOR, "select") if _is_visible(el)]
+
+        forbid_name = ["email", "password", "code", "otp", "verification", "phone"]
+
+        first_input = _pick_best(inputs, ["first", "given"], forbid=forbid_name)
+        last_input = _pick_best(inputs, ["last", "family", "surname"], forbid=forbid_name)
+        full_name_input = _pick_best(inputs, ["full name", "fullname"], forbid=forbid_name) or _pick_best(inputs, ["name"], forbid=forbid_name)
+
+        name_filled = False
+        if first_input and last_input:
+            _safe_clear(first_input)
+            first_input.send_keys(first_name)
+            _safe_clear(last_input)
+            last_input.send_keys(last_name)
+            name_filled = True
+        elif full_name_input:
+            _safe_clear(full_name_input)
+            full_name_input.send_keys(full_name_str)
+            name_filled = True
+
+        yyyy, mm, dd = birthdate.split("-")
+        forbid_bday = ["email", "password", "code", "otp"]
+
+        bday_input = _pick_best(inputs, ["birth", "birthday", "date of birth", "dob", "birthdate"], forbid=forbid_bday)
+        month_sel = _pick_best(selects, ["month"], forbid=forbid_bday)
+        day_sel = _pick_best(selects, ["day"], forbid=forbid_bday)
+        year_sel = _pick_best(selects, ["year"], forbid=forbid_bday)
+
+        def _ph(el) -> str:
+            try:
+                return (el.get_attribute("placeholder") or "").strip().lower()
+            except Exception:
+                return ""
+
+        month_inp = next((el for el in inputs if _ph(el) in ("mm", "month")), None)
+        day_inp = next((el for el in inputs if _ph(el) in ("dd", "day")), None)
+        year_inp = next((el for el in inputs if _ph(el) in ("yyyy", "year")), None)
+
+        # (bday_filled defined outside try)
+        bday_filled = False
+        if month_sel and day_sel and year_sel:
+            try:
+                Select(month_sel).select_by_value(str(int(mm)))
+            except Exception:
+                try:
+                    Select(month_sel).select_by_visible_text(str(int(mm)))
+                except Exception:
+                    pass
+            try:
+                Select(day_sel).select_by_value(str(int(dd)))
+            except Exception:
+                try:
+                    Select(day_sel).select_by_visible_text(str(int(dd)))
+                except Exception:
+                    pass
+            try:
+                Select(year_sel).select_by_value(yyyy)
+            except Exception:
+                try:
+                    Select(year_sel).select_by_visible_text(yyyy)
+                except Exception:
+                    pass
+            bday_filled = True
+        elif month_inp and day_inp and year_inp:
+            _safe_clear(month_inp)
+            month_inp.send_keys(f"{int(mm):02d}")
+            _safe_clear(day_inp)
+            day_inp.send_keys(f"{int(dd):02d}")
+            _safe_clear(year_inp)
+            year_inp.send_keys(yyyy)
+            bday_filled = True
+        elif bday_input:
+            btype = (bday_input.get_attribute("type") or "").strip().lower()
+            if btype == "date":
+                if not _set_value_js(bday_input, birthdate):
+                    _safe_clear(bday_input)
+                    bday_input.send_keys(birthdate)
+            else:
+                masked = f"{int(mm):02d}/{int(dd):02d}/{yyyy}"
+                _safe_clear(bday_input)
+                for ch in f"{int(mm):02d}{int(dd):02d}{yyyy}":
+                    bday_input.send_keys(ch)
+                    time.sleep(0.03)
+                _set_value_js(bday_input, masked)
+            bday_filled = True
+        else:
+            # /about-you uses react-aria contenteditable segments + a hidden input.
+            # DOM-level value assignment gets overwritten; type into segments.
+            try:
+                if driver.find_elements(By.CSS_SELECTOR, 'input[type="hidden"][name="birthday"]'):
+                    r = _fill_about_you_birthday_segments(iso_yyyy_mm_dd=birthdate)
+                    _dbg("about-you", f"fill birthday segments result={r}", driver=driver)
+                    bday_filled = bool(r and r.get("hidden") == birthdate)
+            except Exception:
+                pass
+
+        explicit_form_detected = bool(name_filled or bday_filled)
+
+        # Trigger blur/validation
+        try:
+            driver.switch_to.active_element.send_keys(Keys.TAB)
+        except Exception:
+            pass
+
+    except Exception as e:
+        print(f"Name/Birthday filling error (v4): {e}")
+
+    # Safety net: if we're on /about-you and birthday wasn't filled, force-set the hidden input.
+    # This page defaults birthday to TODAY (invalid for signup), causing:
+    #   "We can't create an account with that info. Try again."
+    if not bday_filled:
+        try:
+            if "auth.openai.com/about-you" in str(getattr(driver, "current_url", "") or ""):
+                r = _fill_about_you_birthday_segments(iso_yyyy_mm_dd=birthdate)
+                _dbg("about-you", f"post-fill birthday segments result={r}", driver=driver)
+                bday_filled = bool(r and r.get("hidden") == birthdate)
+        except Exception:
+            pass
+
+    if not explicit_form_detected and not bday_filled:
+        # Fallback: old blind tab entry (last resort)
+        birthdate = enter_birthday(driver)
+
+    print("Reach birthday input")
+
+    # If we're on the /about-you page, force-submit it (most reliable).
+    try:
+        u0 = str(getattr(driver, "current_url", "") or "")
+        if "auth.openai.com/about-you" in u0 or driver.find_elements(By.CSS_SELECTOR, 'form[action="/about-you"]'):
+            rsub = _force_submit_about_you_form(full_name=full_name_str, iso_yyyy_mm_dd=birthdate)
+            _dbg("about-you", f"force submit about-you result={rsub}", driver=driver)
+            try:
+                time.sleep(1)
+                _dump_page_body(driver=driver, kind="about_you_force_submit", message=f"birthdate={birthdate} result={rsub}")
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    def _click_final_continue_if_present() -> bool:
+        xpaths = [
+            "//button[(contains(., 'Agree') or contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue')) and not(contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue with'))]",
+            "//button[contains(normalize-space(.), '继续') or contains(normalize-space(.), '同意') or contains(normalize-space(.), '允许') or contains(normalize-space(.), '授权')]",
+            "//button[contains(normalize-space(.), '继续操作') or contains(normalize-space(.), '继续并授权')]",
+        ]
+        for xp in xpaths:
+            el = _find_visible(driver, By.XPATH, xp)
+            if not el:
+                continue
+            _click_with_debug(driver, el, tag="continue_button", note=f"final-continue xpath={xp[:90]}")
+            return True
+        return False
+
+    continue_button = None
+    try:
+        # Final confirmation page click (if we are not on about-you / force submit didn't navigate)
+        print("Clicking continue/agree button")
+        if not _click_final_continue_if_present():
+            continue_button = smart_wait(
+                driver,
+                By.XPATH,
+                (
+                    "//button[(contains(., 'Agree') or "
+                    "contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue')) "
+                    "and not(contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue with'))]"
+                ),
+                timeout=10,
+                debug_kind="continue_button",
+                debug_message="continue/agree button not found",
+            )
+            _click_with_debug(driver, continue_button, tag="continue_button_fallback", note="register continue/agree fallback")
+        time.sleep(1)
+
+        # Dump after click to see where we landed (helps debug accidental navigation to terms page).
+        try:
+            _dbg("ui", "after continue/agree click", driver=driver)
+            _dump_page_body(driver=driver, kind="after_continue", message="after continue/agree click")
+        except Exception:
+            pass
+
+        # If we are still stuck on /about-you, it usually means validation failed
+        # (e.g. birthday still set to today's date -> "We can't create an account with that info").
+        # Try to force-set an adult birthday and submit once more before waiting callback.
+        try:
+            time.sleep(0.5)
+            u_now = str(getattr(driver, "current_url", "") or "")
+            if "auth.openai.com/about-you" in u_now:
+                txt = driver.execute_script(
+                    "return document && document.body ? (document.body.innerText || '') : '';"
+                )
+                if "we can't create an account with that info" in str(txt or "").lower():
+                    _dbg("about-you", "validation error detected; retrying with forced adult birthday", driver=driver)
+                    _dump_page_body(driver=driver, kind="about_you_validation", message="validation error after continue")
+                    r = _fill_about_you_birthday_segments(iso_yyyy_mm_dd=birthdate)
+                    _dbg("about-you", f"retry birthday segments result={r}", driver=driver)
+
+                    # Prefer form.submit() over clicking the button again.
+                    try:
+                        driver.execute_script(
+                            "var f=document.querySelector('form[action=\"/about-you\"]'); if(f) f.submit();"
+                        )
+                    except Exception:
+                        _click_with_debug(driver, continue_button, tag="continue_button_retry", note="about-you retry continue")
+
+                    time.sleep(1)
+                    _dump_page_body(driver=driver, kind="after_continue_retry", message=f"after retry continue on about-you force={r}")
+        except Exception:
+            pass
+
+    except Exception:
+        print("Continue button missing, skip ENTER fallback to avoid mis-navigation")
+        try:
+            _dbg("ui", "continue button missing; do not press ENTER", driver=driver)
+            _dump_page_body(driver=driver, kind="continue_missing_no_enter", message="continue button missing; ENTER disabled")
+        except Exception:
+            pass
+        
+    def _maybe_recover_from_terms_page() -> None:
+        """Sometimes we accidentally land on openai.com policies pages (CSS/JS blocked).
+
+        Try to return to auth flow, and prefer the tab whose URL is auth.openai.com.
+        """
+
+        try:
+            handles = list(driver.window_handles or [])
+        except Exception:
+            handles = []
+
+        # Prefer auth.openai.com tab if multiple windows exist.
+        try:
+            if len(handles) > 1:
+                best = None
+                for h in handles:
+                    try:
+                        driver.switch_to.window(h)
+                        u = str(getattr(driver, "current_url", "") or "")
+                        if "auth.openai.com" in u or "localhost:1455" in u:
+                            best = h
+                            break
+                    except Exception:
+                        continue
+                if best:
+                    driver.switch_to.window(best)
+        except Exception:
+            pass
+
+        try:
+            u = str(getattr(driver, "current_url", "") or "")
+            if "openai.com/policies" in u:
+                _dbg("recover", f"landed on policies page: {u}", driver=driver)
+                _dump_page_body(driver=driver, kind="policies_page", message=u)
+                try:
+                    driver.back()
+                    time.sleep(1)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    try:
+        # Give it a few tries; sometimes a transient nav goes to policies page.
+        for _ in range(3):
+            _maybe_recover_from_terms_page()
+            try:
+                WebDriverWait(driver, 20).until(EC.url_contains("localhost:1455"))
+                break
+            except TimeoutException:
+                continue
+        else:
+            raise TimeoutException("callback not reached")
+
+    except TimeoutException:
+        print("Timeout waiting for callback URL. Capturing screenshot...")
+        try:
+            _dump_page_body(driver=driver, kind="callback_timeout", message=str(getattr(driver, "current_url", "") or ""))
+        except Exception:
+            pass
+        _save_error_artifacts(driver=driver, kind="callback", message="Timeout waiting for callback URL to localhost")
+        raise RuntimeError("Blocked: Timeout waiting for callback URL to localhost.")
+        
+    callback_url = driver.current_url
+    print("Success Callback URL Captured.")
+    
+    reg_email, call_back = submit_callback_url(
+        callback_url=callback_url,
+        expected_state=oauth.state,
+        code_verifier=oauth.code_verifier,
+        redirect_uri=oauth.redirect_uri,
+        proxy=proxy,
+        mailbox_ref=address_jwt,
+        password=pwd,
+        first_name=first_name,
+        last_name=last_name,
+        birthdate=birthdate,
+    )
+    return reg_email, call_back
 
 # -----------------------------------------------------------------------------
 # Repairer (修缮者)：消费 need_fix_auth/ 队列，老号登录换新 token
@@ -2833,7 +3677,7 @@ def _repair_one_auth_file(path: str, *, proxy: str | None) -> tuple[bool, str, s
     proxy_dir = None
     try:
         with driver_init_lock:
-            driver, proxy_dir = browser_new_driver(proxy)
+            driver, proxy_dir = new_driver(proxy)
 
         oauth = generate_oauth_url()
         callback_url, chosen_ref = _repairer_drive_login_and_get_callback_url(
@@ -3054,9 +3898,8 @@ def _repairer_loop() -> None:
 
         time.sleep(0.2)
 
+
 def load_proxies() -> list[str]:
-    if DISABLE_PROXY:
-        return []
     proxy_file = _data_path("proxies.txt")
     if os.path.exists(proxy_file):
         with open(proxy_file, "r", encoding="utf-8") as f:
@@ -3064,118 +3907,17 @@ def load_proxies() -> list[str]:
         return proxies
     return []
 
-
-class ProxyPool:
-    """Thread-safe + cross-instance mutex proxy allocator.
-
-    Ensures no two workers (within or across container instances) use the
-    same proxy entry simultaneously.
-
-    Intra-instance:  threading.Lock protects the in-memory set.
-    Inter-instance:  file-based locks in /data/.proxy_locks/ (shared volume).
-    Lock files auto-expire after LOCK_TTL_SECONDS to handle crashes.
-    """
-
-    LOCK_TTL_SECONDS = 600  # 10 min auto-expire for stale locks
-
-    def __init__(self):
-        self._lock = threading.Lock()
-        self._in_use: set[str] = set()  # proxies checked out by THIS instance
-        self._lock_dir = _data_path(".proxy_locks")
-        os.makedirs(self._lock_dir, exist_ok=True)
-
-    def _lock_path(self, proxy: str) -> str:
-        """Deterministic lock file path for a proxy string."""
-        import hashlib
-        h = hashlib.md5(proxy.encode()).hexdigest()[:12]
-        return os.path.join(self._lock_dir, f"proxy_{h}.lock")
-
-    def _is_locked_by_other(self, proxy: str) -> bool:
-        """Check if another instance holds the lock (via file)."""
-        lp = self._lock_path(proxy)
-        if not os.path.exists(lp):
-            return False
-        try:
-            mtime = os.path.getmtime(lp)
-            if time.time() - mtime > self.LOCK_TTL_SECONDS:
-                # Stale lock — remove it
-                try:
-                    os.remove(lp)
-                except OSError:
-                    pass
-                return False
-            with open(lp, "r") as f:
-                owner = f.read().strip()
-            # If we own it, it's not "locked by other"
-            return owner != INSTANCE_ID
-        except Exception:
-            return False
-
-    def _write_lock_file(self, proxy: str):
-        lp = self._lock_path(proxy)
-        try:
-            with open(lp, "w") as f:
-                f.write(INSTANCE_ID)
-        except Exception:
-            pass
-
-    def _remove_lock_file(self, proxy: str):
-        lp = self._lock_path(proxy)
-        try:
-            if os.path.exists(lp):
-                with open(lp, "r") as f:
-                    owner = f.read().strip()
-                if owner == INSTANCE_ID:
-                    os.remove(lp)
-        except Exception:
-            pass
-
-    def acquire(self, worker_id: int, timeout: float = 60) -> str | None:
-        """Acquire an exclusive proxy. Returns proxy string or None if timed out."""
-        deadline = time.time() + timeout
-        attempt = 0
-        while time.time() < deadline:
-            proxies = load_proxies()
-            if not proxies:
-                return None
-            random.shuffle(proxies)
-
-            with self._lock:
-                for p in proxies:
-                    if p not in self._in_use and not self._is_locked_by_other(p):
-                        self._in_use.add(p)
-                        self._write_lock_file(p)
-                        return p
-
-            # All proxies busy — wait with backoff
-            attempt += 1
-            wait = min(2.0 * attempt, 10.0)
-            print(f"[Worker {worker_id}] 所有代理占用中，等待 {wait:.0f}s...")
-            time.sleep(wait)
-
-        print(f"[Worker {worker_id}] 获取代理超时")
-        return None
-
-    def release(self, proxy: str):
-        """Release a proxy back to the pool."""
-        with self._lock:
-            self._in_use.discard(proxy)
-            self._remove_lock_file(proxy)
-
-
-# Global proxy pool (one per container instance)
-_proxy_pool = ProxyPool()
-
 def worker(worker_id: int):
     fatal_driver_errors = 0
     fatal_restart_threshold = max(1, int(os.environ.get("FATAL_DRIVER_RESTART_THRESHOLD", "3") or "3"))
 
     while True:
-        proxy = _proxy_pool.acquire(worker_id)
+        proxies = load_proxies()
+        proxy = random.choice(proxies) if proxies else None
 
         if proxy:
             print(f"[Worker {worker_id}] ---> 使用代理: {proxy} <---")
-        elif REQUIRE_PROXY:
+        elif REGISTER_PROXY_REQUIRED:
             print(
                 f"[Worker {worker_id}] [x] register_proxy_required no_proxy_available "
                 f"flow={REGISTER_FLOW_MODE} headless={int(os.environ.get('HEADLESS', '1') or '1')}"
@@ -3193,9 +3935,11 @@ def worker(worker_id: int):
         try:
             if REGISTER_FLOW_MODE == "protocol":
                 print(f"[Worker {worker_id}] ---> 协议流模式（REGISTER_FLOW_MODE=protocol） <---")
-                reg_email, res = run_protocol_register(proxy)
+                reg_email, res = register_protocol(proxy)
             else:
-                reg_email, res, driver, proxy_dir = run_browser_register(proxy)
+                with driver_init_lock:
+                    driver, proxy_dir = new_driver(proxy)
+                reg_email, res = register(driver, proxy)
 
             # Write outputs (sharded results + per-account json)
             with write_lock:
@@ -3235,41 +3979,16 @@ def worker(worker_id: int):
 
         except RuntimeError as e:
             # Expected blocks, no stack trace needed
-            if driver is None:
-                driver = getattr(e, "_nl_driver", None)
-            if proxy_dir is None:
-                proxy_dir = getattr(e, "_nl_proxy_dir", None)
             fatal_driver_errors = 0
             keep_browser_for_debug = (DEBUG_KEEP_BROWSER_ON_FAIL == 1 and driver is not None)
-            # Debug mode must stop next-round loop even if driver handle is lost.
-            need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1)
-            # Capture screenshot for debugging
-            if driver is not None:
-                try:
-                    _save_error_artifacts(driver=driver, kind="runtime_error", message=f"Worker {worker_id}: {e}")
-                except Exception:
-                    pass
+            need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1 and driver is not None)
             print(f"[Worker {worker_id}] [x] {e} (准备换IP重试)")
         except TimeoutException as e:
-            if driver is None:
-                driver = getattr(e, "_nl_driver", None)
-            if proxy_dir is None:
-                proxy_dir = getattr(e, "_nl_proxy_dir", None)
             fatal_driver_errors = 0
             keep_browser_for_debug = (DEBUG_KEEP_BROWSER_ON_FAIL == 1 and driver is not None)
-            need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1)
-            # Capture screenshot for debugging
-            if driver is not None:
-                try:
-                    _save_error_artifacts(driver=driver, kind="timeout", message=f"Worker {worker_id}: {e}")
-                except Exception:
-                    pass
+            need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1 and driver is not None)
             print(f"[Worker {worker_id}] [x] 页面加载超时，可能遇到风控盾拦截。 (准备换IP重试)")
         except Exception as e:
-            if driver is None:
-                driver = getattr(e, "_nl_driver", None)
-            if proxy_dir is None:
-                proxy_dir = getattr(e, "_nl_proxy_dir", None)
             err_str = str(e)
             is_proxy_eof = (
                 "RemoteDisconnected" in err_str
@@ -3289,25 +4008,13 @@ def worker(worker_id: int):
             if is_proxy_eof:
                 fatal_driver_errors = 0
                 keep_browser_for_debug = (DEBUG_KEEP_BROWSER_ON_FAIL == 1 and driver is not None)
-                need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1)
-                # Capture screenshot for proxy EOF errors too
-                if driver is not None:
-                    try:
-                        _save_error_artifacts(driver=driver, kind="proxy_eof", message=f"Worker {worker_id}: {err_str}")
-                    except Exception:
-                        pass
+                need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1 and driver is not None)
                 print(f"[Worker {worker_id}] [x] 代理连接强制中断 (SSL/EOF断流)，准备换IP重试")
             else:
                 import traceback
                 trace_str = traceback.format_exc()
                 keep_browser_for_debug = (DEBUG_KEEP_BROWSER_ON_FAIL == 1 and driver is not None)
-                need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1)
-                # Capture screenshot for unexpected errors
-                if driver is not None:
-                    try:
-                        _save_error_artifacts(driver=driver, kind="unexpected_error", message=f"Worker {worker_id}: {trace_str[-500:]}")
-                    except Exception:
-                        pass
+                need_wait_for_debug = (DEBUG_WAIT_ON_FAIL == 1 and driver is not None)
                 print(f"[Worker {worker_id}] [x] 本次注册流程意外中止:\\n{trace_str}")
 
                 if is_fatal_driver:
@@ -3323,23 +4030,16 @@ def worker(worker_id: int):
                     fatal_driver_errors = 0
 
         finally:
-            if need_wait_for_debug:
-                if driver is not None:
-                    print(
-                        f"[Worker {worker_id}] [debug] 检测到失败，按 DEBUG_WAIT_ON_FAIL=1 进入现场等待。"
-                        f" 浏览器将保持打开，按 Ctrl+C 结束本轮。"
-                    )
-                else:
-                    print(
-                        f"[Worker {worker_id}] [debug] 检测到失败，进入等待（driver 句柄缺失）。"
-                        f" 为防止继续弹窗，按 Ctrl+C 结束本轮。"
-                    )
+            if need_wait_for_debug and driver is not None:
+                print(
+                    f"[Worker {worker_id}] [debug] 检测到失败，按 DEBUG_WAIT_ON_FAIL=1 进入现场等待。"
+                    f" 浏览器将保持打开，按 Ctrl+C 继续。"
+                )
                 try:
                     while True:
                         time.sleep(1.0)
                 except KeyboardInterrupt:
-                    print(f"[Worker {worker_id}] [debug] 收到 Ctrl+C，结束现场等待并停止该 worker（避免再次弹窗）。")
-                    return
+                    print(f"[Worker {worker_id}] [debug] 收到 Ctrl+C，结束现场等待。")
 
             if driver and not keep_browser_for_debug:
                 try:
@@ -3348,9 +4048,6 @@ def worker(worker_id: int):
                     pass
             if proxy_dir and os.path.exists(proxy_dir):
                 shutil.rmtree(proxy_dir, ignore_errors=True)
-            # Release proxy back to pool
-            if proxy:
-                _proxy_pool.release(proxy)
 
         # 自由调整休眠时间
         sleep_min = int(os.environ.get("SLEEP_MIN", "5"))
@@ -3360,39 +4057,6 @@ def worker(worker_id: int):
         time.sleep(sleep_time)
 
 if __name__ == "__main__":
-    # Hard singleton guard for local visible debug mode.
-    # Even if multiple terminals launch this script, only one process may proceed.
-    debug_singleton = (
-        int(os.environ.get("DEBUG_WAIT_ON_FAIL", "0") or "0") == 1
-        and int(os.environ.get("HEADLESS", "1") or "1") == 0
-    )
-    _debug_singleton_lockfile = os.path.join(tempfile.gettempdir(), "codex_register_debug_singleton.lock")
-    _debug_singleton_fd = None
-    if debug_singleton:
-        try:
-            _debug_singleton_fd = os.open(_debug_singleton_lockfile, os.O_CREAT | os.O_EXCL | os.O_RDWR)
-            os.write(_debug_singleton_fd, str(os.getpid()).encode("utf-8", errors="ignore"))
-
-            def _cleanup_debug_singleton_lock() -> None:
-                try:
-                    if _debug_singleton_fd is not None:
-                        os.close(_debug_singleton_fd)
-                except Exception:
-                    pass
-                try:
-                    if os.path.exists(_debug_singleton_lockfile):
-                        os.remove(_debug_singleton_lockfile)
-                except Exception:
-                    pass
-
-            atexit.register(_cleanup_debug_singleton_lock)
-        except FileExistsError:
-            print(f"[debug] singleton lock exists, refuse duplicate process: {_debug_singleton_lockfile}")
-            raise SystemExit(1)
-        except Exception as e:
-            print(f"[debug] singleton lock create failed, refuse start: {e}")
-            raise SystemExit(1)
-
     os.makedirs(DATA_DIR, exist_ok=True)
 
     # Per-instance dirs (safe for multi-container shared volume)

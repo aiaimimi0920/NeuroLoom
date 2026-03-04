@@ -8,8 +8,7 @@ set -euo pipefail
 # - 可按 CLEAN_EXPIRED_DAYS 删除“过期文件”（按文件修改时间）
 # - 默认：DryRun（不删除，只生成计划与报告）
 #
-# 依赖：curl
-# JSON 解析（任选其一）：python3（推荐）/ osascript(JXA, macOS 自带) / jq（可选兜底）
+# 依赖：curl、python3
 
 APPLY=0
 if [[ "${1:-}" == "apply" || "${2:-}" == "apply" || "${3:-}" == "apply" ]]; then
@@ -17,26 +16,79 @@ if [[ "${1:-}" == "apply" || "${2:-}" == "apply" || "${3:-}" == "apply" ]]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
-LIB_SH="$ROOT_DIR/客户端/_lib/json.sh"
-# shellcheck disable=SC1090
-source "$LIB_SH"
+need_cmd() {
+  local cmd="$1"
+  command -v "$cmd" >/dev/null 2>&1 || {
+    echo "[ERROR] 缺少依赖命令：$cmd"
+    exit 127
+  }
+}
+
+need_json_parser() {
+  need_cmd python3
+}
+
+json_auth_fields4() {
+  local f="$1"
+  python3 - "$f" <<'PY'
+import json, sys
+
+path = sys.argv[1]
+try:
+    with open(path, 'r', encoding='utf-8') as fp:
+        obj = json.load(fp)
+except Exception:
+    print('')
+    print('')
+    print('')
+    print('')
+    raise SystemExit(0)
+
+auth = obj.get('auth') if isinstance(obj.get('auth'), dict) else {}
+
+def pick(*vals):
+  for val in vals:
+    if isinstance(val, str) and val:
+      return val
+  return ''
+
+print(pick(auth.get('type'), obj.get('type')))
+print(pick(auth.get('access_token'), obj.get('access_token')))
+print(pick(auth.get('account_id'), obj.get('account_id')))
+print(pick(obj.get('email'), auth.get('email')))
+PY
+}
+
+json_normalize_wham_status() {
+  local raw_status="$1"
+  local body_file="$2"
+
+  if [[ "$raw_status" =~ ^[0-9]{3}$ ]] && [[ "$raw_status" != "000" ]]; then
+    echo "$raw_status"
+    return 0
+  fi
+
+  if [[ -f "$body_file" ]] && grep -Eqi 'quota|rate[[:space:]-_]*limit|too many|insufficient' "$body_file"; then
+    echo "429"
+    return 0
+  fi
+
+  echo "000"
+}
 
 need_cmd curl
 need_json_parser
 
-CFG="$ROOT_DIR/config.yaml"
 USER_CFG="$SCRIPT_DIR/无限续杯配置.env"
-ROOT_CFG="$ROOT_DIR/无限续杯配置.env"
 
 ACCOUNTS_DIR="$SCRIPT_DIR/accounts"
 CLEAN_DELETE_STATUSES="401,429"
 CLEAN_EXPIRED_DAYS="30"
-if [[ -f "$ROOT_CFG" ]]; then
-  # shellcheck disable=SC1090
-  source "$ROOT_CFG" || true
-fi
+WHAM_CONNECT_TIMEOUT="5"
+WHAM_MAX_TIME="15"
+TOPUP_CONNECT_TIMEOUT="8"
+TOPUP_MAX_TIME="30"
 if [[ -f "$USER_CFG" ]]; then
   # shellcheck disable=SC1090
   source "$USER_CFG" || true
@@ -122,14 +174,14 @@ for f in "$ACCOUNTS_DIR"/*.json; do
 
   wham_body="$OUT_DIR/.wham.clean.$$.tmp"
   if [[ -n "$local_aid" ]]; then
-    status="$(curl -sS -o "$wham_body" -w "%{http_code}" \
+    status="$(curl -sS --connect-timeout "$WHAM_CONNECT_TIMEOUT" --max-time "$WHAM_MAX_TIME" -o "$wham_body" -w "%{http_code}" \
       -H "Authorization: Bearer $local_token" \
       -H "Chatgpt-Account-Id: $local_aid" \
       -H "Accept: application/json, text/plain, */*" \
       -H "User-Agent: codex_cli_rs/0.76.0 (macOS/Linux)" \
       "https://chatgpt.com/backend-api/wham/usage" || true)"
   else
-    status="$(curl -sS -o "$wham_body" -w "%{http_code}" \
+    status="$(curl -sS --connect-timeout "$WHAM_CONNECT_TIMEOUT" --max-time "$WHAM_MAX_TIME" -o "$wham_body" -w "%{http_code}" \
       -H "Authorization: Bearer $local_token" \
       -H "Accept: application/json, text/plain, */*" \
       -H "User-Agent: codex_cli_rs/0.76.0 (macOS/Linux)" \
@@ -216,7 +268,7 @@ if [[ "$APPLY" == "1" && "$deleted" -gt 0 ]]; then
 
   missing=$((target - remain))
   if [[ "$missing" -gt 0 ]]; then
-    echo "[INFO] 清理后剩余=$remain 目标=${target}：缺口=$missing" | tee -a "$REPORT"
+    echo "[INFO] 清理后剩余=$remain 目标=$target：缺口=$missing" | tee -a "$REPORT"
 
     if [[ "$auto_refill" != "1" ]]; then
       echo "[INFO] 未开启自动补齐（AUTO_REFILL_AFTER_CLEAN=1 才会自动续杯）" | tee -a "$REPORT"
@@ -233,9 +285,9 @@ if [[ "$APPLY" == "1" && "$deleted" -gt 0 ]]; then
     body="$SCRIPT_DIR/out/_topup_body.json"
     echo "{\"target_pool_size\":$target,\"reports\":[]}" > "$body"
 
-    echo "[INFO] 开始补齐：请求一次 topup（目标=${target}），追加写入：${OUT_REFILL}" | tee -a "$REPORT"
+    echo "[INFO] 开始补齐：请求一次 topup（目标=$target），追加写入：$OUT_REFILL" | tee -a "$REPORT"
 
-    resp="$(curl -sS -X POST "$SERVER_URL/v1/refill/topup" \
+    resp="$(curl -sS --connect-timeout "$TOPUP_CONNECT_TIMEOUT" --max-time "$TOPUP_MAX_TIME" -X POST "$SERVER_URL/v1/refill/topup" \
       -H "X-User-Key: $USER_KEY" \
       -H "Content-Type: application/json" \
       --data-binary "@$body" || true)"
