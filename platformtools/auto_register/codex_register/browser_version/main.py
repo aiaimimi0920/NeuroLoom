@@ -69,11 +69,12 @@ _PROXY_COOLDOWN_UNTIL: dict[str, float] = {}
 _PROXY_SCORE: dict[str, int] = {}
 
 # Runtime data directory (results / proxies / screenshots / logs).
-# - In local dev: defaults to ./data next to this file
+# - In local dev: defaults to ../data (shared codex_register/data)
 # - In container: set DATA_DIR=/data and mount a volume
-DATA_DIR = (os.environ.get("DATA_DIR") or os.path.join(os.path.dirname(__file__), "data")).strip()
+_DEFAULT_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
+DATA_DIR = (os.environ.get("DATA_DIR") or _DEFAULT_DATA_DIR).strip()
 if not DATA_DIR:
-    DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+    DATA_DIR = _DEFAULT_DATA_DIR
 
 
 def _sanitize_instance_id(v: str) -> str:
@@ -5168,8 +5169,12 @@ if __name__ == "__main__":
         with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
             for i in range(concurrency):
                 executor.submit(worker, i + 1)
-                # 错开启动时间，避免瞬间打满并发
-                time.sleep(random.randint(2, 5))
+                # 错开启动时间，避免瞬间打满并发（默认缩短到 0~1s）
+                stagger_min = float(os.environ.get("STARTUP_STAGGER_MIN_SECONDS", "0") or "0")
+                stagger_max = float(os.environ.get("STARTUP_STAGGER_MAX_SECONDS", "1") or "1")
+                if stagger_max < stagger_min:
+                    stagger_max = stagger_min
+                time.sleep(random.uniform(stagger_min, stagger_max))
     else:
         # Allow running repairer/probe-only mode without starting register workers.
         while True:

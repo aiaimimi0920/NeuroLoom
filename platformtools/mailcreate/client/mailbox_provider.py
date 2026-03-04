@@ -475,7 +475,7 @@ def wait_openai_code(
 
         # MailCreate is self-hosted and (almost) free to poll, so we allow
         # configuring a higher polling frequency via env.
-        # NOTE: GPTMail polling stays at 3.0s to avoid burning quota.
+        # NOTE: GPTMail polling is configured separately via GPTMAIL_POLL_SECONDS.
         poll_seconds = 3.0
         try:
             v = (os.environ.get("MAILCREATE_POLL_SECONDS") or "").strip()
@@ -524,16 +524,31 @@ def wait_openai_code(
 
         email = raw_ref if ref_provider else mailbox_ref
 
+        gptmail_poll_seconds = 2.0
+        try:
+            v = (os.environ.get("GPTMAIL_POLL_SECONDS") or "").strip()
+            if v:
+                gptmail_poll_seconds = float(v)
+        except Exception:
+            gptmail_poll_seconds = 2.0
+        if gptmail_poll_seconds < 0.5:
+            gptmail_poll_seconds = 0.5
+        if gptmail_poll_seconds > 30.0:
+            gptmail_poll_seconds = 30.0
+
         if gptmail_api_key:
             client = GPTMailClient(GPTMailConfig(base_url=gptmail_base_url, api_key=gptmail_api_key))
-            _mb_log(f"[mailbox-provider] gptmail(single-key) poll start timeout={timeout_seconds}s")
+            _mb_log(
+                f"[mailbox-provider] gptmail(single-key) poll start "
+                f"poll_seconds={gptmail_poll_seconds} timeout={timeout_seconds}s"
+            )
             try:
                 code = wait_for_6digit_code_gptmail(
                     client,
                     email=email,
                     from_contains="openai",
                     timeout_seconds=timeout_seconds,
-                    poll_seconds=3.0,
+                    poll_seconds=gptmail_poll_seconds,
                 )
                 _mb_log(f"[mailbox-provider] gptmail(single-key) poll ok code_len={len(str(code or ''))}")
                 return code
@@ -580,7 +595,7 @@ def wait_openai_code(
                     email=email,
                     from_contains="openai",
                     timeout_seconds=remaining,
-                    poll_seconds=3.0,
+                    poll_seconds=gptmail_poll_seconds,
                 )
                 km.mark_success(k)
                 return code

@@ -36,9 +36,12 @@ x-register-common: &register-common
     - TOKEN_POST_TLS_VERIFY=0
     - TOKEN_POST_MAX_RETRIES=6
     - SLEEP_MIN=0
-    - SLEEP_MAX=2
+    - SLEEP_MAX=1
     - MAILCREATE_POLL_SECONDS=0.8
+      - GPTMAIL_POLL_SECONDS=2
     - FATAL_DRIVER_RESTART_THRESHOLD=3
+      - STARTUP_STAGGER_MIN_SECONDS=0
+      - STARTUP_STAGGER_MAX_SECONDS=1
   shm_size: '4gb'
   restart: always
   command: ["python", "main.py"]
@@ -66,9 +69,12 @@ services:
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
-      - SLEEP_MAX=2
+      - SLEEP_MAX=1
       - MAILCREATE_POLL_SECONDS=0.8
+      - GPTMAIL_POLL_SECONDS=2
       - FATAL_DRIVER_RESTART_THRESHOLD=3
+      - STARTUP_STAGGER_MIN_SECONDS=0
+      - STARTUP_STAGGER_MAX_SECONDS=1
 
   codex_register_2:
     <<: *register-common
@@ -89,9 +95,12 @@ services:
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
-      - SLEEP_MAX=2
+      - SLEEP_MAX=1
       - MAILCREATE_POLL_SECONDS=0.8
+      - GPTMAIL_POLL_SECONDS=2
       - FATAL_DRIVER_RESTART_THRESHOLD=3
+      - STARTUP_STAGGER_MIN_SECONDS=0
+      - STARTUP_STAGGER_MAX_SECONDS=1
 
   codex_register_3:
     <<: *register-common
@@ -112,9 +121,12 @@ services:
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
-      - SLEEP_MAX=2
+      - SLEEP_MAX=1
       - MAILCREATE_POLL_SECONDS=0.8
+      - GPTMAIL_POLL_SECONDS=2
       - FATAL_DRIVER_RESTART_THRESHOLD=3
+      - STARTUP_STAGGER_MIN_SECONDS=0
+      - STARTUP_STAGGER_MAX_SECONDS=1
 
   codex_register_4:
     <<: *register-common
@@ -135,9 +147,12 @@ services:
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
-      - SLEEP_MAX=2
+      - SLEEP_MAX=1
       - MAILCREATE_POLL_SECONDS=0.8
+      - GPTMAIL_POLL_SECONDS=2
       - FATAL_DRIVER_RESTART_THRESHOLD=3
+      - STARTUP_STAGGER_MIN_SECONDS=0
+      - STARTUP_STAGGER_MAX_SECONDS=1
 
   codex_register_5:
     <<: *register-common
@@ -158,9 +173,12 @@ services:
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
-      - SLEEP_MAX=2
+      - SLEEP_MAX=1
       - MAILCREATE_POLL_SECONDS=0.8
+      - GPTMAIL_POLL_SECONDS=2
       - FATAL_DRIVER_RESTART_THRESHOLD=3
+      - STARTUP_STAGGER_MIN_SECONDS=0
+      - STARTUP_STAGGER_MAX_SECONDS=1
 
   codex_register_6:
     <<: *register-common
@@ -181,9 +199,12 @@ services:
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
-      - SLEEP_MAX=2
+      - SLEEP_MAX=1
       - MAILCREATE_POLL_SECONDS=0.8
+      - GPTMAIL_POLL_SECONDS=2
       - FATAL_DRIVER_RESTART_THRESHOLD=3
+      - STARTUP_STAGGER_MIN_SECONDS=0
+      - STARTUP_STAGGER_MAX_SECONDS=1
 
   codex_register_7:
     <<: *register-common
@@ -204,9 +225,12 @@ services:
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
-      - SLEEP_MAX=2
+      - SLEEP_MAX=1
       - MAILCREATE_POLL_SECONDS=0.8
+      - GPTMAIL_POLL_SECONDS=2
       - FATAL_DRIVER_RESTART_THRESHOLD=3
+      - STARTUP_STAGGER_MIN_SECONDS=0
+      - STARTUP_STAGGER_MAX_SECONDS=1
 
   codex_register_8:
     <<: *register-common
@@ -227,9 +251,12 @@ services:
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
-      - SLEEP_MAX=2
+      - SLEEP_MAX=1
       - MAILCREATE_POLL_SECONDS=0.8
+      - GPTMAIL_POLL_SECONDS=2
       - FATAL_DRIVER_RESTART_THRESHOLD=3
+      - STARTUP_STAGGER_MIN_SECONDS=0
+      - STARTUP_STAGGER_MAX_SECONDS=1
 
   codex_register_9:
     <<: *register-common
@@ -250,9 +277,12 @@ services:
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
-      - SLEEP_MAX=2
+      - SLEEP_MAX=1
       - MAILCREATE_POLL_SECONDS=0.8
+      - GPTMAIL_POLL_SECONDS=2
       - FATAL_DRIVER_RESTART_THRESHOLD=3
+      - STARTUP_STAGGER_MIN_SECONDS=0
+      - STARTUP_STAGGER_MAX_SECONDS=1
 
   codex_register_10:
     <<: *register-common
@@ -273,9 +303,12 @@ services:
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
-      - SLEEP_MAX=2
+      - SLEEP_MAX=1
       - MAILCREATE_POLL_SECONDS=0.8
+      - GPTMAIL_POLL_SECONDS=2
       - FATAL_DRIVER_RESTART_THRESHOLD=3
+      - STARTUP_STAGGER_MIN_SECONDS=0
+      - STARTUP_STAGGER_MAX_SECONDS=1
 
   codex_register_11:
     <<: *register-common
@@ -296,9 +329,12 @@ services:
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
-      - SLEEP_MAX=2
+      - SLEEP_MAX=1
       - MAILCREATE_POLL_SECONDS=0.8
+      - GPTMAIL_POLL_SECONDS=2
       - FATAL_DRIVER_RESTART_THRESHOLD=3
+      - STARTUP_STAGGER_MIN_SECONDS=0
+      - STARTUP_STAGGER_MAX_SECONDS=1
 
   codex_register_12:
     <<: *register-common
@@ -319,9 +355,12 @@ services:
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
-      - SLEEP_MAX=2
+      - SLEEP_MAX=1
       - MAILCREATE_POLL_SECONDS=0.8
+      - GPTMAIL_POLL_SECONDS=2
       - FATAL_DRIVER_RESTART_THRESHOLD=3
+      - STARTUP_STAGGER_MIN_SECONDS=0
+      - STARTUP_STAGGER_MAX_SECONDS=1
 
   codex_register_13:
     <<: *register-common
@@ -342,9 +381,12 @@ services:
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
-      - SLEEP_MAX=2
+      - SLEEP_MAX=1
       - MAILCREATE_POLL_SECONDS=0.8
+      - GPTMAIL_POLL_SECONDS=2
       - FATAL_DRIVER_RESTART_THRESHOLD=3
+      - STARTUP_STAGGER_MIN_SECONDS=0
+      - STARTUP_STAGGER_MAX_SECONDS=1
 
   codex_register_14:
     <<: *register-common
@@ -365,9 +407,12 @@ services:
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
-      - SLEEP_MAX=2
+      - SLEEP_MAX=1
       - MAILCREATE_POLL_SECONDS=0.8
+      - GPTMAIL_POLL_SECONDS=2
       - FATAL_DRIVER_RESTART_THRESHOLD=3
+      - STARTUP_STAGGER_MIN_SECONDS=0
+      - STARTUP_STAGGER_MAX_SECONDS=1
 
   codex_register_15:
     <<: *register-common
@@ -388,9 +433,12 @@ services:
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
-      - SLEEP_MAX=2
+      - SLEEP_MAX=1
       - MAILCREATE_POLL_SECONDS=0.8
+      - GPTMAIL_POLL_SECONDS=2
       - FATAL_DRIVER_RESTART_THRESHOLD=3
+      - STARTUP_STAGGER_MIN_SECONDS=0
+      - STARTUP_STAGGER_MAX_SECONDS=1
 
   codex_register_16:
     <<: *register-common
@@ -411,9 +459,12 @@ services:
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
-      - SLEEP_MAX=2
+      - SLEEP_MAX=1
       - MAILCREATE_POLL_SECONDS=0.8
+      - GPTMAIL_POLL_SECONDS=2
       - FATAL_DRIVER_RESTART_THRESHOLD=3
+      - STARTUP_STAGGER_MIN_SECONDS=0
+      - STARTUP_STAGGER_MAX_SECONDS=1
 
   codex_register_17:
     <<: *register-common
@@ -434,9 +485,12 @@ services:
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
-      - SLEEP_MAX=2
+      - SLEEP_MAX=1
       - MAILCREATE_POLL_SECONDS=0.8
+      - GPTMAIL_POLL_SECONDS=2
       - FATAL_DRIVER_RESTART_THRESHOLD=3
+      - STARTUP_STAGGER_MIN_SECONDS=0
+      - STARTUP_STAGGER_MAX_SECONDS=1
 
   codex_register_18:
     <<: *register-common
@@ -457,9 +511,12 @@ services:
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
-      - SLEEP_MAX=2
+      - SLEEP_MAX=1
       - MAILCREATE_POLL_SECONDS=0.8
+      - GPTMAIL_POLL_SECONDS=2
       - FATAL_DRIVER_RESTART_THRESHOLD=3
+      - STARTUP_STAGGER_MIN_SECONDS=0
+      - STARTUP_STAGGER_MAX_SECONDS=1
 
   codex_register_19:
     <<: *register-common
@@ -480,9 +537,12 @@ services:
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
-      - SLEEP_MAX=2
+      - SLEEP_MAX=1
       - MAILCREATE_POLL_SECONDS=0.8
+      - GPTMAIL_POLL_SECONDS=2
       - FATAL_DRIVER_RESTART_THRESHOLD=3
+      - STARTUP_STAGGER_MIN_SECONDS=0
+      - STARTUP_STAGGER_MAX_SECONDS=1
 
   codex_register_20:
     <<: *register-common
@@ -503,9 +563,12 @@ services:
       - HEADLESS=1
       - ENABLE_REPAIRER=0
       - SLEEP_MIN=0
-      - SLEEP_MAX=2
+      - SLEEP_MAX=1
       - MAILCREATE_POLL_SECONDS=0.8
+      - GPTMAIL_POLL_SECONDS=2
       - FATAL_DRIVER_RESTART_THRESHOLD=3
+      - STARTUP_STAGGER_MIN_SECONDS=0
+      - STARTUP_STAGGER_MAX_SECONDS=1
 
   codex_uploader:
     build:
@@ -548,4 +611,5 @@ services:
       - HEADLESS=1
     command: ["python", "repairer.py"]
     restart: always
+
 
