@@ -76,9 +76,24 @@ TOPUP_RETRY_DELAY="${TOPUP_RETRY_DELAY:-3}"
 PROBE_PARALLEL="${PROBE_PARALLEL:-6}"
 REFILL_ITER_MAX="${REFILL_ITER_MAX:-6}"
 
+sanitize_env_to_tmp() {
+  local src="$1"
+  local dst="$2"
+  local line first_line=1
+  : > "$dst"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$first_line" == "1" ]]; then
+      line="${line#$'\xEF\xBB\xBF'}"
+      first_line=0
+    fi
+    line="${line%$'\r'}"
+    printf '%s\n' "$line" >> "$dst"
+  done < "$src"
+}
+
 if [[ -f "$CFG_ENV" ]]; then
   cfg_tmp="${CFG_ENV}.sanitized.$$"
-  awk 'NR==1{sub(/^\xef\xbb\xbf/,"")} {sub(/\r$/,""); print}' "$CFG_ENV" > "$cfg_tmp" 2>/dev/null || cp -f "$CFG_ENV" "$cfg_tmp"
+  sanitize_env_to_tmp "$CFG_ENV" "$cfg_tmp" 2>/dev/null || cp -f "$CFG_ENV" "$cfg_tmp"
   # shellcheck disable=SC1090
   source "$cfg_tmp" || true
   rm -f "$cfg_tmp" >/dev/null 2>&1 || true
@@ -221,22 +236,32 @@ write_final_report() {
   fi
 
   if [[ "$(uname 2>/dev/null || echo unknown)" == "Darwin" ]] && command -v osascript >/dev/null 2>&1; then
-    osascript -l JavaScript <<OSA >/dev/null 2>&1 || true
+    FINAL_REPORT_PATH="$FINAL_REPORT" \
+    REPORT_GENERATED_AT="$generated_at" \
+    REPORT_MODE="$mode" \
+    REPORT_STATUS="$status" \
+    REPORT_TOTAL="$total" \
+    REPORT_PROBED_OK="$probed_ok" \
+    REPORT_NET_FAIL="$net_fail" \
+    REPORT_INVALID="$invalid" \
+    REPORT_OUT_DIR="$out_dir" \
+    osascript -l JavaScript <<'OSA' >/dev/null 2>&1 || true
 ObjC.import('Foundation');
-const path = '$FINAL_REPORT';
+ObjC.import('stdlib');
+const path = $.getenv('FINAL_REPORT_PATH');
 const obj = {
-  generated_at: '$generated_at',
-  mode: '$mode',
-  status: '$status',
-  total: Number('$total') || 0,
-  probed_ok: Number('$probed_ok') || 0,
-  net_fail: Number('$net_fail') || 0,
-  invalid_401_429: Number('$invalid') || 0,
-  out_dir: '$out_dir',
-  final_report: '$FINAL_REPORT'
+  generated_at: $.getenv('REPORT_GENERATED_AT') || '',
+  mode: $.getenv('REPORT_MODE') || '',
+  status: $.getenv('REPORT_STATUS') || '',
+  total: Number($.getenv('REPORT_TOTAL') || '0') || 0,
+  probed_ok: Number($.getenv('REPORT_PROBED_OK') || '0') || 0,
+  net_fail: Number($.getenv('REPORT_NET_FAIL') || '0') || 0,
+  invalid_401_429: Number($.getenv('REPORT_INVALID') || '0') || 0,
+  out_dir: $.getenv('REPORT_OUT_DIR') || '',
+  final_report: path
 };
-const data = $(NSJSONSerialization.dataWithJSONObjectOptionsError(obj, 1, null));
-$(data.writeToFileAtomically(path, true));
+const text = JSON.stringify(obj, null, 2);
+$(text).writeToFileAtomicallyEncodingError($(path), true, $.NSUTF8StringEncoding, null);
 OSA
     return 0
   fi
@@ -324,7 +349,7 @@ sync_managed_json() {
   done
 
   printf "%s\n" "${names[@]}" > "$manifest"
-  echo "[OK] 已确保同步软链接：$target（linked=$linked removed=$removed）"
+  echo "[OK] 已确保同步软链接：${target}（linked=${linked} removed=${removed}）"
 }
 
 consume_replay_queue_by_reports() {
@@ -571,25 +596,30 @@ parse_topup_response() {
   fi
 
   if [[ "$parser" == "osascript" ]]; then
-    local out
-    out="$(osascript -l JavaScript <<OSA 2>/dev/null || true
+    RESP_JSON="$resp_json" \
+    ACCOUNTS_DIR="$accounts_dir" \
+    REPLAY_QUEUE="$replay_queue" \
+    DL_TIMEOUT="$dl_timeout" \
+    DL_RETRY="$dl_retry" \
+    RETRY_DELAY="$TOPUP_RETRY_DELAY" \
+    osascript -l JavaScript <<'OSA' 2>/dev/null || true
 ObjC.import('Foundation');
 ObjC.import('stdlib');
 function readText(path){
   try { return $.NSString.stringWithContentsOfFileEncodingError(path, $.NSUTF8StringEncoding, null).js; }
   catch(e){ return ''; }
 }
-const respPath = '$resp_json';
-const accDir = '$accounts_dir';
-const qf = '$replay_queue';
-const dlTimeout = '$dl_timeout';
-const dlRetry = '$dl_retry';
-const retryDelay = '$TOPUP_RETRY_DELAY';
+const respPath = $.getenv('RESP_JSON');
+const accDir = $.getenv('ACCOUNTS_DIR');
+const qf = $.getenv('REPLAY_QUEUE');
+const dlTimeout = $.getenv('DL_TIMEOUT');
+const dlRetry = $.getenv('DL_RETRY');
+const retryDelay = $.getenv('RETRY_DELAY');
 let obj = {};
 try { obj = JSON.parse(readText(respPath)); } catch(e) { console.log('ERROR=bad response json'); $.exit(0); }
 if (!obj.ok) { console.log('ERROR=' + String(obj.error || 'topup_failed')); $.exit(0); }
 const fm = $.NSFileManager.defaultManager;
-fm.createDirectoryAtPathWithIntermediateDirectoriesAttributesError(accDir, true, null, null);
+$.system('/bin/mkdir -p "' + String(accDir || '').replace(/"/g, '\\"') + '"');
 let written = 0, failed = 0;
 let replayNames = [];
 const accounts = Array.isArray(obj.accounts) ? obj.accounts : [];
@@ -603,9 +633,11 @@ for (const a of accounts) {
   let ok = false;
   if (a.auth_json !== undefined && a.auth_json !== null) {
     try {
-      const data = $(NSJSONSerialization.dataWithJSONObjectOptionsError(a.auth_json, 0, null));
-      $(data.writeToFileAtomically(dst, true));
-      ok = true;
+      const text = JSON.stringify(a.auth_json);
+      if (text && text !== 'undefined') {
+        $(text + '\n').writeToFileAtomicallyEncodingError($(dst), true, $.NSUTF8StringEncoding, null);
+        ok = fm.fileExistsAtPath(dst);
+      }
     } catch(e) {}
   } else {
     const dl = String(a.download_url || '').trim();
@@ -631,7 +663,7 @@ const merged = [];
 for (const n of old.concat(replayNames)) { if (n && !seen[n]) { seen[n]=1; merged.push(n);} }
 try {
   const ns = $(merged.join('\n') + (merged.length ? '\n' : ''));
-  ns.writeToFileAtomicallyEncodingError(qf, true, $.NSUTF8StringEncoding, null);
+  ns.writeToFileAtomicallyEncodingError($(qf), true, $.NSUTF8StringEncoding, null);
 } catch(e) {}
 console.log('SERVER_COUNT=' + accounts.length);
 console.log('WRITTEN=' + written);
@@ -642,8 +674,6 @@ if (obj.issued_replay_count !== undefined && obj.issued_replay_count !== null) c
 if (obj.auto_disabled !== undefined && obj.auto_disabled !== null) console.log('AUTO_DISABLED=' + String(obj.auto_disabled));
 if (obj.abuse_auto_banned !== undefined && obj.abuse_auto_banned !== null) console.log('ABUSE_AUTO_BANNED=' + String(obj.abuse_auto_banned));
 OSA
-)"
-    printf '%s\n' "$out"
     return 0
   fi
 
@@ -829,7 +859,7 @@ const delaySecs = '$TOPUP_RETRY_DELAY';
 let obj = {};
 try { obj = JSON.parse(readText(respPath)); } catch(e) { console.log('0|0'); $.exit(0); }
 const fm = $.NSFileManager.defaultManager;
-fm.createDirectoryAtPathWithIntermediateDirectoriesAttributesError(accDir, true, null, null);
+$.system('/bin/mkdir -p "' + String(accDir || '').replace(/"/g, '\\"') + '"');
 let recovered = 0, failed = 0;
 const accs = Array.isArray(obj.accounts) ? obj.accounts : [];
 for (const a of accs) {
@@ -1295,7 +1325,7 @@ sync_all_flow() {
   [[ -z "$deleted_old" ]] && deleted_old=0
 
   echo "[INFO] 服务端返回账号条数：$server_count"
-  echo "[INFO] 已写入账号：$written（失败=$failed）"
+  echo "[INFO] 已写入账号：${written}（失败=${failed}）"
   echo "[INFO] sync-all 清理旧文件：$deleted_old"
   sync_managed_json
   echo "[OK] 全量同步完成"
@@ -1359,7 +1389,7 @@ while (( REFILL_ITER < REFILL_ITER_MAX )); do
 
   declare -a PROBE_FILES=()
   if (( SCOPE_MODE == 1 )); then
-    [[ "$MODE_FROM_TASK" == "0" ]] && echo "[INFO] 增量探测模式（仅本轮新增/待确认；并行=$PROBE_PARALLEL）"
+    [[ "$MODE_FROM_TASK" == "0" ]] && echo "[INFO] 增量探测模式（仅本轮新增/待确认；并行=${PROBE_PARALLEL}）"
     while IFS= read -r name; do
       [[ -n "$name" ]] || continue
       f="$ACCOUNTS_DIR/$name"
@@ -1367,7 +1397,7 @@ while (( REFILL_ITER < REFILL_ITER_MAX )); do
       PROBE_FILES+=("$f")
     done < "$ITER_SCOPE_FILE"
   else
-    [[ "$MODE_FROM_TASK" == "0" ]] && echo "[INFO] 全量探测模式（并行=$PROBE_PARALLEL）"
+    [[ "$MODE_FROM_TASK" == "0" ]] && echo "[INFO] 全量探测模式（并行=${PROBE_PARALLEL}）"
     shopt -s nullglob
     for f in "$ACCOUNTS_DIR"/*.json; do
       [[ -f "$f" ]] || continue
@@ -1485,7 +1515,11 @@ while (( REFILL_ITER < REFILL_ITER_MAX )); do
         '{target_pool_size:$target_pool_size,reports:($reports[0] // []),account_ids:($account_ids[0] // [])}' > "$BODY_JSON"
       ;;
     osascript)
-      osascript -l JavaScript <<OSA >/dev/null 2>&1 || true
+      TOPUP_REPORT_JSONL="$REPORT_JSONL" \
+      TOPUP_BODY_JSON="$BODY_JSON" \
+      TOPUP_ACCOUNTS_DIR="$ACCOUNTS_DIR" \
+      TOPUP_REQUEST_TARGET="$request_target" \
+      osascript -l JavaScript <<'OSA' >/dev/null 2>&1 || true
 ObjC.import('Foundation');
 ObjC.import('stdlib');
 function readLines(path){
@@ -1494,10 +1528,10 @@ function readLines(path){
     return s.split(/\r?\n/).filter(Boolean);
   } catch(e){ return []; }
 }
-const rep = '$REPORT_JSONL';
-const out = '$BODY_JSON';
-const accDir = '$ACCOUNTS_DIR';
-const target = Number('$request_target') || 0;
+const rep = $.getenv('TOPUP_REPORT_JSONL');
+const out = $.getenv('TOPUP_BODY_JSON');
+const accDir = $.getenv('TOPUP_ACCOUNTS_DIR');
+const target = Number($.getenv('TOPUP_REQUEST_TARGET') || '0') || 0;
 const reports = [];
 for (const ln of readLines(rep)) {
   try {
@@ -1521,8 +1555,8 @@ if (items) {
   }
 }
 const body = {target_pool_size: target, reports: reports, account_ids: accountIds};
-const data = $(NSJSONSerialization.dataWithJSONObjectOptionsError(body, 0, null));
-$(data.writeToFileAtomically(out, true));
+const text = JSON.stringify(body);
+$(text).writeToFileAtomicallyEncodingError($(out), true, $.NSUTF8StringEncoding, null);
 OSA
       ;;
     *)
@@ -1557,6 +1591,13 @@ with open(out, 'w', encoding='utf-8') as f:
 PY
       ;;
   esac
+
+  if [[ ! -s "$BODY_JSON" ]]; then
+    echo "[ERROR] 未生成 topup 请求体文件：$BODY_JSON"
+    write_final_report "topup" "topup_body_missing" "$total" "$probed_ok" "$net_fail" "$invalid" "$OUT_DIR"
+    [[ "$RUN_OUTPUT_MODE" != "compact" ]] && cleanup_old_out
+    exit 2
+  fi
 
   echo "[INFO] 触发 topup：POST $SERVER_URL/v1/refill/topup"
   if ! curl -sS --connect-timeout "$TOPUP_CONNECT_TIMEOUT" --max-time "$TOPUP_MAX_TIME" --retry "$TOPUP_RETRY" --retry-all-errors --retry-delay "$TOPUP_RETRY_DELAY" --noproxy "*" \
@@ -1635,10 +1676,12 @@ PY
   fi
 
   TOPUP_STATUS="triggered"
-  case "${REPORT_AUTO_DISABLED,,}" in
+  report_auto_disabled_lc="$(printf '%s' "${REPORT_AUTO_DISABLED:-}" | tr '[:upper:]' '[:lower:]')"
+  report_abuse_auto_banned_lc="$(printf '%s' "${REPORT_ABUSE_AUTO_BANNED:-}" | tr '[:upper:]' '[:lower:]')"
+  case "$report_auto_disabled_lc" in
     true|1|yes) TOPUP_STATUS="server_auto_disabled" ;;
   esac
-  case "${REPORT_ABUSE_AUTO_BANNED,,}" in
+  case "$report_abuse_auto_banned_lc" in
     true|1|yes) TOPUP_STATUS="server_abuse_auto_banned" ;;
   esac
 

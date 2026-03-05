@@ -47,9 +47,25 @@ WHAM_CONNECT_TIMEOUT="5"
 WHAM_MAX_TIME="15"
 TOPUP_CONNECT_TIMEOUT="8"
 TOPUP_MAX_TIME="30"
+
+sanitize_env_to_tmp() {
+  local src="$1"
+  local dst="$2"
+  local line first_line=1
+  : > "$dst"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$first_line" == "1" ]]; then
+      line="${line#$'\xEF\xBB\xBF'}"
+      first_line=0
+    fi
+    line="${line%$'\r'}"
+    printf '%s\n' "$line" >> "$dst"
+  done < "$src"
+}
+
 if [[ -f "$USER_CFG" ]]; then
   cfg_tmp="${USER_CFG}.sanitized.$$"
-  awk 'NR==1{sub(/^\xef\xbb\xbf/,"")} {sub(/\r$/,""); print}' "$USER_CFG" > "$cfg_tmp" 2>/dev/null || cp -f "$USER_CFG" "$cfg_tmp"
+  sanitize_env_to_tmp "$USER_CFG" "$cfg_tmp" 2>/dev/null || cp -f "$USER_CFG" "$cfg_tmp"
   # shellcheck disable=SC1090
   source "$cfg_tmp" || true
   rm -f "$cfg_tmp" >/dev/null 2>&1 || true
@@ -212,7 +228,7 @@ if [[ "$APPLY" == "1" && "$deleted" -gt 0 ]]; then
   CFG_USER="$ROOT_DIR/无限续杯配置.env"
   if [[ -f "$CFG_USER" ]]; then
     cfg_tmp="${CFG_USER}.sanitized.$$"
-    awk 'NR==1{sub(/^\xef\xbb\xbf/,"")} {sub(/\r$/,""); print}' "$CFG_USER" > "$cfg_tmp" 2>/dev/null || cp -f "$CFG_USER" "$cfg_tmp"
+    sanitize_env_to_tmp "$CFG_USER" "$cfg_tmp" 2>/dev/null || cp -f "$CFG_USER" "$cfg_tmp"
     # shellcheck disable=SC1090
     source "$cfg_tmp" || true
     rm -f "$cfg_tmp" >/dev/null 2>&1 || true
@@ -232,7 +248,7 @@ if [[ "$APPLY" == "1" && "$deleted" -gt 0 ]]; then
 
   missing=$((target - remain))
   if [[ "$missing" -gt 0 ]]; then
-    echo "[INFO] 清理后剩余=$remain 目标=$target：缺口=$missing" | tee -a "$REPORT"
+    echo "[INFO] 清理后剩余=${remain} 目标=${target}：缺口=${missing}" | tee -a "$REPORT"
 
     if [[ "$auto_refill" != "1" ]]; then
       echo "[INFO] 未开启自动补齐（AUTO_REFILL_AFTER_CLEAN=1 才会自动续杯）" | tee -a "$REPORT"
@@ -249,7 +265,7 @@ if [[ "$APPLY" == "1" && "$deleted" -gt 0 ]]; then
     body="$ROOT_DIR/out/_topup_body.json"
     echo "{\"target_pool_size\":$target,\"reports\":[]}" > "$body"
 
-    echo "[INFO] 开始补齐：请求一次 topup（目标=$target），追加写入：$OUT_REFILL" | tee -a "$REPORT"
+    echo "[INFO] 开始补齐：请求一次 topup（目标=${target}），追加写入：${OUT_REFILL}" | tee -a "$REPORT"
 
     resp="$(curl -sS --connect-timeout "$TOPUP_CONNECT_TIMEOUT" --max-time "$TOPUP_MAX_TIME" -X POST "$SERVER_URL/v1/refill/topup" \
       -H "X-User-Key: $USER_KEY" \

@@ -148,11 +148,26 @@ EOF
   fi
 }
 
+sanitize_env_to_tmp() {
+  local src="$1"
+  local dst="$2"
+  local line first_line=1
+  : > "$dst"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$first_line" == "1" ]]; then
+      line="${line#$'\xEF\xBB\xBF'}"
+      first_line=0
+    fi
+    line="${line%$'\r'}"
+    printf '%s\n' "$line" >> "$dst"
+  done < "$src"
+}
+
 load_cfg() {
   ensure_cfg
   if [[ -f "$CFG" ]]; then
     cfg_tmp="${CFG}.sanitized.$$"
-    awk 'NR==1{sub(/^\xef\xbb\xbf/,"")} {sub(/\r$/,""); print}' "$CFG" > "$cfg_tmp" 2>/dev/null || cp -f "$CFG" "$cfg_tmp"
+    sanitize_env_to_tmp "$CFG" "$cfg_tmp" 2>/dev/null || cp -f "$CFG" "$cfg_tmp"
     # shellcheck disable=SC1090
     source "$cfg_tmp" || true
     rm -f "$cfg_tmp" >/dev/null 2>&1 || true
@@ -256,7 +271,7 @@ ensure_sync_links() {
   done
 
   printf "%s\n" "${names[@]}" > "$manifest"
-  echo "[OK] 已确保同步软链接：$target（linked=$linked removed=$removed）"
+  echo "[OK] 已确保同步软链接：${target}（linked=${linked} removed=${removed}）"
 }
 
 build_task_entry() {
@@ -424,13 +439,13 @@ save_cfg_interactive() {
   default_accounts_dir="${ACCOUNTS_DIR:-$ROOT_DIR/accounts}"
   mkdir -p "$default_accounts_dir"
 
-  read -r -p "请输入服务器地址（填空则使用默认值：$default_server_url）: " server_url
+  read -r -p "请输入服务器地址（填空则使用默认值：${default_server_url}）: " server_url
   server_url="${server_url:-$default_server_url}"
 
-  read -r -p "请输入用户密钥（填空则使用默认值：$default_user_key）: " user_key
+  read -r -p "请输入用户密钥（填空则使用默认值：${default_user_key}）: " user_key
   user_key="${user_key:-$default_user_key}"
 
-  read -r -p "请输入账号文件保存路径（ACCOUNTS_DIR，默认：$default_accounts_dir）: " accounts_dir
+  read -r -p "请输入账号文件保存路径（ACCOUNTS_DIR，默认：${default_accounts_dir}）: " accounts_dir
   accounts_dir="${accounts_dir:-$default_accounts_dir}"
   mkdir -p "$accounts_dir"
   accounts_dir="$(cd "$accounts_dir" && pwd)"
@@ -445,7 +460,7 @@ save_cfg_interactive() {
 
   read -r -p "是否启用同步目录（y/N）: " enable_sync_choice
   if [[ "${enable_sync_choice:-N}" =~ ^[Yy]$ ]]; then
-    read -r -p "请输入同步目录（默认：$detected_sync_dir）: " sync_dir
+    read -r -p "请输入同步目录（默认：${detected_sync_dir}）: " sync_dir
     sync_dir="${sync_dir:-$detected_sync_dir}"
   else
     sync_dir=""

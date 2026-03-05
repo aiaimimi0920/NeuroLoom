@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # JSON 解析工具库
-# 支持 python3（推荐）/ osascript(JXA, macOS) / jq（兜底）
+# 支持 jq（优先）/ python3（次选）/ osascript(JXA, macOS兜底)
 
 # 检查命令是否存在
 need_cmd() {
@@ -11,22 +11,22 @@ need_cmd() {
 }
 
 # 检测可用的 JSON 解析器
-# 优先级：macOS 优先 osascript；Linux 优先 jq；python3 仅兜底
+# 优先级：所有平台优先 jq，其次 python3；仅在 macOS 且前两者不可用时使用 osascript
 detect_json_parser() {
   local os
   os="$(uname 2>/dev/null || echo unknown)"
 
   if [[ "$os" == "Darwin" ]]; then
-    if command -v osascript >/dev/null 2>&1; then
-      echo "osascript"
-      return 0
-    fi
     if command -v jq >/dev/null 2>&1; then
       echo "jq"
       return 0
     fi
     if command -v python3 >/dev/null 2>&1; then
       echo "python3"
+      return 0
+    fi
+    if command -v osascript >/dev/null 2>&1; then
+      echo "osascript"
       return 0
     fi
     echo "none"

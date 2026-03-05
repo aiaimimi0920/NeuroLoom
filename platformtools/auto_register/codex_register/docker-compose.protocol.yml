@@ -26,6 +26,13 @@ services:
       - PROTOCOL_TIMEOUT_SECONDS=20
       - SLEEP_MIN=0
       - SLEEP_MAX=1
+      - PROXY_ROTATE_SECONDS=60
+      - PROXY_COOLDOWN_SECONDS=45
+      - COOLDOWN_PROXY_ERROR_SECONDS=30
+      - COOLDOWN_BLOCKED_SECONDS=20
+      - COOLDOWN_INVALID_AUTH_SECONDS=5
+      - COOLDOWN_OTP_TIMEOUT_SECONDS=0
+      - COOLDOWN_OTHER_SECONDS=20
     command: ["python", "-m", "platformtools.auto_register.codex_register.protocol_version.main"]
     restart: always
 
@@ -54,6 +61,13 @@ services:
       - PROTOCOL_TIMEOUT_SECONDS=20
       - SLEEP_MIN=0
       - SLEEP_MAX=1
+      - PROXY_ROTATE_SECONDS=60
+      - PROXY_COOLDOWN_SECONDS=45
+      - COOLDOWN_PROXY_ERROR_SECONDS=30
+      - COOLDOWN_BLOCKED_SECONDS=20
+      - COOLDOWN_INVALID_AUTH_SECONDS=5
+      - COOLDOWN_OTP_TIMEOUT_SECONDS=0
+      - COOLDOWN_OTHER_SECONDS=20
     command: ["python", "-m", "platformtools.auto_register.codex_register.protocol_version.main"]
     restart: always
 
@@ -82,6 +96,13 @@ services:
       - PROTOCOL_TIMEOUT_SECONDS=20
       - SLEEP_MIN=0
       - SLEEP_MAX=1
+      - PROXY_ROTATE_SECONDS=60
+      - PROXY_COOLDOWN_SECONDS=45
+      - COOLDOWN_PROXY_ERROR_SECONDS=30
+      - COOLDOWN_BLOCKED_SECONDS=20
+      - COOLDOWN_INVALID_AUTH_SECONDS=5
+      - COOLDOWN_OTP_TIMEOUT_SECONDS=0
+      - COOLDOWN_OTHER_SECONDS=20
     command: ["python", "-m", "platformtools.auto_register.codex_register.protocol_version.main"]
     restart: always
 
